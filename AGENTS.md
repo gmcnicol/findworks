@@ -4,7 +4,7 @@ Read [`CONTEXT.md`](./CONTEXT.md) before making product or architecture decision
 
 ## FindWorks is in discovery
 
-Do not start implementing the product merely because an implementation path appears obvious. The current goal is to use Wayfinder to remove product and architecture ambiguity, then hand a decision-complete result to `/to-spec` and `/to-tickets`.
+Do not start implementing the product merely because an implementation path appears obvious. The current goal is to use Wayfinder to remove product and architecture ambiguity, then hand a decision-complete result to `to-spec` and `to-tickets`.
 
 Distinguish clearly between:
 
@@ -17,15 +17,17 @@ Do not silently promote a working assumption into a product decision.
 
 ## Matt Pocock engineering skills
 
-This repo is intended to use Matt Pocock's engineering skills. Before using Wayfinder or downstream engineering skills, run `/setup-matt-pocock-skills` once so this repository's issue tracker and domain-document locations are configured under `docs/agents/`.
+This repo is intended to use Matt Pocock's engineering skills under Pi. Before using Wayfinder or downstream engineering skills, run `/skill:setup-matt-pocock-skills` once so this repository's issue tracker and domain-document locations are configured under `docs/agents/`.
 
 Use GitHub Issues as the issue tracker unless the human explicitly chooses another tracker during setup.
 
 For Wayfinder:
 
+- Invoke it explicitly with `/skill:wayfinder` in Pi.
 - The destination is a decision-complete FindWorks M0 specification, not implemented software.
 - Decision tickets resolve uncertainty; they are not disguised implementation tickets.
 - Respect HITL ticket boundaries. A grilling session must ask the human rather than answer for them.
+- Before resolving a Wayfinder issue, inspect its GitHub labels as well as its body. Treat `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, and `wayfinder:task` as workflow gates, not decorative categories.
 - Prefer the product's own vocabulary: Discovery, Interview Mission, Interview Session, Investigation Item, Knowledge Item, Evidence.
 - Keep the first vertical slice narrow enough to prove the investigator -> mission -> interviewee -> findings loop.
 
@@ -44,4 +46,4 @@ Keep durable product/domain decisions in `CONTEXT.md` or linked ADR/spec artefac
 
 ## Agent skills
 
-`/setup-matt-pocock-skills` owns the detailed repository-specific skill configuration under `docs/agents/`. Do not invent those files ahead of the setup session.
+`/skill:setup-matt-pocock-skills` owns the detailed repository-specific skill configuration under `docs/agents/`. Do not invent those files ahead of the setup session.
