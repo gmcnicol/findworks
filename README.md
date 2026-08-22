@@ -55,6 +55,22 @@ Run the one-time repository setup:
 
 Use GitHub Issues as the issue tracker and keep the repository's root `CONTEXT.md` as the primary domain context. Let the setup skill create the detailed repository-specific configuration under `docs/agents/`.
 
+### Fresh-repo label bootstrap
+
+Wayfinder creates GitHub issues with `wayfinder:*` labels, so make sure those labels exist before the first map is charted:
+
+```bash
+bash scripts/bootstrap-wayfinder-labels.sh
+```
+
+The script is idempotent and creates/updates:
+
+- `wayfinder:map`
+- `wayfinder:research`
+- `wayfinder:prototype`
+- `wayfinder:grilling`
+- `wayfinder:task`
+
 Then start product discovery:
 
 ```text
