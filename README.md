@@ -17,17 +17,18 @@ This repository is intentionally at the discovery stage. The first job is to fin
 
 The product is not intended to be an AI form builder. The interview should adapt to answers and seek missing knowledge rather than march through a fixed questionnaire.
 
-## Wayfinder bootstrap
+## Wayfinder bootstrap with Pi
 
 FindWorks uses Matt Pocock's engineering skills to discover the product before building it.
 
-For Codex, Pi, or another Agent Skills-compatible harness, from a local clone run:
+From a local clone:
 
 ```bash
+gh auth status
 npx skills@latest add mattpocock/skills
 ```
 
-Install at least:
+Install the skills for Pi and include at least:
 
 - `setup-matt-pocock-skills`
 - `wayfinder`
@@ -38,23 +39,31 @@ Install at least:
 - `to-spec`
 - `to-tickets`
 
-Then run, once for this repository:
+Start Pi from the repository root:
 
-```text
-/setup-matt-pocock-skills
+```bash
+pi
 ```
 
-Use GitHub Issues as the issue tracker and keep the repository's root `CONTEXT.md` as the primary domain context.
+Trust the project if Pi asks you to. Project-local skills are only loaded for trusted projects. If the skills were installed while Pi was already running, use `/reload`.
 
-After setup, start the product discovery with:
+Run the one-time repository setup:
 
 ```text
-/wayfinder
+/skill:setup-matt-pocock-skills
+```
+
+Use GitHub Issues as the issue tracker and keep the repository's root `CONTEXT.md` as the primary domain context. Let the setup skill create the detailed repository-specific configuration under `docs/agents/`.
+
+Then start product discovery:
+
+```text
+/skill:wayfinder
 ```
 
 A good initial destination is:
 
-> Reach a decision-complete specification for FindWorks M0: enough product, domain, UX, runtime, persistence, and integration decisions are settled that `/to-spec` and then `/to-tickets` can hand implementation to agents without inventing product decisions.
+> Reach a decision-complete specification for FindWorks M0: enough product, domain, UX, runtime, persistence, and integration decisions are settled that `to-spec` and then `to-tickets` can hand implementation to agents without inventing product decisions.
 
 Wayfinder is for finding the route, not implementing the product. Keep implementation out of the map unless explicitly required to unblock a decision.
 
