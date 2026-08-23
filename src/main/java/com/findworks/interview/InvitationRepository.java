@@ -292,10 +292,11 @@ class InvitationRepository {
         var rawToken = tokens.token(id, keyId);
         jdbc.sql("""
                 INSERT INTO invitations (
-                    id, organisation_id, interview_mission_id, participant_id, recipient_email,
+                    id, organisation_id, discovery_id, interview_mission_id, participant_id, recipient_email,
                     token_key_id, token_hash, send_confirmed_at, delivery_status, expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-                """).params(id, mission.organisationId(), mission.id(), participantId, recipient, keyId,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                """).params(id, mission.organisationId(), mission.discoveryId(), mission.id(), participantId,
+                recipient, keyId,
                 tokens.hash(rawToken), timestamp(confirmedAt), timestamp(confirmedAt.plus(Duration.ofDays(7)))).update();
         jdbc.sql("""
                 INSERT INTO invitation_delivery_jobs (

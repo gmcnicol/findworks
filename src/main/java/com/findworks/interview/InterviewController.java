@@ -3,6 +3,8 @@ package com.findworks.interview;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import java.security.Principal;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
@@ -14,7 +16,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 @Controller
@@ -24,12 +25,14 @@ final class InterviewController {
     private final InterviewRepository interviews;
     private final MissionRepository missions;
     private final InvitationRepository invitations;
+    private final Clock clock;
 
     InterviewController(InterviewRepository interviews, MissionRepository missions,
-            InvitationRepository invitations) {
+            InvitationRepository invitations, Clock clock) {
         this.interviews = interviews;
         this.missions = missions;
         this.invitations = invitations;
+        this.clock = clock;
     }
 
     @GetMapping("/missions/{id}")
@@ -91,31 +94,28 @@ final class InterviewController {
         var redeemed = interviews.redeem(token);
         var cookie = new Cookie(ACCESS_COOKIE, redeemed.accessToken());
         cookie.setHttpOnly(true);
+        cookie.setSecure(true);
         cookie.setPath("/interview");
-        cookie.setMaxAge(7 * 24 * 60 * 60);
+        cookie.setMaxAge((int) Math.max(0, Duration.between(clock.instant(), redeemed.expiresAt()).toSeconds()));
         cookie.setAttribute("SameSite", "Lax");
         response.addCookie(cookie);
+        privateResponse(response);
         return "redirect:/interview";
     }
 
     @GetMapping("/interview")
-    String interview(@CookieValue(ACCESS_COOKIE) String accessToken, Model model) {
+    String interview(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken, Model model,
+            HttpServletResponse response) {
         model.addAttribute("interview", interviews.interview(accessToken));
+        privateResponse(response);
         return "interview";
     }
 
-    @PostMapping("/interview/answers")
-    String answer(
-            @CookieValue(ACCESS_COOKIE) String accessToken,
-            @RequestParam UUID itemId,
-            @RequestParam String answer,
-            @RequestHeader(value = "Datastar-Request", defaultValue = "false") boolean datastar,
-            Model model) {
-        interviews.answer(accessToken, itemId, answer);
-        if (datastar) {
-            model.addAttribute("interview", interviews.interview(accessToken));
-            return "interview :: interview-card";
-        }
+    @PostMapping("/interview/start")
+    String start(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            HttpServletResponse response) {
+        interviews.start(accessToken);
+        privateResponse(response);
         return "redirect:/interview";
     }
 
@@ -131,5 +131,19 @@ final class InterviewController {
     String invalid(IllegalArgumentException error, Model model) {
         model.addAttribute("message", error.getMessage());
         return "error";
+    }
+
+    @ExceptionHandler(InterviewAccessDeniedException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    String accessDenied(InterviewAccessDeniedException error, Model model, HttpServletResponse response) {
+        interviews.auditDenied();
+        model.addAttribute("message", error.getMessage());
+        privateResponse(response);
+        return "interview-access-error";
+    }
+
+    private static void privateResponse(HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Referrer-Policy", "no-referrer");
     }
 }

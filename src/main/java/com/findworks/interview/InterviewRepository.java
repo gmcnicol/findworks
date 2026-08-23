@@ -4,7 +4,12 @@ import com.findworks.security.PilotTenant;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -15,80 +20,153 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 class InterviewRepository {
 
+    private static final SecureRandom RANDOM = new SecureRandom();
     private final JdbcClient jdbc;
     private final PilotTenant tenant;
+    private final Clock clock;
+    private final InterviewProperties properties;
 
-    InterviewRepository(JdbcClient jdbc, PilotTenant tenant) {
+    InterviewRepository(JdbcClient jdbc, PilotTenant tenant, Clock clock, InterviewProperties properties) {
         this.jdbc = jdbc;
         this.tenant = tenant;
+        this.clock = clock;
+        this.properties = properties;
     }
 
     @Transactional
     RedeemedInvitation redeem(String invitationToken) {
         tenant.select();
+        var now = clock.instant();
         var invitation = jdbc.sql("""
-                SELECT i.id, i.interview_mission_id
+                SELECT i.id, i.organisation_id, i.discovery_id, i.interview_mission_id, i.participant_id
                 FROM invitations i
-                WHERE i.token_hash = ? AND i.delivery_status IN ('pending', 'provider_accepted')
-                  AND i.revoked_at IS NULL AND i.redeemed_at IS NULL AND i.expires_at > now()
-                FOR UPDATE
-                """).param(hash(invitationToken)).query((rs, row) -> new Invitation(
-                        rs.getObject(1, UUID.class), rs.getObject(2, UUID.class))).optional()
-                .orElseThrow(() -> new IllegalArgumentException("This invitation is invalid, expired, or already used."));
-        jdbc.sql("UPDATE invitations SET redeemed_at = now(), delivery_status = 'redeemed' WHERE id = ?")
-                .param(invitation.id()).update();
-        var sessionId = jdbc.sql("SELECT id FROM interview_sessions WHERE interview_mission_id = ?")
-                .param(invitation.missionId()).query(UUID.class).optional().orElseGet(() -> {
-                    var id = UUID.randomUUID();
-                    jdbc.sql("INSERT INTO interview_sessions (id, interview_mission_id) VALUES (?, ?)")
-                            .params(id, invitation.missionId()).update();
-                    return id;
-                });
-        var accessToken = UUID.randomUUID() + "" + UUID.randomUUID();
-        jdbc.sql("INSERT INTO interview_access_grants (id, interview_session_id, token_hash, expires_at) VALUES (?, ?, ?, now() + interval '7 days')")
-                .params(UUID.randomUUID(), sessionId, hash(accessToken)).update();
-        return new RedeemedInvitation(accessToken);
+                JOIN interview_missions m ON m.id = i.interview_mission_id
+                    AND m.discovery_id = i.discovery_id AND m.organisation_id = i.organisation_id
+                JOIN discoveries d ON d.id = i.discovery_id AND d.organisation_id = i.organisation_id
+                JOIN discovery_participants p ON p.id = i.participant_id
+                    AND p.discovery_id = i.discovery_id AND p.organisation_id = i.organisation_id
+                WHERE i.token_hash = ? AND i.delivery_status = 'provider_accepted'
+                  AND i.revoked_at IS NULL AND i.redeemed_at IS NULL AND i.expires_at > ?
+                  AND m.status = 'approved' AND d.status = 'active'
+                FOR UPDATE OF i
+                """).params(hash(invitationToken), timestamp(now)).query((rs, ignored) -> new Invitation(
+                        rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
+                        rs.getObject("discovery_id", UUID.class),
+                        rs.getObject("interview_mission_id", UUID.class),
+                        rs.getObject("participant_id", UUID.class))).optional()
+                .orElseThrow(InterviewAccessDeniedException::new);
+
+        var session = jdbc.sql("""
+                SELECT id, participant_id FROM interview_sessions
+                WHERE interview_mission_id = ? FOR UPDATE
+                """).param(invitation.missionId()).query((rs, ignored) -> new Session(
+                        rs.getObject("id", UUID.class), rs.getObject("participant_id", UUID.class))).optional();
+        UUID sessionId;
+        if (session.isPresent()) {
+            if (!invitation.participantId().equals(session.get().participantId())) {
+                throw new InterviewAccessDeniedException();
+            }
+            sessionId = session.get().id();
+        } else {
+            sessionId = UUID.randomUUID();
+            jdbc.sql("""
+                    INSERT INTO interview_sessions (
+                        id, organisation_id, discovery_id, interview_mission_id, participant_id
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """).params(sessionId, invitation.organisationId(), invitation.discoveryId(),
+                    invitation.missionId(), invitation.participantId()).update();
+        }
+
+        jdbc.sql("""
+                UPDATE interview_access_grants SET revoked_at = COALESCE(revoked_at, ?)
+                WHERE interview_session_id = ? AND revoked_at IS NULL
+                """).params(timestamp(now), sessionId).update();
+        var accessToken = randomToken();
+        var expiresAt = now.plus(Duration.ofDays(7));
+        jdbc.sql("""
+                INSERT INTO interview_access_grants (
+                    id, organisation_id, interview_session_id, participant_id, token_hash, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """).params(UUID.randomUUID(), invitation.organisationId(), sessionId,
+                invitation.participantId(), hash(accessToken), timestamp(expiresAt)).update();
+        var consumed = jdbc.sql("""
+                UPDATE invitations SET redeemed_at = ?, delivery_status = 'redeemed'
+                WHERE id = ? AND redeemed_at IS NULL AND delivery_status = 'provider_accepted'
+                """).params(timestamp(now), invitation.id()).update();
+        if (consumed != 1) {
+            throw new InterviewAccessDeniedException();
+        }
+        tenant.auditSystem("invitation_redeemed", "invitation", invitation.id());
+        tenant.auditSystem("interview_access_granted", "interview_session", sessionId);
+        return new RedeemedInvitation(accessToken, expiresAt);
     }
 
     @Transactional(readOnly = true)
-    Interview interview(String accessToken) {
+    AccessView interview(String accessToken) {
+        requireToken(accessToken);
         tenant.select();
         return jdbc.sql("""
-                SELECT s.id, s.status, s.current_position, d.title, d.objective, m.interviewee_name,
-                       i.id item_id, i.opening_question,
-                       (SELECT count(*) FROM investigation_items x WHERE x.interview_mission_id = m.id) total
+                SELECT s.status, p.intended_name, o.name organisation_name, o.retention_days,
+                       u.email investigator_email,
+                       m.objective, m.expected_commitment, m.data_use_summary
                 FROM interview_access_grants g
                 JOIN interview_sessions s ON s.id = g.interview_session_id
+                    AND s.participant_id = g.participant_id AND s.organisation_id = g.organisation_id
+                JOIN discovery_participants p ON p.id = s.participant_id
+                    AND p.discovery_id = s.discovery_id AND p.organisation_id = s.organisation_id
                 JOIN interview_missions m ON m.id = s.interview_mission_id
-                JOIN discoveries d ON d.id = m.discovery_id
-                LEFT JOIN investigation_items i ON i.interview_mission_id = m.id AND i.position = s.current_position
-                WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > now()
-                """).param(hash(accessToken)).query((rs, row) -> new Interview(
-                        rs.getObject("id", UUID.class), rs.getString("status"), rs.getInt("current_position"),
-                        rs.getInt("total"), rs.getString("title"), rs.getString("objective"),
-                        rs.getString("interviewee_name"), rs.getObject("item_id", UUID.class),
-                        rs.getString("opening_question"))).optional()
-                .orElseThrow(() -> new IllegalArgumentException("Your interview access has expired."));
+                    AND m.discovery_id = s.discovery_id AND m.organisation_id = s.organisation_id
+                JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
+                JOIN memberships owner ON owner.id = d.owner_membership_id
+                    AND owner.organisation_id = d.organisation_id AND owner.role = 'investigator'
+                JOIN users u ON u.id = owner.user_id AND u.email_verified_at IS NOT NULL
+                JOIN organisations o ON o.id = d.organisation_id
+                WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
+                  AND d.status = 'active' AND m.approved_at IS NOT NULL
+                  AND (s.status <> 'not_started' OR m.status = 'approved')
+                """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) -> {
+                    var investigatorEmail = rs.getString("investigator_email");
+                    return new AccessView(rs.getString("status"), rs.getString("intended_name"),
+                            rs.getString("organisation_name"), investigatorEmail, rs.getString("objective"),
+                            rs.getString("expected_commitment"), rs.getString("data_use_summary"),
+                            rs.getInt("retention_days"), properties.contactOr(investigatorEmail));
+                }).optional().orElseThrow(InterviewAccessDeniedException::new);
     }
 
     @Transactional
-    void answer(String accessToken, UUID itemId, String answer) {
-        if (answer == null || answer.isBlank() || answer.length() > 10_000) {
-            throw new IllegalArgumentException("Please give an answer before continuing.");
+    void start(String accessToken) {
+        requireToken(accessToken);
+        tenant.select();
+        var session = jdbc.sql("""
+                SELECT s.id, s.status
+                FROM interview_access_grants g
+                JOIN interview_sessions s ON s.id = g.interview_session_id
+                    AND s.participant_id = g.participant_id AND s.organisation_id = g.organisation_id
+                JOIN interview_missions m ON m.id = s.interview_mission_id
+                    AND m.discovery_id = s.discovery_id AND m.organisation_id = s.organisation_id
+                JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
+                WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
+                  AND d.status = 'active' AND m.approved_at IS NOT NULL
+                  AND (s.status <> 'not_started' OR m.status = 'approved')
+                FOR UPDATE OF s
+                """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) -> new SessionState(
+                        rs.getObject("id", UUID.class), rs.getString("status"))).optional()
+                .orElseThrow(InterviewAccessDeniedException::new);
+        if (!"not_started".equals(session.status())) {
+            return;
         }
-        var interview = interview(accessToken);
-        if (!itemId.equals(interview.itemId()) || "completed".equals(interview.status())) {
-            throw new IllegalArgumentException("That question is no longer active.");
-        }
-        jdbc.sql("INSERT INTO evidence (id, interview_session_id, investigation_item_id, answer) VALUES (?, ?, ?, ?)")
-                .params(UUID.randomUUID(), interview.sessionId(), itemId, answer.trim()).update();
-        var complete = interview.position() + 1 >= interview.total();
         jdbc.sql("""
                 UPDATE interview_sessions
-                SET current_position = current_position + 1,
-                    status = ?, started_at = COALESCE(started_at, now()), completed_at = CASE WHEN ? THEN now() ELSE NULL END
-                WHERE id = ?
-                """).params(complete ? "completed" : "in_progress", complete, interview.sessionId()).update();
+                SET status = 'active', started_at = ?, revision = revision + 1
+                WHERE id = ? AND status = 'not_started'
+                """).params(timestamp(clock.instant()), session.id()).update();
+        tenant.auditSystem("interview_session_started", "interview_session", session.id());
+    }
+
+    @Transactional
+    void auditDenied() {
+        tenant.select();
+        tenant.auditSystemDenied("interview_access_denied", "interview_access");
     }
 
     @Transactional(readOnly = true)
@@ -103,24 +181,44 @@ class InterviewRepository {
                 JOIN discoveries d ON d.id = m.discovery_id
                 WHERE i.interview_mission_id = ? AND d.owner_membership_id = ?
                 ORDER BY i.position
-                """).params(missionId, investigator.membershipId()).query((rs, row) -> {
+                """).params(missionId, investigator.membershipId()).query((rs, ignored) -> {
                     var answeredAt = rs.getTimestamp("created_at");
                     return new Finding(rs.getString("knowledge_gap"), rs.getString("answer"),
                             answeredAt == null ? null : answeredAt.toInstant());
                 }).list();
     }
 
+    private static void requireToken(String token) {
+        if (token == null || token.isBlank() || token.length() > 500) {
+            throw new InterviewAccessDeniedException();
+        }
+    }
+
+    private static String randomToken() {
+        var bytes = new byte[32];
+        RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
     private static String hash(String token) {
+        requireToken(token);
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException(impossible);
         }
     }
 
-    record Invitation(UUID id, UUID missionId) {}
-    record RedeemedInvitation(String accessToken) {}
-    record Interview(UUID sessionId, String status, int position, int total, String title, String objective,
-                     String intervieweeName, UUID itemId, String question) {}
+    private static Timestamp timestamp(Instant instant) {
+        return Timestamp.from(instant);
+    }
+
+    record RedeemedInvitation(String accessToken, Instant expiresAt) {}
+    record AccessView(String status, String participantName, String organisationName, String investigatorEmail,
+            String purpose, String expectedCommitment, String dataUseSummary, int retentionDays, String contact) {}
     record Finding(String knowledgeGap, String answer, Instant answeredAt) {}
+    private record Invitation(UUID id, UUID organisationId, UUID discoveryId, UUID missionId, UUID participantId) {}
+    private record Session(UUID id, UUID participantId) {}
+    private record SessionState(UUID id, String status) {}
 }
