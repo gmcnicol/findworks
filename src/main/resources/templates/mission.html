@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${mission.title + ' | FindWorks'}">Interview Mission | FindWorks</title><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="shell header"><a class="brand" href="/"><span class="brand-mark">F</span><span>FindWorks</span></a><span class="pilot-label">Interview Mission</span></header>
+<main class="shell narrow page">
+    <p class="eyebrow" th:text="${mission.status == 'approved' ? 'Approved mission' : 'Review before inviting'}">Review before inviting</p>
+    <h1 class="page-title" th:text="${mission.title}">Mission title</h1>
+    <p class="lede" th:text="${mission.objective}">Objective</p>
+    <section class="summary-card">
+        <div><span>Interviewee</span><strong th:text="${mission.intervieweeName}">Name</strong><small th:text="${mission.intervieweeEmail}">email</small></div>
+        <div><span>Commitment</span><strong>About 20 minutes</strong><small>One question at a time</small></div>
+    </section>
+    <section class="mission-items">
+        <h2>What the interview will cover</h2>
+        <ol><li th:each="item : ${mission.items}"><strong th:text="${item.knowledgeGap}">Knowledge gap</strong><p th:text="${item.question}">Opening question</p></li></ol>
+    </section>
+    <section class="action-card" th:if="${inviteUrl != null}">
+        <p class="eyebrow">Invitation ready</p><h2>Send it to <span th:text="${mission.intervieweeName}">the interviewee</span>.</h2>
+        <p>This private link works once and expires in seven days.</p>
+        <a class="button" th:href="${mailto}">Send invitation email</a>
+        <label class="invite-link">Or copy the link<input readonly th:value="${inviteUrl}" onclick="this.select()"></label>
+    </section>
+    <form method="post" th:action="@{/missions/{id}/invite(id=${mission.id})}" th:unless="${inviteUrl != null}">
+        <button class="button" type="submit" th:text="${mission.status == 'approved' ? 'Create a new invitation' : 'Approve and create invitation'}">Approve and create invitation</button>
+    </form>
+    <a class="text-link" th:if="${mission.sessionStatus == 'completed'}" th:href="@{/missions/{id}/findings(id=${mission.id})}">Review interview findings →</a>
+</main>
+</body>
+</html>

@@ -10,6 +10,12 @@ buildNumber.properties
 # https://maven.apache.org/tools/wrapper/#Usage_with_or_without_Binary_JAR
 .mvn/wrapper/maven-wrapper.jar
 
+# Spring Boot
+.env
+.idea/
+*.iml
+.DS_Store
+
 # Eclipse m2e generated files
 # Eclipse Core
 .project

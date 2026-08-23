@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="FindWorks helps investigators learn what only other people know.">
+    <title>FindWorks</title>
+    <link rel="stylesheet" th:href="@{/styles.css}" href="/styles.css">
+</head>
+<body>
+<header class="shell header">
+    <a class="brand" href="/" aria-label="FindWorks home">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span>FindWorks</span>
+    </a>
+    <span class="pilot-label">Private pilot</span>
+</header>
+
+<main>
+    <section class="hero shell" aria-labelledby="hero-title">
+        <p class="eyebrow">Structured human discovery</p>
+        <h1 id="hero-title">Find what you need to know.</h1>
+        <p class="hero-copy">Shape a focused interview, invite the right person, and return with useful findings linked to exactly what they said.</p>
+        <a class="button" href="/discoveries">View Discoveries</a>
+    </section>
+
+    <section class="workflow shell" aria-labelledby="workflow-title">
+        <div>
+            <p class="eyebrow">First workflow</p>
+            <h2 id="workflow-title">One mission. One interview. Clear findings.</h2>
+        </div>
+        <ol class="steps">
+            <li><span>01</span><strong>Shape</strong><p>Clarify what must be learned and from whom.</p></li>
+            <li><span>02</span><strong>Interview</strong><p>Ask adaptive questions without technical clutter.</p></li>
+            <li><span>03</span><strong>Review</strong><p>Inspect findings, uncertainty, and source Evidence.</p></li>
+        </ol>
+    </section>
+</main>
+
+<footer class="shell footer">
+    <span>FindWorks M0</span>
+    <a href="/actuator/health">Service health</a>
+</footer>
+</body>
+</html>

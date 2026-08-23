@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${'Findings: ' + mission.title}">Findings | FindWorks</title><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="shell header"><a class="brand" href="/"><span class="brand-mark">F</span><span>FindWorks</span></a><span class="pilot-label">Findings</span></header>
+<main class="shell narrow page">
+    <p class="eyebrow">Interview findings</p><h1 class="page-title" th:text="${mission.title}">Mission</h1>
+    <p class="lede">Each finding stays linked to the interviewee's original answer.</p>
+    <section class="findings-list">
+        <article th:each="finding : ${findings}">
+            <p class="eyebrow">Investigation item</p><h2 th:text="${finding.knowledgeGap}">Gap</h2>
+            <blockquote th:if="${finding.answer != null}" th:text="${finding.answer}">Answer</blockquote>
+            <p class="unanswered" th:unless="${finding.answer != null}">Not answered</p>
+            <small th:if="${finding.answeredAt != null}" th:text="${'Evidence from ' + mission.intervieweeName}">Evidence</small>
+        </article>
+    </section>
+</main>
+</body>
+</html>

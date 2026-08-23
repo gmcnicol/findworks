@@ -4,7 +4,7 @@
 
 FindWorks is an early-stage product for structured human discovery: an engineer, analyst, product person, or other investigator defines what they need to learn; an agent harness helps shape that into an interview mission; a stakeholder or SME is interviewed through a simple web experience; and structured findings return with provenance, unknowns, conflicts, and follow-up work.
 
-This repository is intentionally at the discovery stage. The first job is to find the route to a coherent M0 before implementation starts.
+This repository now contains the first production foundation for M0: a Java 25 Spring Boot modular monolith, PostgreSQL schema migrations, operational health checks, and a server-rendered web entry point.
 
 ## Core loop
 
@@ -86,3 +86,36 @@ Wayfinder is for finding the route, not implementing the product. Keep implement
 ## Current state
 
 See [`CONTEXT.md`](./CONTEXT.md) for durable context and open architectural questions.
+
+## Run locally
+
+Requirements: Java 25, Maven 3.9+, Docker.
+
+```bash
+mvn verify
+docker compose up --build --wait
+```
+
+Open [http://localhost:8080](http://localhost:8080). Create a Mission, approve it, open its private
+invitation link in another browser, answer the interview, then review the Evidence-backed findings.
+
+Sign in locally as `investigator@findworks.local` with password `findworks`. Override both through
+`INVESTIGATOR_EMAIL` and `INVESTIGATOR_PASSWORD`; `.env.example` lists the available settings.
+
+For local Java development, start only PostgreSQL and run Spring Boot directly:
+
+```bash
+docker compose up -d --wait postgres
+mvn spring-boot:run
+```
+
+Health endpoints:
+
+- `GET /actuator/health/liveness`
+- `GET /actuator/health/readiness`
+
+Run checks and package the application:
+
+```bash
+mvn verify
+```
