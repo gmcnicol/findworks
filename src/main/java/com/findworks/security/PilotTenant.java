@@ -48,14 +48,23 @@ public final class PilotTenant {
         audit(properties.organisationId(), "system", null, action, resourceKind, resourceId);
     }
 
+    public void auditSystemDenied(String action, String resourceKind) {
+        audit(properties.organisationId(), "system", null, action, resourceKind, null, "denied");
+    }
+
     private void audit(UUID organisationId, String actorKind, UUID actorId,
             String action, String resourceKind, UUID resourceId) {
+        audit(organisationId, actorKind, actorId, action, resourceKind, resourceId, "success");
+    }
+
+    private void audit(UUID organisationId, String actorKind, UUID actorId,
+            String action, String resourceKind, UUID resourceId, String outcome) {
         jdbc.sql("""
                 INSERT INTO audit_records
                     (id, organisation_id, actor_kind, actor_id, action, resource_kind, resource_id, outcome, correlation_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'success', ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """).params(UUID.randomUUID(), organisationId, actorKind, actorId, action, resourceKind,
-                        resourceId, UUID.randomUUID()).update();
+                        resourceId, outcome, UUID.randomUUID()).update();
     }
 
     public record Investigator(UUID membershipId, UUID userId, UUID organisationId) {}
