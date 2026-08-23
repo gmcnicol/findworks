@@ -151,6 +151,14 @@ textarea { padding: 14px; line-height: 1.5; resize: vertical; }
 .mission-items li p { margin: 6px 0 0; color: var(--muted); }
 .action-card { margin-block: 40px; padding: clamp(24px, 5vw, 40px); }
 .action-card > p:not(.eyebrow) { color: var(--muted); }
+.shaping-card form { display: grid; gap: 18px; margin-top: 28px; }
+.shaping-messages { display: grid; gap: 14px; margin: 28px 0; padding: 0; list-style: none; }
+.shaping-messages li { max-width: 88%; padding: 16px 18px; border-radius: 12px; background: var(--paper); }
+.shaping-messages .investigator-message { margin-left: auto; background: var(--accent-soft); }
+.shaping-messages p { margin: 6px 0; line-height: 1.5; }
+.shaping-messages time { color: var(--muted); font-size: .78rem; }
+.working, .runtime-failed { margin-top: 28px; }
+.runtime-failed { color: #8b2f28 !important; }
 .invite-link { margin-top: 24px; }
 .text-link { display: inline-block; margin-top: 30px; color: var(--accent); font-weight: 760; }
 .text-button { padding: 8px; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 760; cursor: pointer; }

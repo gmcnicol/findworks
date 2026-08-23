@@ -89,7 +89,7 @@ See [`CONTEXT.md`](./CONTEXT.md) for durable context and open architectural ques
 
 ## Run locally
 
-Requirements: Java 25, Maven 3.9+, Docker.
+Requirements: Java 25, Maven 3.9+, Docker, and an authenticated Pi installation for Discovery shaping.
 
 ```bash
 mvn verify
