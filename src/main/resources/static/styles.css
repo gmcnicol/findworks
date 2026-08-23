@@ -159,6 +159,31 @@ textarea { padding: 14px; line-height: 1.5; resize: vertical; }
 .shaping-messages time { color: var(--muted); font-size: .78rem; }
 .working, .runtime-failed { margin-top: 28px; }
 .runtime-failed { color: #8b2f28 !important; }
+.mission-proposal { margin-top: 32px; padding-top: 30px; border-top: 1px solid var(--line); }
+.proposal-heading { display: flex; align-items: start; justify-content: space-between; gap: 20px; }
+.proposal-heading h3 { margin: 0; font-size: 1.4rem; }
+.proposal-heading .eyebrow { margin-bottom: 8px; }
+.proposal-status { padding: 7px 10px; border-radius: 999px; background: #fff0cc; color: #684d0d; font-size: .78rem; font-weight: 760; }
+.proposal-warning { padding: 12px 14px; border-left: 3px solid #c69219; background: #fff9e9; color: var(--ink) !important; }
+.proposal-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 24px 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.proposal-fields div { display: grid; gap: 6px; padding: 16px; border-bottom: 1px solid var(--line); }
+.proposal-fields div:nth-child(odd) { border-right: 1px solid var(--line); }
+.proposal-fields dt, .proposal-section h4 { font-weight: 760; }
+.proposal-fields dd { margin: 0; line-height: 1.45; }
+.proposal-fields small, .proposal-section small { display: block; color: var(--muted); font-size: .75rem; }
+.proposal-section { padding: 20px 0; border-top: 1px solid var(--line); }
+.proposal-section h4 { margin: 0 0 12px; }
+.proposal-section ul, .proposal-section ol { display: grid; gap: 12px; margin: 0; padding-left: 22px; }
+.proposal-section li { line-height: 1.45; }
+.proposal-section li > strong, .proposal-section li > span, .proposal-section li > em { display: block; }
+.proposal-section li > small { margin-top: 4px; }
+.proposal-section > p, .proposal-items p { margin: 7px 0; color: var(--muted); }
+.ambiguity-section li { color: #684d0d; }
+@media (max-width: 620px) {
+    .proposal-heading { display: grid; }
+    .proposal-fields { grid-template-columns: 1fr; }
+    .proposal-fields div:nth-child(odd) { border-right: 0; }
+}
 .invite-link { margin-top: 24px; }
 .text-link { display: inline-block; margin-top: 30px; color: var(--accent); font-weight: 760; }
 .text-button { padding: 8px; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 760; cursor: pointer; }

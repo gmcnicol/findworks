@@ -21,7 +21,12 @@ public class ShapingWorker {
             return;
         }
         try {
-            repository.complete(work, pi.followUp(repository.context(work)));
+            var turn = pi.followUp(repository.context(work));
+            if (turn.proposal() == null) {
+                repository.complete(work, turn.question());
+            } else {
+                repository.complete(work, turn.proposal());
+            }
         } catch (Exception error) {
             repository.fail(work);
         }
