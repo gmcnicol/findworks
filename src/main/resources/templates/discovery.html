@@ -27,9 +27,59 @@
         </ol>
         <p class="working" th:if="${shaping.status == 'working'}" aria-live="polite">FindWorks is considering your statement...</p>
         <p class="runtime-failed" th:if="${shaping.status == 'runtime_failed'}" role="alert">FindWorks could not respond. Your statement is safe. Try again later.</p>
+        <article class="mission-proposal" th:if="${shaping.proposal != null}">
+            <div class="proposal-heading">
+                <div><p class="eyebrow">Interview Mission proposal</p><h3>Review before confirmation</h3></div>
+                <span class="proposal-status">Awaiting confirmation</span>
+            </div>
+            <p class="proposal-warning">Nothing here is authoritative yet. Continue shaping to clarify or change it.</p>
+            <dl class="proposal-fields">
+                <div><dt>Objective</dt><dd th:text="${shaping.proposal.objective.value}">Objective</dd><small th:text="${shaping.proposal.objective.provenance}">Provenance</small></div>
+                <div><dt>Desired outcome</dt><dd th:text="${shaping.proposal.desiredOutcome.value}">Outcome</dd><small th:text="${shaping.proposal.desiredOutcome.provenance}">Provenance</small></div>
+                <div><dt>Intended interviewee</dt><dd th:text="${shaping.proposal.intendedInterviewee.value}">Interviewee</dd><small th:text="${shaping.proposal.intendedInterviewee.provenance}">Provenance</small></div>
+                <div><dt>Why this person</dt><dd th:text="${shaping.proposal.intervieweeRelevance.value}">Relevance</dd><small th:text="${shaping.proposal.intervieweeRelevance.provenance}">Provenance</small></div>
+                <div><dt>Completion criteria</dt><dd th:text="${shaping.proposal.completionCriteria.value}">Criteria</dd><small th:text="${shaping.proposal.completionCriteria.provenance}">Provenance</small></div>
+                <div><dt>Expected commitment</dt><dd th:text="${shaping.proposal.expectedCommitment.value}">Commitment</dd><small th:text="${shaping.proposal.expectedCommitment.provenance}">Provenance</small></div>
+                <div><dt>Data use</dt><dd th:text="${shaping.proposal.dataUseSummary.value}">Data use</dd><small th:text="${shaping.proposal.dataUseSummary.provenance}">Provenance</small></div>
+            </dl>
+            <section class="proposal-section">
+                <h4>Context</h4>
+                <ul><li th:each="context : ${shaping.proposal.contexts}"><strong th:text="${context.visibility == 'shared' ? 'Shared with interviewee' : 'Private to Investigator'}">Visibility</strong><span th:text="${context.content}">Context</span><small th:text="${context.provenance}">Provenance</small></li></ul>
+            </section>
+            <section class="proposal-section">
+                <h4>Boundaries and prohibited topics</h4>
+                <ul><li th:each="boundary : ${shaping.proposal.boundaries}"><strong th:text="${boundary.kind == 'prohibited_topic' ? 'Prohibited topic' : 'Boundary'}">Boundary</strong><span th:text="${boundary.content}">Content</span><small th:text="${boundary.provenance}">Provenance</small></li></ul>
+            </section>
+            <section class="proposal-section">
+                <h4>Terminology</h4>
+                <p th:if="${shaping.proposal.terminology.empty}">No specialist terminology recorded.</p>
+                <ul><li th:each="term : ${shaping.proposal.terminology}"><strong th:text="${term.term}">Term</strong><span th:text="${term.meaning}">Meaning</span><small th:text="${term.provenance}">Provenance</small></li></ul>
+            </section>
+            <section class="proposal-section">
+                <h4>Investigation Items</h4>
+                <ol class="proposal-items"><li th:each="item, itemStat : ${shaping.proposal.investigationItems}">
+                    <strong th:text="${item.knowledgeGap}">Knowledge gap</strong>
+                    <p><span th:text="${item.required ? 'Required' : 'Optional'}">Required</span> · <span th:text="${item.priority}">priority</span> priority</p>
+                    <p><b>Why it matters:</b> <span th:text="${item.importance}">Importance</span></p>
+                    <p><b>Relevant context:</b> <span th:text="${item.relevantContext}">Context</span></p>
+                    <p><b>Allowed outcomes:</b> <span th:each="outcome, outcomeStat : ${item.allowedOutcomes}" th:text="${(outcomeStat.first ? '' : ', ') + #strings.replace(outcome.kind, '_', ' ')}">Outcome</span></p>
+                    <small th:text="${item.provenance}">Provenance</small>
+                </li></ol>
+            </section>
+            <section class="proposal-section">
+                <h4>Proposed opening questions</h4>
+                <p>Guidance only. The interview remains adaptive.</p>
+                <ol><li th:each="question : ${shaping.proposal.openingQuestions}"><span th:text="${question.question}">Question</span><small th:text="${question.provenance}">Provenance</small></li></ol>
+            </section>
+            <section class="proposal-section ambiguity-section">
+                <h4>Unresolved ambiguities</h4>
+                <p th:if="${shaping.proposal.unresolvedAmbiguities.empty}">No unresolved ambiguities recorded.</p>
+                <ul><li th:each="ambiguity : ${shaping.proposal.unresolvedAmbiguities}"><span th:text="${ambiguity.content}">Ambiguity</span><em th:if="${ambiguity.representedByItemPosition != null}" th:text="${'Represented by Investigation Item ' + (ambiguity.representedByItemPosition + 1)}">Represented by item</em><small th:text="${ambiguity.provenance}">Provenance</small></li></ul>
+            </section>
+        </article>
         <form th:if="${shaping.status != 'working'}" method="post" th:action="@{/discoveries/{id}/shaping(id=${discovery.id})}">
             <label for="shaping-content">
-                <span th:text="${shaping.messages.empty ? 'What should this Discovery uncover?' : 'Your response'}">Your response</span>
+                <span th:text="${shaping.messages.empty ? 'What should this Discovery uncover?' : shaping.proposal != null ? 'What should change or be clarified?' : 'Your response'}">Your response</span>
                 <textarea id="shaping-content" name="content" rows="5" maxlength="10000" required></textarea>
             </label>
             <button class="button" type="submit" th:text="${shaping.messages.empty ? 'Start shaping' : 'Continue shaping'}">Start shaping</button>
