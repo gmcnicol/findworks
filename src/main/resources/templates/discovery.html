@@ -14,10 +14,26 @@
     <p class="eyebrow">Discovery</p>
     <h1 class="page-title" th:text="${discovery.title}">Discovery title</h1>
     <p class="lede" th:text="${discovery.objective}">Objective</p>
-    <section class="action-card">
-        <p class="eyebrow">Next</p>
-        <h2>Shape this Discovery</h2>
-        <p>FindWorks will grill you to clarify what must be learned and from whom.</p>
+    <section class="action-card shaping-card">
+        <p class="eyebrow">Shape this Discovery</p>
+        <h2>Clarify what must be learned</h2>
+        <p>FindWorks will respond to what you say and expose ambiguity before anyone is interviewed.</p>
+        <ol class="shaping-messages" th:if="${!shaping.messages.empty}">
+            <li th:each="message : ${shaping.messages}" th:class="${message.author == 'agent' ? 'agent-message' : 'investigator-message'}">
+                <strong th:text="${message.author == 'agent' ? 'FindWorks' : 'You'}">You</strong>
+                <p th:text="${message.content}">Message</p>
+                <time th:datetime="${message.createdAt}" th:text="${#temporals.format(message.createdAt, 'd MMM yyyy, HH:mm')}">Time</time>
+            </li>
+        </ol>
+        <p class="working" th:if="${shaping.status == 'working'}" aria-live="polite">FindWorks is considering your statement...</p>
+        <p class="runtime-failed" th:if="${shaping.status == 'runtime_failed'}" role="alert">FindWorks could not respond. Your statement is safe. Try again later.</p>
+        <form th:if="${shaping.status != 'working'}" method="post" th:action="@{/discoveries/{id}/shaping(id=${discovery.id})}">
+            <label for="shaping-content">
+                <span th:text="${shaping.messages.empty ? 'What should this Discovery uncover?' : 'Your response'}">Your response</span>
+                <textarea id="shaping-content" name="content" rows="5" maxlength="10000" required></textarea>
+            </label>
+            <button class="button" type="submit" th:text="${shaping.messages.empty ? 'Start shaping' : 'Continue shaping'}">Start shaping</button>
+        </form>
     </section>
     <a class="text-link" href="/discoveries">Back to Discoveries</a>
 </main>

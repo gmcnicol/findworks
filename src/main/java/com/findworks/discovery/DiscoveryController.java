@@ -1,5 +1,6 @@
 package com.findworks.discovery;
 
+import com.findworks.shaping.ShapingRepository;
 import java.security.Principal;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -16,9 +17,11 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 final class DiscoveryController {
 
     private final DiscoveryRepository repository;
+    private final ShapingRepository shaping;
 
-    DiscoveryController(DiscoveryRepository repository) {
+    DiscoveryController(DiscoveryRepository repository, ShapingRepository shaping) {
         this.repository = repository;
+        this.shaping = shaping;
     }
 
     @GetMapping("/discoveries")
@@ -41,7 +44,14 @@ final class DiscoveryController {
     @GetMapping("/discoveries/{id}")
     String discovery(Principal principal, @PathVariable UUID id, Model model) {
         model.addAttribute("discovery", repository.get(principal.getName(), id));
+        model.addAttribute("shaping", shaping.view(principal.getName(), id));
         return "discovery";
+    }
+
+    @PostMapping("/discoveries/{id}/shaping")
+    String shape(Principal principal, @PathVariable UUID id, @RequestParam String content) {
+        shaping.submit(principal.getName(), id, content);
+        return "redirect:/discoveries/" + id;
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
