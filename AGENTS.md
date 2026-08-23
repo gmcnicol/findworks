@@ -46,4 +46,14 @@ Keep durable product/domain decisions in `CONTEXT.md` or linked ADR/spec artefac
 
 ## Agent skills
 
-`/skill:setup-matt-pocock-skills` owns the detailed repository-specific skill configuration under `docs/agents/`. Do not invent those files ahead of the setup session.
+### Issue tracker
+
+Issues live in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default triage label vocabulary is used. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository. See `docs/agents/domain.md`.

@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FindWorks M0 experience prototype</title>
+    <style>
+      /* PROTOTYPE: three M0 experience variants, switchable with ?variant=A|B|C. */
+      :root {
+        --ink: #172033;
+        --muted: #5e6878;
+        --paper: #fffdf8;
+        --wash: #f3efe6;
+        --line: #d9d4c9;
+        --brand: #b54620;
+        --brand-dark: #7f2f16;
+        --blue: #235aa6;
+        --green: #267052;
+        --danger: #a52a2a;
+        --focus: #0758d5;
+        --shadow: 0 16px 40px rgb(23 32 51 / 12%);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--wash);
+      }
+
+      * { box-sizing: border-box; }
+      html { min-width: 320px; }
+      body { margin: 0; min-height: 100dvh; line-height: 1.55; }
+      button, input, textarea { font: inherit; }
+      button, a { touch-action: manipulation; }
+      button { min-height: 44px; cursor: pointer; }
+      button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 3px;
+      }
+      h1, h2, h3, p { margin-top: 0; }
+      h1 { font-family: Georgia, serif; font-size: clamp(1.8rem, 4vw, 3.2rem); line-height: 1.1; }
+      h2 { font-family: Georgia, serif; font-size: clamp(1.35rem, 2.5vw, 2rem); line-height: 1.2; }
+      h3 { font-size: 1rem; }
+      .muted { color: var(--muted); }
+      .eyebrow { color: var(--brand-dark); font-size: .78rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+      .skip-link { position: fixed; left: 12px; top: -80px; z-index: 100; background: white; padding: 12px; }
+      .skip-link:focus { top: 12px; }
+
+      .prototype-banner {
+        background: #172033;
+        color: white;
+        padding: 8px 20px;
+        text-align: center;
+        font-size: .82rem;
+      }
+
+      .stage-nav {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 12px max(16px, calc((100vw - 1200px) / 2));
+        background: rgb(255 253 248 / 96%);
+        border-bottom: 1px solid var(--line);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+      }
+      .stage-nav button {
+        flex: 1 0 max-content;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: white;
+        color: var(--ink);
+        padding: 8px 16px;
+      }
+      .stage-nav button[aria-current="step"] { background: var(--ink); color: white; border-color: var(--ink); }
+
+      main { min-height: calc(100dvh - 112px); }
+      .shell { width: min(1200px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 120px; }
+      .card { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
+      .panel { padding: clamp(18px, 3vw, 32px); }
+      .primary, .secondary, .quiet, .danger {
+        border-radius: 10px;
+        padding: 10px 18px;
+        font-weight: 750;
+      }
+      .primary { border: 1px solid var(--brand-dark); background: var(--brand); color: white; }
+      .primary:hover { background: var(--brand-dark); }
+      .secondary { border: 1px solid var(--ink); background: white; color: var(--ink); }
+      .quiet { border: 1px solid var(--line); background: transparent; color: var(--ink); }
+      .danger { border: 1px solid #d7a5a5; background: #fff5f5; color: var(--danger); }
+      .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+      .status { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 5px 10px; font-size: .82rem; font-weight: 750; background: #edf3ff; color: #194579; }
+      .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+      .status.good { background: #eaf7ef; color: #1e6749; }
+      .status.warn { background: #fff2d6; color: #72500a; }
+      .tag { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; font-size: .76rem; }
+      .progress { height: 8px; border-radius: 999px; background: #e6e2d9; overflow: hidden; }
+      .progress > span { display: block; height: 100%; background: var(--blue); }
+      .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+      .stack { display: grid; gap: 16px; }
+      .divider { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
+      textarea, input {
+        width: 100%;
+        border: 1px solid #a9a394;
+        border-radius: 10px;
+        padding: 12px;
+        background: white;
+        color: var(--ink);
+      }
+      textarea { min-height: 112px; resize: vertical; }
+      label { display: grid; gap: 7px; font-weight: 700; }
+
+      /* Variant A: conversation and live artefact side by side. */
+      .variant-a { background: linear-gradient(120deg, #f4eee2 0 55%, #ebe4d6 55%); }
+      .a-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+      .a-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(340px, .95fr); min-height: 650px; overflow: hidden; }
+      .conversation { background: #fff; border-right: 1px solid var(--line); padding: clamp(20px, 4vw, 42px); }
+      .artifact { background: var(--paper); padding: clamp(20px, 3vw, 34px); }
+      .bubble { max-width: 84%; padding: 13px 15px; border-radius: 16px; margin-bottom: 12px; }
+      .bubble.agent { background: #eef3f9; border-bottom-left-radius: 4px; }
+      .bubble.person { margin-left: auto; background: #f9e9df; border-bottom-right-radius: 4px; }
+      .mission-list, .finding-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+      .mission-list li, .finding { padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+
+      /* Variant B: one calm task at a time. */
+      .variant-b { background: #eef1ec; }
+      .b-shell { width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: 52px 0 140px; }
+      .b-wordmark { text-align: center; margin-bottom: 40px; font-family: Georgia, serif; font-size: 1.3rem; }
+      .focus-card { padding: clamp(24px, 6vw, 58px); min-height: 570px; display: flex; flex-direction: column; justify-content: center; }
+      .focus-card .actions { margin-top: 24px; }
+      .focus-meta { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
+      .answer-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      .answer-choices button { border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); padding: 10px; }
+
+      /* Variant C: visible journey board and document workspace. */
+      .variant-c { background: #f5f7fb; }
+      .c-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); width: min(1280px, 100%); margin: 0 auto; min-height: calc(100dvh - 112px); }
+      .rail { background: #172033; color: white; padding: 32px 22px 120px; }
+      .rail h2 { font-size: 1.4rem; }
+      .rail ol { list-style: none; padding: 0; display: grid; gap: 8px; }
+      .rail button { width: 100%; text-align: left; border: 0; border-radius: 10px; background: transparent; color: #dfe7f4; padding: 11px; }
+      .rail button[aria-current="step"] { background: #fff; color: var(--ink); }
+      .workspace { padding: clamp(22px, 4vw, 52px) clamp(18px, 5vw, 64px) 140px; }
+      .document { max-width: 820px; background: white; border: 1px solid #d9dfeb; border-radius: 8px; box-shadow: 0 12px 30px rgb(23 32 51 / 9%); padding: clamp(24px, 5vw, 58px); }
+      .document-section { border-top: 1px solid #e1e6ef; padding: 18px 0; }
+      .document-section:first-of-type { border-top: 0; }
+
+      .prototype-state {
+        position: fixed;
+        left: 14px;
+        bottom: 14px;
+        z-index: 50;
+        max-width: min(360px, calc(100vw - 28px));
+        background: #fff;
+        border: 2px solid #172033;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+      }
+      .prototype-state summary { cursor: pointer; padding: 10px 14px; font-weight: 800; }
+      .prototype-state pre { max-height: 260px; overflow: auto; margin: 0; padding: 0 14px 14px; font-size: .72rem; white-space: pre-wrap; }
+      .variant-switcher {
+        position: fixed;
+        left: 50%;
+        bottom: 14px;
+        transform: translateX(-50%);
+        z-index: 60;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px;
+        border-radius: 999px;
+        background: #101827;
+        color: white;
+        box-shadow: 0 12px 28px rgb(0 0 0 / 30%);
+      }
+      .variant-switcher button { min-width: 48px; border: 0; border-radius: 999px; background: #fff; color: #101827; font-weight: 900; }
+      .variant-switcher strong { min-width: 180px; text-align: center; font-size: .82rem; }
+
+      @media (max-width: 800px) {
+        .shell { width: min(100% - 20px, 680px); padding-top: 18px; }
+        .a-grid { grid-template-columns: 1fr; }
+        .conversation { border-right: 0; border-bottom: 1px solid var(--line); }
+        .c-shell { grid-template-columns: 1fr; }
+        .rail { padding: 18px 12px; }
+        .rail h2 { margin-bottom: 8px; }
+        .rail ol { grid-template-columns: repeat(4, minmax(120px, 1fr)); overflow-x: auto; }
+        .answer-choices { grid-template-columns: 1fr; }
+        .prototype-state { display: none; }
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        button { transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease; }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#prototype">Skip to prototype</a>
+    <div class="prototype-banner">Throwaway prototype · fake data · no persistence</div>
+    <nav class="stage-nav" aria-label="Prototype journey stages"></nav>
+    <main id="prototype" tabindex="-1"></main>
+    <details class="prototype-state">
+      <summary>Prototype state</summary>
+      <pre></pre>
+    </details>
+    <div class="variant-switcher" aria-label="Prototype variant switcher">
+      <button type="button" data-direction="-1" aria-label="Previous variant">←</button>
+      <strong></strong>
+      <button type="button" data-direction="1" aria-label="Next variant">→</button>
+    </div>
+
+    <script>
+      const variants = {
+        A: "Guided workspace",
+        B: "Calm focus",
+        C: "Mission document",
+      };
+      const stages = [
+        ["shape", "Shape discovery"],
+        ["approve", "Approve mission"],
+        ["interview", "Run interview"],
+        ["findings", "Review findings"],
+      ];
+      const params = new URLSearchParams(location.search);
+      const initialVariant = variants[params.get("variant")] ? params.get("variant") : "A";
+      const initialStage = stages.some(([key]) => key === params.get("stage")) ? params.get("stage") : "shape";
+      const state = {
+        variant: initialVariant,
+        stage: initialStage,
+        discoveryObjective: "Understand how customer-requested order cancellation works before changing the service.",
+        missionStatus: "draft",
+        inviteStatus: "not sent",
+        interviewStatus: "not started",
+        evidenceCount: 0,
+        findingsStatus: "pending",
+        requiredCoverage: 0,
+      };
+
+      const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;",
+      })[char]);
+
+      function setQuery() {
+        const next = new URLSearchParams(location.search);
+        next.set("variant", state.variant);
+        next.set("stage", state.stage);
+        history.replaceState({}, "", `${location.pathname}?${next}`);
+      }
+
+      function setStage(stage) {
+        state.stage = stage;
+        setQuery();
+        render();
+        document.querySelector("main").focus({ preventScroll: true });
+      }
+
+      function stageNav() {
+        return stages.map(([key, label], index) => `
+          <button type="button" data-stage="${key}" ${state.stage === key ? 'aria-current="step"' : ""}>
+            ${index + 1}. ${label}
+          </button>`).join("");
+      }
+
+      function stageContent(mode) {
+        if (state.stage === "shape") return shapeContent(mode);
+        if (state.stage === "approve") return approveContent(mode);
+        if (state.stage === "interview") return interviewContent(mode);
+        return findingsContent(mode);
+      }
+
+      function shapeContent(mode) {
+        const prompt = "What must you understand before this change can be safely specified?";
+        if (mode === "A") return `
+          <section class="conversation" aria-labelledby="a-shape-title">
+            <p class="eyebrow">Investigator grilling</p><h1 id="a-shape-title">Shape what needs learning</h1>
+            <div class="bubble agent">${prompt}</div>
+            <div class="bubble person">We need rules, exceptions, who can approve cancellation, and what happens after fulfilment starts.</div>
+            <label>Your answer<textarea>We also need to know which team owns refunds and where the current policy is documented.</textarea></label>
+            <div class="actions"><button class="primary" data-action="answer-investigator">Send answer</button><button class="quiet">I need to think</button></div>
+          </section>
+          <aside class="artifact" aria-label="Live Interview Mission draft"><span class="status warn">Draft updating</span><h2>Interview Mission</h2>
+            <p class="muted">FindWorks converts clarified needs into coverage, not a fixed questionnaire.</p>
+            <ul class="mission-list"><li><strong>Cancellation rules</strong><br><span class="muted">Required · exploring</span></li><li><strong>Exceptions after fulfilment</strong><br><span class="muted">Required · new</span></li><li><strong>Refund ownership</strong><br><span class="muted">Required · new</span></li></ul>
+          </aside>`;
+        if (mode === "B") return `
+          <p class="eyebrow">A conversation, one step at a time</p><h1>${prompt}</h1>
+          <p class="muted">Your Mission draft updates quietly as you answer. You can review it before anything is sent.</p>
+          <label>Your answer<textarea>We need rules, exceptions, approval ownership, refund ownership, and what changes after fulfilment starts.</textarea></label>
+          <div class="actions"><button class="primary" data-action="answer-investigator">Continue</button><button class="quiet">Show Mission draft</button></div>`;
+        return `
+          <p class="eyebrow">Discovery objective</p><h1>Order cancellation change</h1><p>${escapeHtml(state.discoveryObjective)}</p>
+          <div class="document-section"><div class="row"><h2>Required information</h2><span class="status warn">3 gaps</span></div>
+            <ul><li>Current cancellation rules and exceptions</li><li>Approval and refund ownership</li><li>Behaviour after fulfilment begins</li></ul>
+          </div><div class="document-section"><h2>FindWorks suggests</h2><p>Ask whether policy and actual practice differ.</p><div class="actions"><button class="primary" data-action="answer-investigator">Grill me about gaps</button><button class="secondary">Edit objective</button></div></div>`;
+      }
+
+      function approveContent(mode) {
+        const sections = `<ul class="mission-list"><li><strong>Objective</strong><br>Understand current cancellation behaviour before specifying change.</li><li><strong>Interviewee</strong><br>Samira Patel · Operations domain expert</li><li><strong>Required Investigation Items</strong><br>Rules, exceptions, approval, refunds, fulfilment boundary</li><li><strong>Boundaries</strong><br>No customer personal data or live case details</li><li><strong>Completion</strong><br>Every required item has knowledge, unknown, conflict, or ownership gap</li></ul>`;
+        if (mode === "A") return `
+          <section class="conversation"><p class="eyebrow">Ready for review</p><h1>Does this Mission ask for the right knowledge?</h1>
+            <div class="bubble agent">I found five required areas. Refund timing remains ambiguous.</div>
+            <div class="actions"><button class="secondary">Grill me further</button><button class="quiet">Regenerate one section</button></div>
+          </section><aside class="artifact"><span class="status ${state.missionStatus === "approved" ? "good" : "warn"}">${state.missionStatus}</span><h2>Interview Mission</h2>${sections}<hr class="divider"><div class="actions"><button class="primary" data-action="approve">Approve Mission</button><button class="secondary">Edit</button></div></aside>`;
+        if (mode === "B") return `
+          <div class="focus-meta"><span class="status ${state.missionStatus === "approved" ? "good" : "warn"}">${state.missionStatus}</span><span class="muted">5 required areas · about 20 minutes</span></div>
+          <p class="eyebrow">Nothing sends yet</p><h1>Review handover to Samira</h1>${sections}
+          <div class="actions"><button class="primary" data-action="approve">Approve Mission</button><button class="secondary">Make changes</button><button class="quiet">Ask FindWorks to clarify gaps</button></div>`;
+        return `
+          <div class="row"><div><p class="eyebrow">Version 3</p><h1>Interview Mission</h1></div><span class="status ${state.missionStatus === "approved" ? "good" : "warn"}">${state.missionStatus}</span></div>
+          ${sections}<div class="document-section"><h2>Proposed opening</h2><p>“Could you walk me through what happens when a customer asks to cancel an order?”</p></div>
+          <div class="actions"><button class="primary" data-action="approve">Approve this version</button><button class="secondary">Edit document</button><button class="quiet">Compare changes</button></div>`;
+      }
+
+      function interviewContent(mode) {
+        const question = "What changes once fulfilment has started?";
+        const controls = `<label>Your answer<textarea>Operations can stop packing before dispatch, but after dispatch Support must create a return.</textarea></label><div class="actions"><button class="primary" data-action="submit-interview">Send answer</button><button class="quiet">I don’t know</button><button class="quiet">Someone else knows</button><button class="quiet">Please clarify</button></div>`;
+        if (mode === "A") return `
+          <section class="conversation"><p class="eyebrow">Interview with Samira</p><h1>${question}</h1><p class="muted">Question 4 · about 8 minutes left</p>${controls}</section>
+          <aside class="artifact"><span class="status good">Secure interview</span><h2>Your progress</h2><div class="progress" aria-label="Rough interview progress"><span style="width:${Math.max(55, state.requiredCoverage)}%"></span></div><p>Rules covered. Now discussing fulfilment. Refund ownership remains.</p><hr class="divider"><button class="quiet">Pause and return later</button></aside>`;
+        if (mode === "B") return `
+          <div class="focus-meta"><span>Samira’s interview</span><span class="muted">About 8 minutes left</span></div>
+          <div class="progress" aria-label="Rough interview progress"><span style="width:${Math.max(55, state.requiredCoverage)}%"></span></div>
+          <p class="muted">Rules covered. Now discussing fulfilment. Refund ownership remains.</p>
+          <p class="eyebrow">One question</p><h1>${question}</h1>${controls}<p class="muted">Your answers save when submitted. You can pause at any time.</p>`;
+        return `
+          <div class="row"><div><p class="eyebrow">Interview in progress</p><h1>${question}</h1></div><span class="status good">3 areas covered</span></div>
+          <p class="muted">Why this matters: fulfilment may change which team owns cancellation.</p>${controls}
+          <div class="document-section"><h2>Simple progress</h2><p>Covered: cancellation rules and exceptions. Discussing: fulfilment. Still to cover: refund ownership.</p></div>`;
+      }
+
+      function findingsContent(mode) {
+        const findings = `<div class="finding-list"><article class="finding"><div class="row"><strong>Rule</strong><span class="tag">Needs review</span></div><p>Operations can stop an order during packing, before dispatch.</p><button class="quiet">View source answer</button></article><article class="finding"><div class="row"><strong>Exception</strong><span class="tag">Needs review</span></div><p>After dispatch, cancellation becomes a Support-managed return.</p><button class="quiet">View source answer</button></article><article class="finding"><div class="row"><strong>Ownership gap</strong><span class="tag">Follow-up</span></div><p>Refund timing is owned by Finance; named contact not yet known.</p><button class="quiet">View interview context</button></article></div>`;
+        if (mode === "A") return `
+          <section class="conversation"><p class="eyebrow">Mission coverage</p><h1>Useful knowledge, with gaps visible</h1><div class="stack"><div><div class="row"><span>Cancellation rules</span><strong>Reviewed</strong></div><div class="progress"><span style="width:100%"></span></div></div><div><div class="row"><span>Refund ownership</span><strong>Follow-up</strong></div><div class="progress"><span style="width:62%"></span></div></div></div><hr class="divider"><button class="secondary">Open full transcript</button></section>
+          <aside class="artifact"><span class="status warn">3 items need review</span><h2>Findings</h2>${findings}<div class="actions"><button class="primary" data-action="accept-findings">Accept findings</button><button class="secondary">Record follow-up</button></div></aside>`;
+        if (mode === "B") return `
+          <div class="focus-meta"><span class="status warn">Review needed</span><span class="muted">5 required areas reached</span></div><p class="eyebrow">One area at a time</p><h1>Review what Samira said</h1>${findings}<div class="actions"><button class="primary" data-action="accept-findings">Accept reviewed findings</button><button class="secondary">Record follow-up</button></div>`;
+        return `
+          <div class="row"><div><p class="eyebrow">Findings package</p><h1>Order cancellation knowledge</h1></div><span class="status warn">Review required</span></div>
+          <div class="document-section"><h2>Coverage</h2><p>Five required Investigation Items reached. One Ownership Gap needs follow-up.</p></div>${findings}
+          <div class="actions"><button class="primary" data-action="accept-findings">Accept findings with notes</button><button class="secondary">Reject and record follow-up</button><button class="quiet">Open transcript evidence</button></div>`;
+      }
+
+      function variantA() {
+        return `<div class="variant-a"><div class="shell"><header class="a-header"><strong>FindWorks</strong><span class="muted">Order cancellation discovery</span></header><div class="card a-grid">${stageContent("A")}</div></div></div>`;
+      }
+      function variantB() {
+        return `<div class="variant-b"><div class="b-shell"><div class="b-wordmark">FindWorks</div><section class="card focus-card">${stageContent("B")}</section></div></div>`;
+      }
+      function variantC() {
+        return `<div class="variant-c"><div class="c-shell"><aside class="rail"><h2>FindWorks</h2><p>Order cancellation</p><ol>${stages.map(([key, label]) => `<li><button data-stage="${key}" ${state.stage === key ? 'aria-current="step"' : ""}>${label}</button></li>`).join("")}</ol></aside><section class="workspace"><div class="document">${stageContent("C")}</div></section></div></div>`;
+      }
+
+      function handleAction(action) {
+        if (action === "answer-investigator") { state.requiredCoverage = 40; setStage("approve"); }
+        if (action === "approve") { state.missionStatus = "approved"; state.inviteStatus = "sent"; setStage("interview"); }
+        if (action === "submit-interview") { state.interviewStatus = "completed"; state.evidenceCount += 1; state.requiredCoverage = 100; state.findingsStatus = "ready"; setStage("findings"); }
+        if (action === "accept-findings") { state.findingsStatus = "accepted"; render(); }
+      }
+
+      function render() {
+        document.querySelector(".stage-nav").innerHTML = stageNav();
+        document.querySelector("main").innerHTML = state.variant === "A" ? variantA() : state.variant === "B" ? variantB() : variantC();
+        document.querySelector(".variant-switcher strong").textContent = `${state.variant} · ${variants[state.variant]}`;
+        document.querySelector(".prototype-state pre").textContent = JSON.stringify(state, null, 2);
+        document.querySelectorAll("[data-stage]").forEach((button) => button.addEventListener("click", () => setStage(button.dataset.stage)));
+        document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => handleAction(button.dataset.action)));
+      }
+
+      function cycleVariant(direction) {
+        const keys = Object.keys(variants);
+        const next = (keys.indexOf(state.variant) + direction + keys.length) % keys.length;
+        state.variant = keys[next];
+        setQuery();
+        render();
+      }
+
+      document.querySelectorAll("[data-direction]").forEach((button) => button.addEventListener("click", () => cycleVariant(Number(button.dataset.direction))));
+      document.addEventListener("keydown", (event) => {
+        const editing = event.target.matches("input, textarea, [contenteditable]");
+        if (!editing && event.key === "ArrowLeft") cycleVariant(-1);
+        if (!editing && event.key === "ArrowRight") cycleVariant(1);
+      });
+      render();
+    </script>
+  </body>
+</html>
