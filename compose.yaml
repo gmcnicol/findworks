@@ -7,6 +7,12 @@ services:
       DATABASE_PASSWORD: findworks
       INVESTIGATOR_EMAIL: ${INVESTIGATOR_EMAIL:-investigator@findworks.local}
       INVESTIGATOR_PASSWORD: ${INVESTIGATOR_PASSWORD:-findworks}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set canonical public HTTPS origin}
+      INVITATION_SENDER: ${INVITATION_SENDER:?Set verified invitation sender}
+      INVITATION_TOKEN_KEY_ID: ${INVITATION_TOKEN_KEY_ID:?Set invitation token key ID}
+      INVITATION_TOKEN_SECRET: ${INVITATION_TOKEN_SECRET:?Set invitation token secret}
+      INVITATION_PREVIOUS_TOKEN_KEY_ID: ${INVITATION_PREVIOUS_TOKEN_KEY_ID:-}
+      INVITATION_PREVIOUS_TOKEN_SECRET: ${INVITATION_PREVIOUS_TOKEN_SECRET:-}
     ports:
       - "8080:8080"
     depends_on:

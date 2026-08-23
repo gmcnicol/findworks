@@ -29,12 +29,14 @@ class InterviewRepository {
         var invitation = jdbc.sql("""
                 SELECT i.id, i.interview_mission_id
                 FROM invitations i
-                WHERE i.token_hash = ? AND i.revoked_at IS NULL AND i.redeemed_at IS NULL AND i.expires_at > now()
+                WHERE i.token_hash = ? AND i.delivery_status IN ('pending', 'provider_accepted')
+                  AND i.revoked_at IS NULL AND i.redeemed_at IS NULL AND i.expires_at > now()
                 FOR UPDATE
                 """).param(hash(invitationToken)).query((rs, row) -> new Invitation(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class))).optional()
                 .orElseThrow(() -> new IllegalArgumentException("This invitation is invalid, expired, or already used."));
-        jdbc.sql("UPDATE invitations SET redeemed_at = now() WHERE id = ?").param(invitation.id()).update();
+        jdbc.sql("UPDATE invitations SET redeemed_at = now(), delivery_status = 'redeemed' WHERE id = ?")
+                .param(invitation.id()).update();
         var sessionId = jdbc.sql("SELECT id FROM interview_sessions WHERE interview_mission_id = ?")
                 .param(invitation.missionId()).query(UUID.class).optional().orElseGet(() -> {
                     var id = UUID.randomUUID();

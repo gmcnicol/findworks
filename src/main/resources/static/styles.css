@@ -193,6 +193,9 @@ textarea { padding: 14px; line-height: 1.5; resize: vertical; }
 .item-editor label:nth-of-type(n+3) { grid-column: 1 / -1; }
 .mission-actions { display: grid; gap: 24px; margin-block: 36px; padding: 26px; background: var(--paper); border-radius: 14px; }
 .mission-actions form { display: grid; gap: 14px; }
+.invitation-state, .invitation-confirmation { display: grid; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.invitation-state h2, .invitation-state p { margin: 0; }
+.checkbox-label { grid-template-columns: auto 1fr; align-items: start; }
 .version-history { margin-top: 44px; }
 .version-history li { padding: 10px 0; }
 .version-history time { margin-left: 12px; color: var(--muted); }

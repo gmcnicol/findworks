@@ -90,6 +90,31 @@
             <button class="button" type="submit" th:disabled="${!mission.ready}">Approve exact version</button>
             <small>Approval sends nothing and creates no invitation.</small>
         </form>
+        <section class="invitation-state" th:if="${invitation != null}">
+            <p class="eyebrow">Invitation</p>
+            <h2 th:text="${invitation.label}">Pending provider acceptance</h2>
+            <p><span th:text="${invitation.recipientEmail}">person@example.com</span>
+                · expires <time th:text="${#temporals.format(invitation.expiresAt, 'd MMM yyyy, HH:mm')}">time</time></p>
+            <p th:if="${invitation.attemptCount != null}" th:text="${'Delivery cycle ' + invitation.deliveryCycle + ', attempt ' + invitation.attemptCount + ' of 3'}">Attempts</p>
+            <form method="post" th:if="${invitation.status == 'failed'}"
+                  th:action="@{/missions/{missionId}/invitations/{invitationId}/retry(missionId=${mission.id},invitationId=${invitation.id})}">
+                <button class="button secondary" type="submit">Retry delivery</button>
+            </form>
+            <form method="post" th:if="${invitation.current}"
+                  th:action="@{/missions/{missionId}/invitations/{invitationId}/reissue(missionId=${mission.id},invitationId=${invitation.id})}">
+                <button class="button secondary" type="submit">Revoke and reissue</button>
+            </form>
+        </section>
+        <form class="invitation-confirmation" method="post"
+              th:if="${mission.status == 'approved' && (invitation == null || !invitation.current)}"
+              th:action="@{/missions/{id}/invitations(id=${mission.id})}">
+            <input type="hidden" name="missionVersionId" th:value="${mission.id}">
+            <label>Recipient email<input type="email" name="recipientEmail" maxlength="320" required></label>
+            <label class="checkbox-label"><input type="checkbox" name="confirmed" value="true" required>
+                I confirm this recipient and Mission version <span th:text="${mission.version}">1</span>.</label>
+            <button class="button" type="submit">Send invitation</button>
+            <small>Email submission happens asynchronously. FindWorks reports provider acceptance, not recipient delivery.</small>
+        </form>
         <a class="text-link" th:href="@{/discoveries/{id}(id=${mission.discoveryId})}">Continue grilling instead</a>
     </section>
 

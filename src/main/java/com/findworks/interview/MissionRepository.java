@@ -27,10 +27,12 @@ class MissionRepository {
 
     private final JdbcClient jdbc;
     private final PilotTenant tenant;
+    private final InvitationRepository invitations;
 
-    MissionRepository(JdbcClient jdbc, PilotTenant tenant) {
+    MissionRepository(JdbcClient jdbc, PilotTenant tenant, InvitationRepository invitations) {
         this.jdbc = jdbc;
         this.tenant = tenant;
+        this.invitations = invitations;
     }
 
     @Transactional
@@ -167,6 +169,7 @@ class MissionRepository {
     private UUID nextVersion(Row baseRow, Loaded base, MissionEdit edit, ProposalLoaded proposal,
             Set<String> proposalKinds, PilotTenant.Investigator investigator) {
         var newId = UUID.randomUUID();
+        invitations.revokeBeforeSessionStart(baseRow.id());
         jdbc.sql("""
                 UPDATE interview_missions SET status = 'superseded', superseded_at = now()
                 WHERE id = ? AND status IN ('draft', 'approved')

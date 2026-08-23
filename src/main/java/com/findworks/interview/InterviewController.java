@@ -23,15 +23,19 @@ final class InterviewController {
     private static final String ACCESS_COOKIE = "findworks_interview";
     private final InterviewRepository interviews;
     private final MissionRepository missions;
+    private final InvitationRepository invitations;
 
-    InterviewController(InterviewRepository interviews, MissionRepository missions) {
+    InterviewController(InterviewRepository interviews, MissionRepository missions,
+            InvitationRepository invitations) {
         this.interviews = interviews;
         this.missions = missions;
+        this.invitations = invitations;
     }
 
     @GetMapping("/missions/{id}")
     String mission(Principal principal, @PathVariable UUID id, Model model) {
         model.addAttribute("mission", missions.mission(id, principal.getName()));
+        model.addAttribute("invitation", invitations.forMission(id, principal.getName()));
         return "mission";
     }
 
@@ -55,6 +59,31 @@ final class InterviewController {
     String approve(Principal principal, @PathVariable UUID id) {
         missions.approve(id, principal.getName());
         return "redirect:/missions/" + id;
+    }
+
+    @PostMapping("/missions/{id}/invitations")
+    String sendInvitation(Principal principal, @PathVariable UUID id,
+            @RequestParam UUID missionVersionId, @RequestParam String recipientEmail,
+            @RequestParam(defaultValue = "false") boolean confirmed) {
+        if (!id.equals(missionVersionId)) {
+            throw new IllegalArgumentException("The confirmed Mission version is stale.");
+        }
+        invitations.send(id, recipientEmail, confirmed, principal.getName());
+        return "redirect:/missions/" + id;
+    }
+
+    @PostMapping("/missions/{missionId}/invitations/{invitationId}/retry")
+    String retryInvitation(Principal principal, @PathVariable UUID missionId,
+            @PathVariable UUID invitationId) {
+        invitations.retry(missionId, invitationId, principal.getName());
+        return "redirect:/missions/" + missionId;
+    }
+
+    @PostMapping("/missions/{missionId}/invitations/{invitationId}/reissue")
+    String reissueInvitation(Principal principal, @PathVariable UUID missionId,
+            @PathVariable UUID invitationId) {
+        invitations.reissue(missionId, invitationId, principal.getName());
+        return "redirect:/missions/" + missionId;
     }
 
     @GetMapping("/i/{token}")
