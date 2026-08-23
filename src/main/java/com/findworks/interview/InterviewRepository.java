@@ -9,7 +9,6 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,49 +21,6 @@ class InterviewRepository {
     InterviewRepository(JdbcClient jdbc, PilotTenant tenant) {
         this.jdbc = jdbc;
         this.tenant = tenant;
-    }
-
-    @Transactional(readOnly = true)
-    Mission mission(UUID id, String email) {
-        var investigator = tenant.investigator(email);
-        var mission = jdbc.sql("""
-                SELECT m.id, d.title, d.objective, m.interviewee_name, m.interviewee_email, m.status,
-                       COALESCE(s.status, 'not_invited') session_status
-                FROM interview_missions m
-                JOIN discoveries d ON d.id = m.discovery_id
-                LEFT JOIN interview_sessions s ON s.interview_mission_id = m.id
-                WHERE m.id = ? AND d.owner_membership_id = ?
-                """).params(id, investigator.membershipId()).query((rs, row) -> new Mission(
-                        rs.getObject("id", UUID.class), rs.getString("title"), rs.getString("objective"),
-                        rs.getString("interviewee_name"), rs.getString("interviewee_email"),
-                        rs.getString("status"), rs.getString("session_status"), List.of())).optional()
-                .orElseThrow(() -> new AccessDeniedException("Mission access denied."));
-        var items = jdbc.sql("SELECT knowledge_gap, opening_question FROM investigation_items WHERE interview_mission_id = ? ORDER BY position")
-                .param(id).query((rs, row) -> new Item(rs.getString(1), rs.getString(2))).list();
-        return new Mission(mission.id(), mission.title(), mission.objective(), mission.intervieweeName(),
-                mission.intervieweeEmail(), mission.status(), mission.sessionStatus(), items);
-    }
-
-    @Transactional
-    String approveAndInvite(UUID missionId, String email) {
-        var investigator = tenant.investigator(email);
-        var approved = jdbc.sql("""
-                UPDATE interview_missions SET status = 'approved', approved_at = now()
-                WHERE id = ? AND EXISTS (
-                    SELECT 1 FROM discoveries d
-                    WHERE d.id = interview_missions.discovery_id AND d.owner_membership_id = ?)
-                """).params(missionId, investigator.membershipId()).update();
-        if (approved == 0) {
-            throw new AccessDeniedException("Mission access denied.");
-        }
-        jdbc.sql("UPDATE invitations SET revoked_at = now() WHERE interview_mission_id = ? AND revoked_at IS NULL")
-                .param(missionId).update();
-        jdbc.sql("UPDATE interview_access_grants SET revoked_at = now() WHERE interview_session_id IN (SELECT id FROM interview_sessions WHERE interview_mission_id = ?) AND revoked_at IS NULL")
-                .param(missionId).update();
-        var token = UUID.randomUUID() + "" + UUID.randomUUID();
-        jdbc.sql("INSERT INTO invitations (id, interview_mission_id, token_hash, expires_at) VALUES (?, ?, ?, now() + interval '7 days')")
-                .params(UUID.randomUUID(), missionId, hash(token)).update();
-        return token;
     }
 
     @Transactional
@@ -160,9 +116,6 @@ class InterviewRepository {
         }
     }
 
-    record Mission(UUID id, String title, String objective, String intervieweeName, String intervieweeEmail,
-                   String status, String sessionStatus, List<Item> items) {}
-    record Item(String knowledgeGap, String question) {}
     record Invitation(UUID id, UUID missionId) {}
     record RedeemedInvitation(String accessToken) {}
     record Interview(UUID sessionId, String status, int position, int total, String title, String objective,

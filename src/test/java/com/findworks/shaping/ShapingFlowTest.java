@@ -211,6 +211,121 @@ class ShapingFlowTest {
     }
 
     @Test
+    void ownerReviewsVersionsRegeneratesApprovesAndSupersedesAConfirmedMission() throws Exception {
+        var discoveryId = createDiscovery();
+        submit(discoveryId, "Support handles payment failures.");
+        worker.runNext();
+        submit(discoveryId, "The billing manager owns retry decisions.");
+        worker.runNext();
+        submit(discoveryId, "Complete proposal with required items, boundaries, context, and data use.");
+        worker.runNext();
+        worker.runNext();
+        var proposalId = jdbc.sql("SELECT id FROM interview_mission_proposals").query(UUID.class).single();
+
+        var confirmation = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/proposals/{id}/confirm", proposalId)
+                        .with(user(EMAIL).roles("INVESTIGATOR")).with(csrf()))
+                .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
+        var version1 = redirectedId(confirmation);
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/missions/{id}", version1).with(user(EMAIL).roles("INVESTIGATOR")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Ready for approval")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Ordered Investigation Items")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Approval sends nothing")));
+        assertThat(jdbc.sql("SELECT status FROM interview_mission_proposals WHERE id = ?")
+                .param(proposalId).query(String.class).single()).isEqualTo("confirmed");
+
+        var version2 = redirectedId(mvc.perform(missionEdit(version1, "Edited objective", "Edited outcome",
+                        "Edited shared context", "1 | Represented ambiguity"))
+                .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl());
+        assertThat(version2).isNotEqualTo(version1);
+        assertThat(jdbc.sql("SELECT version || ':' || status || ':' || objective FROM interview_missions ORDER BY version")
+                .query(String.class).list()).containsExactly(
+                        "1:superseded:Understand failed card-payment retry decisions.",
+                        "2:draft:Edited objective");
+        assertThat(jdbc.sql("""
+                SELECT source_kind FROM mission_element_provenance
+                WHERE interview_mission_id = ? AND element_kind = 'objective'
+                """).param(version2).query(String.class).list()).containsExactly("investigator_edit");
+        assertThat(jdbc.sql("""
+                SELECT source_kind FROM mission_element_provenance
+                WHERE interview_mission_id = ? AND element_kind = 'expected_commitment'
+                """).param(version2).query(String.class).list()).containsExactly("investigator_message");
+
+        var version3 = redirectedId(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/missions/{id}/regenerate", version2)
+                        .with(user(EMAIL).roles("INVESTIGATOR")).with(csrf())
+                        .param("proposalId", proposalId.toString()).param("section", "objective"))
+                .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl());
+        assertThat(jdbc.sql("SELECT objective || ':' || desired_outcome FROM interview_missions WHERE id = ?")
+                .param(version3).query(String.class).single())
+                .isEqualTo("Understand failed card-payment retry decisions.:Edited outcome");
+
+        var version4 = redirectedId(mvc.perform(missionEdit(version3, "", "Edited outcome",
+                        "Edited shared context", "1 | Represented ambiguity"))
+                .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/missions/{id}", version4).with(user(EMAIL).roles("INVESTIGATOR")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Not ready for approval")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("objective")));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/missions/{id}/approve", version4)
+                        .with(user(EMAIL).roles("INVESTIGATOR")).with(csrf()))
+                .andExpect(status().isBadRequest());
+
+        var version5 = redirectedId(mvc.perform(missionEdit(version4, "Ready objective", "Edited outcome",
+                        "Edited shared context", "1 | Represented ambiguity"))
+                .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/missions/{id}/approve", version5)
+                        .with(user(EMAIL).roles("INVESTIGATOR")).with(csrf()))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/missions/" + version5));
+        assertThat(jdbc.sql("SELECT status FROM interview_missions WHERE id = ?")
+                .param(version5).query(String.class).single()).isEqualTo("approved");
+        assertThat(jdbc.sql("SELECT count(*) FROM invitations").query(Integer.class).single()).isZero();
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/missions/{id}/approve", version3)
+                        .with(user(EMAIL).roles("INVESTIGATOR")).with(csrf()))
+                .andExpect(status().isBadRequest());
+        jdbc.sql("""
+                INSERT INTO users (id, email, email_verified_at)
+                VALUES ('30000000-0000-0000-0000-000000000099', 'other@example.com', now())
+                ON CONFLICT DO NOTHING
+                """).update();
+        jdbc.sql("""
+                INSERT INTO memberships (id, organisation_id, user_id, role)
+                VALUES ('20000000-0000-0000-0000-000000000099',
+                        '10000000-0000-0000-0000-000000000001',
+                        '30000000-0000-0000-0000-000000000099', 'investigator')
+                ON CONFLICT DO NOTHING
+                """).update();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/missions/{id}", version5).with(user("other@example.com").roles("INVESTIGATOR")))
+                .andExpect(status().isForbidden());
+
+        var version6 = redirectedId(mvc.perform(missionEdit(version5, "Changed after approval", "Edited outcome",
+                        "Edited shared context", "1 | Represented ambiguity"))
+                .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl());
+        assertThat(jdbc.sql("SELECT status FROM interview_missions WHERE id = ?")
+                .param(version5).query(String.class).single()).isEqualTo("superseded");
+        assertThat(jdbc.sql("SELECT status FROM interview_missions WHERE id = ?")
+                .param(version6).query(String.class).single()).isEqualTo("draft");
+        assertThat(jdbc.sql("SELECT count(*) FROM invitations").query(Integer.class).single()).isZero();
+
+        assertThatThrownBy(() -> new TransactionTemplate(transactions).executeWithoutResult(ignored -> {
+            jdbc.sql("SET LOCAL ROLE findworks_application").update();
+            jdbc.sql("SELECT set_config('findworks.organisation_id', '10000000-0000-0000-0000-000000000001', true)")
+                    .query(String.class).single();
+            jdbc.sql("UPDATE interview_missions SET objective = 'mutated' WHERE id = ?").param(version1).update();
+        })).hasRootCauseInstanceOf(java.sql.SQLException.class);
+    }
+
+    @Test
     void invalidForeignProvenanceWritesNothingAndShapingCanContinue() throws Exception {
         var discoveryId = createDiscovery();
         submit(discoveryId, "Support handles payment failures.");
@@ -259,6 +374,38 @@ class ShapingFlowTest {
                         .with(user(EMAIL).roles("INVESTIGATOR")).with(csrf())
                         .param("content", content))
                 .andExpect(status().is3xxRedirection());
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder missionEdit(
+            UUID id, String objective, String desiredOutcome, String sharedContext, String ambiguities) {
+        return org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/missions/{id}/save", id)
+                .with(user(EMAIL).roles("INVESTIGATOR")).with(csrf())
+                .param("objective", objective)
+                .param("desiredOutcome", desiredOutcome)
+                .param("intendedInterviewee", "Billing manager")
+                .param("intervieweeRelevance", "Owns retry decisions")
+                .param("sharedContext", sharedContext)
+                .param("privateContext", "Private concern")
+                .param("boundaries", "Payment failures only")
+                .param("prohibitedTopics", "No salaries")
+                .param("terminology", "retry | another payment attempt")
+                .param("openingQuestions", "How are retries decided?")
+                .param("completionCriteria", "Rules are explicit")
+                .param("expectedCommitment", "20 minutes")
+                .param("dataUseSummary", "Use for this Discovery")
+                .param("itemAction", "keep")
+                .param("itemPosition", "1")
+                .param("itemGap", "Gap")
+                .param("itemImportance", "Importance")
+                .param("itemPriority", "high")
+                .param("itemContext", "Context")
+                .param("itemRequired", "true")
+                .param("itemOutcomes", "unknown")
+                .param("ambiguities", ambiguities);
+    }
+
+    private UUID redirectedId(String redirect) {
+        return UUID.fromString(redirect.substring(redirect.lastIndexOf('/') + 1));
     }
 
     private MissionProposal proposal(UUID messageId) {
