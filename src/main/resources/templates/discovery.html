@@ -30,9 +30,9 @@
         <article class="mission-proposal" th:if="${shaping.proposal != null}">
             <div class="proposal-heading">
                 <div><p class="eyebrow">Interview Mission proposal</p><h3>Review before confirmation</h3></div>
-                <span class="proposal-status">Awaiting confirmation</span>
+                <span class="proposal-status" th:text="${shaping.proposal.status == 'confirmed' ? 'Confirmed' : 'Awaiting confirmation'}">Awaiting confirmation</span>
             </div>
-            <p class="proposal-warning">Nothing here is authoritative yet. Continue shaping to clarify or change it.</p>
+            <p class="proposal-warning" th:if="${shaping.proposal.status == 'awaiting_confirmation'}">Nothing here is authoritative yet. Continue shaping to clarify or change it.</p>
             <dl class="proposal-fields">
                 <div><dt>Objective</dt><dd th:text="${shaping.proposal.objective.value}">Objective</dd><small th:text="${shaping.proposal.objective.provenance}">Provenance</small></div>
                 <div><dt>Desired outcome</dt><dd th:text="${shaping.proposal.desiredOutcome.value}">Outcome</dd><small th:text="${shaping.proposal.desiredOutcome.provenance}">Provenance</small></div>
@@ -76,6 +76,10 @@
                 <p th:if="${shaping.proposal.unresolvedAmbiguities.empty}">No unresolved ambiguities recorded.</p>
                 <ul><li th:each="ambiguity : ${shaping.proposal.unresolvedAmbiguities}"><span th:text="${ambiguity.content}">Ambiguity</span><em th:if="${ambiguity.representedByItemPosition != null}" th:text="${'Represented by Investigation Item ' + (ambiguity.representedByItemPosition + 1)}">Represented by item</em><small th:text="${ambiguity.provenance}">Provenance</small></li></ul>
             </section>
+            <form method="post" th:if="${shaping.proposal.status == 'awaiting_confirmation'}"
+                  th:action="@{/proposals/{id}/confirm(id=${shaping.proposal.id})}">
+                <button class="button" type="submit">Confirm and review Mission</button>
+            </form>
         </article>
         <form th:if="${shaping.status != 'working'}" method="post" th:action="@{/discoveries/{id}/shaping(id=${discovery.id})}">
             <label for="shaping-content">
