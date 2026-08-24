@@ -1,6 +1,8 @@
 package com.findworks.shaping;
 
 import com.findworks.interview.InterviewRuntimeRepository;
+import com.findworks.runtime.InterviewTurnRunner;
+import com.findworks.runtime.RuntimeFailure;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -9,11 +11,14 @@ public class ShapingWorker {
 
     private final ShapingRepository repository;
     private final InterviewRuntimeRepository interviews;
+    private final InterviewTurnRunner interviewRunner;
     private final PiShapingAdapter pi;
 
-    ShapingWorker(ShapingRepository repository, InterviewRuntimeRepository interviews, PiShapingAdapter pi) {
+    ShapingWorker(ShapingRepository repository, InterviewRuntimeRepository interviews,
+            InterviewTurnRunner interviewRunner, PiShapingAdapter pi) {
         this.repository = repository;
         this.interviews = interviews;
+        this.interviewRunner = interviewRunner;
         this.pi = pi;
     }
 
@@ -21,10 +26,19 @@ public class ShapingWorker {
     public void runNext() {
         var interview = interviews.claimNext();
         if (interview != null) {
+            String runtimeVersion = null;
             try {
-                interviews.complete(interview, pi.interviewTurn(interviews.context(interview)));
+                runtimeVersion = interviewRunner.runtimeVersion();
+                var prepared = interviews.prepare(interview, runtimeVersion);
+                var result = interviewRunner.run(new InterviewTurnRunner.Request(
+                        prepared.context(), prepared.checkpoint(), prepared.credential(),
+                        prepared.credentialExpiresAt()));
+                interviews.complete(interview, result);
+            } catch (RuntimeFailure failure) {
+                interviews.fail(interview, runtimeVersion, failure);
             } catch (Exception error) {
-                interviews.fail(interview);
+                interviews.fail(interview, runtimeVersion,
+                        new RuntimeFailure(RuntimeFailure.Kind.INVALID_OUTPUT, 0));
             }
             return;
         }

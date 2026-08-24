@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.findworks.shaping.ShapingWorker;
+import com.findworks.runtime.InterviewTurnRunner;
+import com.findworks.runtime.RuntimeFailure;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -45,7 +47,12 @@ class FirstInterviewQuestionFlowTest {
     private static final UUID LOW_ITEM = UUID.fromString("60000000-0000-0000-0000-000000000024");
     private static final UUID PARTICIPANT = UUID.fromString("70000000-0000-0000-0000-000000000023");
     private static final UUID SESSION = UUID.fromString("90000000-0000-0000-0000-000000000023");
+    private static final UUID SECOND_MISSION = UUID.fromString("50000000-0000-0000-0000-000000000025");
+    private static final UUID SECOND_ITEM = UUID.fromString("60000000-0000-0000-0000-000000000025");
+    private static final UUID SECOND_PARTICIPANT = UUID.fromString("70000000-0000-0000-0000-000000000025");
+    private static final UUID SECOND_SESSION = UUID.fromString("90000000-0000-0000-0000-000000000025");
     private static final String GRANT = "browser-grant-23";
+    private static final String SECOND_GRANT = "browser-grant-25";
     private static final Path CAPTURE = temporary("findworks-interview-prompt-", ".jsonl");
     private static final Path FAKE_PI = fakePi();
 
@@ -55,8 +62,14 @@ class FirstInterviewQuestionFlowTest {
 
     @DynamicPropertySource
     static void pi(DynamicPropertyRegistry properties) {
-        properties.add("findworks.pi.executable", FAKE_PI::toString);
-        properties.add("findworks.pi.session-directory", () -> temporary("findworks-interview-sessions-", "").toString());
+        properties.add("findworks.runtime.enabled", () -> "true");
+        properties.add("findworks.runtime.executable", FAKE_PI::toString);
+        properties.add("findworks.runtime.image", () -> "findworks/pi@sha256:" + "0".repeat(64));
+        properties.add("findworks.runtime.network", () -> "none");
+        properties.add("findworks.runtime.provider-credential", () -> "fake-provider-credential");
+        properties.add("findworks.runtime.checkpoint-key-id", () -> "test-key");
+        properties.add("findworks.runtime.checkpoint-key",
+                () -> "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
     }
 
     @Autowired MockMvc mvc;
@@ -196,7 +209,8 @@ class FirstInterviewQuestionFlowTest {
                         HIGH_ITEM.toString(), LOW_ITEM.toString(), MISSION.toString(), SESSION.toString(),
                         "North Star rule applies.\\nSupport checks three failed attempts before escalation.",
                         "accepted_evidence", "exploring")
-                .doesNotContain("PRIVATE-MISSION-CONTEXT", "participant-secret@example.com", GRANT);
+                .doesNotContain("PRIVATE-MISSION-CONTEXT", "participant-secret@example.com", GRANT,
+                        "fake-provider-credential", "SPRING_DATASOURCE", "JDBC_DATABASE");
         assertThat(projection.lines()).hasSize(2);
     }
 
@@ -248,7 +262,8 @@ class FirstInterviewQuestionFlowTest {
         assertThat(jdbc.sql("SELECT count(*) FROM interview_runtime_runs WHERE status = 'queued'")
                 .query(Integer.class).single()).isEqualTo(1);
         var failedWork = runtime.claimNext();
-        runtime.fail(failedWork);
+        runtime.fail(failedWork, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.TRANSIENT_MODEL, 1));
         assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("SELECT status FROM interview_runtime_runs ORDER BY created_at DESC LIMIT 1")
                 .query(String.class).single()).isEqualTo("queued");
@@ -266,28 +281,219 @@ class FirstInterviewQuestionFlowTest {
                         .cookie(new Cookie("findworks_interview", GRANT)).with(csrf()))
                 .andExpect(status().is3xxRedirection());
         var work = runtime.claimNext();
+        var prepared = runtime.prepare(work, "test-runtime");
         var good = submission(work);
 
-        assertThatThrownBy(() -> runtime.complete(work, new InterviewRuntimeRepository.Submission(
+        assertThatThrownBy(() -> complete(work, prepared, new InterviewRuntimeRepository.Submission(
                 work.id(), work.sessionId(), 2, List.of(), good.nextAction())))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> runtime.complete(work, new InterviewRuntimeRepository.Submission(
+        assertThatThrownBy(() -> complete(work, prepared, new InterviewRuntimeRepository.Submission(
                 UUID.randomUUID(), work.sessionId(), 1, List.of(), good.nextAction())))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> runtime.complete(work, new InterviewRuntimeRepository.Submission(
+        assertThatThrownBy(() -> complete(work, prepared, new InterviewRuntimeRepository.Submission(
                 work.id(), work.sessionId(), 1,
                 List.of(new InterviewRuntimeRepository.OutcomeProposal("unknown", HIGH_ITEM)), good.nextAction())))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> runtime.complete(work, new InterviewRuntimeRepository.Submission(
+        assertThatThrownBy(() -> complete(work, prepared, new InterviewRuntimeRepository.Submission(
                 work.id(), work.sessionId(), 1, List.of(), new InterviewRuntimeRepository.NextAction(
                         "ask_question", LOW_ITEM, "Wrong frontier?", null, good.nextAction().progress()))))
                 .isInstanceOf(IllegalArgumentException.class);
 
         assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isZero();
         assertThat(jdbc.sql("SELECT revision FROM interview_sessions").query(Integer.class).single()).isEqualTo(1);
-        var event = runtime.complete(work, good);
-        assertThat(runtime.complete(work, good)).isEqualTo(event);
+        var event = complete(work, prepared, good);
+        assertThat(complete(work, prepared, good)).isEqualTo(event);
         assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void processDeathRestartsOnceThenPublishesOneReplayableFailure() throws Exception {
+        start();
+        var firstLease = runtime.claimNext();
+        assertThat(runtime.fail(firstLease, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.PROCESS_DIED, 0))).isNull();
+        assertThat(jdbc.sql("SELECT status || ':' || process_restarts FROM interview_runtime_runs")
+                .query(String.class).single()).isEqualTo("queued:1");
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_application_events").query(Integer.class).single())
+                .isZero();
+
+        jdbc.sql("UPDATE interview_runtime_runs SET available_at = now()").update();
+        var replacement = runtime.claimNext();
+        assertThat(replacement.executionAttempt()).isEqualTo(2);
+        assertThatThrownBy(() -> runtime.fail(firstLease, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.PROCESS_DIED, 0)))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("lease is stale");
+        var failure = runtime.fail(replacement, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.PROCESS_DIED, 0));
+
+        assertThat(failure.type()).isEqualTo("runtime_failed");
+        assertThat(runtime.replay(replacement.id())).isEqualTo(failure);
+        assertThat(jdbc.sql("SELECT status || ':' || error_code FROM interview_runtime_runs")
+                .query(String.class).single()).isEqualTo("failed:process_died");
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_application_events WHERE event_type = 'runtime_failed'")
+                .query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isZero();
+        assertThat(state()).isEqualTo("active:1:false");
+    }
+
+    @Test
+    void expiredLeaseIsReconciledOnceAndSecondExpiryIsExhausted() throws Exception {
+        start();
+        var abandoned = runtime.claimNext();
+        jdbc.sql("UPDATE interview_runtime_runs SET lease_until = now() - interval '1 second'").update();
+
+        var restarted = runtime.claimNext();
+        assertThat(restarted.id()).isEqualTo(abandoned.id());
+        assertThat(restarted.processRestarts()).isEqualTo(1);
+        assertThat(restarted.executionAttempt()).isEqualTo(2);
+        assertThat(jdbc.sql("""
+                SELECT outcome FROM interview_runtime_attempts
+                WHERE execution_attempt = 1
+                """).query(String.class).single()).isEqualTo("process_died");
+
+        jdbc.sql("UPDATE interview_runtime_runs SET lease_until = now() - interval '1 second'").update();
+        assertThat(runtime.claimNext()).isNull();
+        assertThat(jdbc.sql("SELECT status || ':' || attempts FROM interview_runtime_runs")
+                .query(String.class).single()).isEqualTo("failed:2");
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_application_events WHERE event_type = 'runtime_failed'")
+                .query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_records WHERE action = 'interview_runtime_failed'")
+                .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void transientModelRetriesStopAtThreeTotalAttempts() throws Exception {
+        start();
+        var first = runtime.claimNext();
+        assertThat(runtime.fail(first, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.TRANSIENT_MODEL, 2))).isNull();
+        jdbc.sql("UPDATE interview_runtime_runs SET available_at = now()").update();
+        var second = runtime.claimNext();
+        var failure = runtime.fail(second, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.TRANSIENT_MODEL, 1));
+
+        assertThat(failure.type()).isEqualTo("runtime_failed");
+        assertThat(jdbc.sql("SELECT status || ':' || model_attempts FROM interview_runtime_runs")
+                .query(String.class).single()).isEqualTo("failed:3");
+        assertThat(jdbc.sql("SELECT sum(model_attempts) FROM interview_runtime_attempts")
+                .query(Integer.class).single()).isEqualTo(3);
+        assertThat(runtime.claimNext()).isNull();
+    }
+
+    @Test
+    void checkpointResumesOnlyForTheExactRuntimeScopeAndCredentialsRotate() throws Exception {
+        start();
+        var first = runtime.claimNext();
+        var checkpoint = "opaque-pi-checkpoint".getBytes(StandardCharsets.UTF_8);
+        runtime.fail(first, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.TRANSIENT_MODEL, 1, checkpoint));
+        assertThat(jdbc.sql("SELECT ciphertext = ? FROM runtime_checkpoints")
+                .param(checkpoint).query(Boolean.class).single()).isFalse();
+
+        jdbc.sql("UPDATE interview_runtime_runs SET available_at = now()").update();
+        var replacement = runtime.claimNext();
+        var firstPrepared = runtime.prepare(replacement, "test-runtime");
+        assertThat(firstPrepared.checkpoint()).isEqualTo(checkpoint);
+        var rotated = runtime.prepare(replacement, "test-runtime");
+        assertThatThrownBy(() -> complete(replacement, firstPrepared, submission(replacement)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("credential scope");
+        assertThat(complete(replacement, rotated, submission(replacement)).type()).isEqualTo("question_ready");
+        assertThat(jdbc.sql("SELECT count(*) FROM runtime_credentials WHERE revoked_at IS NOT NULL")
+                .query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM runtime_credentials WHERE used_at IS NOT NULL")
+                .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void staleRevisionCannotCommitAndAuthoritativeStateWins() throws Exception {
+        start();
+        var work = runtime.claimNext();
+        var prepared = runtime.prepare(work, "test-runtime");
+        jdbc.sql("UPDATE interview_sessions SET revision = revision + 1 WHERE id = ?")
+                .param(SESSION).update();
+
+        assertThatThrownBy(() -> complete(work, prepared, submission(work)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("stale");
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT revision FROM interview_sessions").query(Integer.class).single()).isEqualTo(2);
+
+        var failure = runtime.fail(work, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.STALE_SCOPE, 0));
+        assertThat(failure.type()).isEqualTo("runtime_failed");
+        assertThat(jdbc.sql("SELECT error_code FROM interview_runtime_runs").query(String.class).single())
+                .isEqualTo("stale_runtime_scope");
+    }
+
+    @Test
+    void mismatchedOrCorruptCheckpointIsDiscardedAndRebuilt() throws Exception {
+        start();
+        var first = runtime.claimNext();
+        runtime.fail(first, "runtime-v1", new RuntimeFailure(RuntimeFailure.Kind.TRANSIENT_MODEL, 1,
+                "checkpoint-v1".getBytes(StandardCharsets.UTF_8)));
+        jdbc.sql("UPDATE interview_runtime_runs SET available_at = now()").update();
+
+        var second = runtime.claimNext();
+        assertThat(runtime.prepare(second, "runtime-v2").checkpoint()).isNull();
+        assertThat(jdbc.sql("SELECT status || ':' || discard_reason FROM runtime_checkpoints")
+                .query(String.class).single()).isEqualTo("discarded:runtime_mismatch");
+        runtime.fail(second, "runtime-v2", new RuntimeFailure(RuntimeFailure.Kind.TRANSIENT_MODEL, 1,
+                "checkpoint-v2".getBytes(StandardCharsets.UTF_8)));
+        jdbc.sql("UPDATE interview_runtime_runs SET available_at = now()").update();
+
+        var third = runtime.claimNext();
+        jdbc.sql("UPDATE runtime_checkpoints SET ciphertext = set_byte(ciphertext, 0, get_byte(ciphertext, 0) # 1)")
+                .update();
+        assertThat(runtime.prepare(third, "runtime-v2").checkpoint()).isNull();
+        assertThat(jdbc.sql("SELECT status || ':' || discard_reason FROM runtime_checkpoints")
+                .query(String.class).single()).isEqualTo("discarded:decrypt_failed");
+        assertThat(jdbc.sql("SELECT revision FROM interview_sessions").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isZero();
+    }
+
+    @Test
+    void concurrentSessionsCannotCrossContextCredentialsEffectsOrEvents() throws Exception {
+        seedSecondSession();
+        interviews.start(GRANT);
+        interviews.start(SECOND_GRANT);
+        var first = runtime.claimNext();
+        var second = runtime.claimNext();
+        var original = first.sessionId().equals(SESSION) ? first : second;
+        var other = first.sessionId().equals(SECOND_SESSION) ? first : second;
+        var originalPrepared = runtime.prepare(original, "test-runtime");
+        var otherPrepared = runtime.prepare(other, "test-runtime");
+
+        assertThat(originalPrepared.context().sharedContext()).containsExactly("SHARED-PAYMENT-CONTEXT");
+        assertThat(otherPrepared.context().sharedContext()).containsExactly("SECOND-SESSION-CONTEXT");
+        assertThatThrownBy(() -> runtime.complete(original, result(original, HIGH_ITEM,
+                "Original question", otherPrepared.credential())))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("credential scope");
+
+        runtime.complete(original, result(original, HIGH_ITEM, "Original question", originalPrepared.credential()));
+        runtime.complete(other, result(other, SECOND_ITEM, "Second question", otherPrepared.credential()));
+        assertThat(jdbc.sql("""
+                SELECT count(*) FROM interview_questions q
+                WHERE (q.interview_session_id = ? AND q.investigation_item_id = ?)
+                   OR (q.interview_session_id = ? AND q.investigation_item_id = ?)
+                """).params(SESSION, HIGH_ITEM, SECOND_SESSION, SECOND_ITEM).query(Integer.class).single())
+                .isEqualTo(2);
+        assertThat(jdbc.sql("""
+                SELECT count(*) FROM interview_application_events e
+                JOIN interview_runtime_runs r ON r.id = e.runtime_run_id
+                    AND r.interview_session_id = e.interview_session_id
+                WHERE e.event_type = 'question_ready'
+                """).query(Integer.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("""
+                SELECT count(*) FROM runtime_checkpoints c
+                JOIN interview_runtime_runs r ON r.id = c.runtime_run_id
+                    AND r.interview_session_id = c.interview_session_id
+                    AND r.interview_mission_id = c.interview_mission_id
+                """).query(Integer.class).single()).isEqualTo(2);
+    }
+
+    private void start() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/start")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf()))
+                .andExpect(status().is3xxRedirection());
     }
 
     private InterviewRuntimeRepository.Submission submission(InterviewRuntimeRepository.Work work) {
@@ -295,6 +501,22 @@ class FirstInterviewQuestionFlowTest {
                 List.of(), new InterviewRuntimeRepository.NextAction("ask_question", HIGH_ITEM,
                         "How do retry rules work?", null,
                         new InterviewRuntimeRepository.Progress("None", "Retry rules", "Ownership")));
+    }
+
+    private InterviewRuntimeRepository.Event complete(InterviewRuntimeRepository.Work work,
+            InterviewRuntimeRepository.Prepared prepared, InterviewRuntimeRepository.Submission submission) {
+        return runtime.complete(work, new InterviewTurnRunner.Result(
+                submission, "checkpoint".getBytes(StandardCharsets.UTF_8), "test-runtime", 1,
+                prepared.credential()));
+    }
+
+    private InterviewTurnRunner.Result result(InterviewRuntimeRepository.Work work, UUID item,
+            String question, String credential) {
+        return new InterviewTurnRunner.Result(new InterviewRuntimeRepository.Submission(
+                work.id(), work.sessionId(), work.expectedRevision(), List.of(),
+                new InterviewRuntimeRepository.NextAction("ask_question", item, question, null,
+                        new InterviewRuntimeRepository.Progress("None", question, "Remaining"))),
+                ("checkpoint:" + work.id()).getBytes(StandardCharsets.UTF_8), "test-runtime", 1, credential);
     }
 
     private String state() {
@@ -367,16 +589,65 @@ class FirstInterviewQuestionFlowTest {
                 """).params(ORGANISATION, SESSION, PARTICIPANT, hash(GRANT)).update();
     }
 
+    private void seedSecondSession() {
+        jdbc.sql("""
+                INSERT INTO interview_missions (
+                    id, organisation_id, discovery_id, lineage_id, version, status,
+                    interviewee_name, interviewee_email, objective, desired_outcome,
+                    interviewee_relevance, completion_criteria, expected_commitment,
+                    data_use_summary, approved_at
+                ) VALUES (?, ?, ?, ?, 1, 'approved', 'Second manager', NULL,
+                          'Understand second choices', 'Document second rules', 'Owns second decisions',
+                          'Second rules are explicit', '20 minutes', 'Use for this Discovery', now())
+                """).params(SECOND_MISSION, ORGANISATION, DISCOVERY, SECOND_MISSION).update();
+        jdbc.sql("""
+                INSERT INTO mission_contexts
+                    (id, organisation_id, interview_mission_id, position, visibility, content)
+                VALUES (gen_random_uuid(), ?, ?, 0, 'shared', 'SECOND-SESSION-CONTEXT')
+                """).params(ORGANISATION, SECOND_MISSION).update();
+        jdbc.sql("""
+                INSERT INTO investigation_items (
+                    id, organisation_id, interview_mission_id, position, knowledge_gap,
+                    opening_question, required, importance, priority, relevant_context
+                ) VALUES (?, ?, ?, 0, 'Second rules', NULL, true, 'Isolation', 'high', 'Second context')
+                """).params(SECOND_ITEM, ORGANISATION, SECOND_MISSION).update();
+        jdbc.sql("""
+                INSERT INTO mission_allowed_outcomes (
+                    id, organisation_id, interview_mission_id, investigation_item_id, position, outcome_kind
+                ) VALUES (gen_random_uuid(), ?, ?, ?, 0, 'supported_knowledge')
+                """).params(ORGANISATION, SECOND_MISSION, SECOND_ITEM).update();
+        jdbc.sql("""
+                INSERT INTO discovery_participants (id, organisation_id, discovery_id, intended_name, email)
+                VALUES (?, ?, ?, 'Second manager', 'second-participant@example.com')
+                """).params(SECOND_PARTICIPANT, ORGANISATION, DISCOVERY).update();
+        jdbc.sql("""
+                INSERT INTO interview_sessions (
+                    id, organisation_id, discovery_id, interview_mission_id, participant_id
+                ) VALUES (?, ?, ?, ?, ?)
+                """).params(SECOND_SESSION, ORGANISATION, DISCOVERY, SECOND_MISSION, SECOND_PARTICIPANT).update();
+        jdbc.sql("""
+                INSERT INTO interview_access_grants (
+                    id, organisation_id, interview_session_id, participant_id, token_hash, expires_at
+                ) VALUES (gen_random_uuid(), ?, ?, ?, ?, now() + interval '7 days')
+                """).params(ORGANISATION, SECOND_SESSION, SECOND_PARTICIPANT, hash(SECOND_GRANT)).update();
+    }
+
     private static Path fakePi() {
         var script = temporary("findworks-fake-interview-pi-", ".py");
         try {
             Files.writeString(script, """
                     #!/usr/bin/env python3
-                    import json, sys
+                    import base64, json, os, sys
+                    if len(sys.argv) > 1 and sys.argv[1] == "info":
+                        print("true")
+                        raise SystemExit(0)
+                    if len(sys.argv) > 1 and sys.argv[1] == "rm":
+                        raise SystemExit(0)
                     request = json.loads(sys.stdin.readline())
-                    projection = json.loads(request["message"].split("\\n", 1)[1])
+                    projection = request["context"]
                     with open(%s, "a", encoding="utf-8") as capture:
-                        capture.write(json.dumps(projection) + "\\n")
+                        capture.write(json.dumps({"projection": projection, "argv": sys.argv,
+                            "environment": dict(os.environ)}) + "\\n")
                     follow_up = projection["trigger"] == "accepted_evidence"
                     submission = {
                         "runId": projection["runId"],
@@ -397,11 +668,10 @@ class FirstInterviewQuestionFlowTest {
                             }
                         }
                     }
-                    print(json.dumps({"id": request["id"], "type": "response", "command": "prompt", "success": True}))
-                    print(json.dumps({"type": "tool_execution_end", "toolCallId": "tool-1",
-                        "toolName": "submit_interview_turn", "result": {"content": [],
-                        "details": {"submission": submission}}, "isError": False}))
-                    print(json.dumps({"type": "agent_settled"}))
+                    checkpoint = base64.b64encode(("checkpoint:" + projection["runId"]).encode()).decode()
+                    print(json.dumps({"status": "submitted", "submission": submission,
+                        "checkpoint": checkpoint, "modelAttempts": 1,
+                        "findWorksCredential": request["findWorksCredential"]}))
                     """.formatted(pythonString(CAPTURE.toString()), pythonString(HIGH_ITEM.toString())));
             Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"));
             return script;
