@@ -26,12 +26,15 @@ class InterviewRepository {
             "(?i)(\\d+)\\s*(minutes?|mins?|hours?|hrs?)");
     private final JdbcClient jdbc;
     private final PilotTenant tenant;
+    private final InterviewCompletionEligibility completion;
     private final Clock clock;
     private final InterviewProperties properties;
 
-    InterviewRepository(JdbcClient jdbc, PilotTenant tenant, Clock clock, InterviewProperties properties) {
+    InterviewRepository(JdbcClient jdbc, PilotTenant tenant, InterviewCompletionEligibility completion,
+            Clock clock, InterviewProperties properties) {
         this.jdbc = jdbc;
         this.tenant = tenant;
+        this.completion = completion;
         this.clock = clock;
         this.properties = properties;
     }
@@ -114,6 +117,7 @@ class InterviewRepository {
                        m.objective, m.expected_commitment, m.data_use_summary,
                        s.revision, s.active_seconds, s.active_started_at,
                        s.commitment_acknowledged_at, q.id question_id, q.question, q.human_context,
+                       proposal.id completion_proposal_id, proposal.recap completion_recap,
                        e.covered_count, e.total_required, e.covered_text, e.current_text, e.remaining_text,
                        latest_evidence.id latest_evidence_id,
                        latest_run.status runtime_status,
@@ -139,6 +143,10 @@ class InterviewRepository {
                     AND q.interview_session_id = s.id AND q.organisation_id = s.organisation_id
                 LEFT JOIN interview_application_events e ON e.question_id = q.id
                     AND e.interview_session_id = s.id AND e.organisation_id = s.organisation_id
+                LEFT JOIN interview_completion_proposals proposal
+                    ON proposal.id = s.current_completion_proposal_id
+                    AND proposal.interview_session_id = s.id
+                    AND proposal.organisation_id = s.organisation_id
                 LEFT JOIN LATERAL (
                     SELECT r.status, r.trigger FROM interview_runtime_runs r
                     WHERE r.interview_session_id = s.id ORDER BY r.created_at DESC LIMIT 1
@@ -161,7 +169,9 @@ class InterviewRepository {
                     var runtimeStatus = rs.getString("runtime_status");
                     var status = rs.getString("status");
                     var live = "active".equals(status) || "in_progress".equals(status);
-                    var runtimeState = !live ? null : question != null ? "question_ready"
+                    var proposalId = rs.getObject("completion_proposal_id", UUID.class);
+                    var runtimeState = !live ? null : proposalId != null ? "completion_confirmation_ready"
+                            : question != null ? "question_ready"
                             : "failed".equals(runtimeStatus) ? "runtime_failed" : "working";
                     var activeStarted = rs.getTimestamp("active_started_at");
                     var activeSeconds = rs.getLong("active_seconds") + (activeStarted == null ? 0
@@ -179,7 +189,7 @@ class InterviewRepository {
                             rs.getObject("total_required", Integer.class),
                             rs.getString("covered_text"), rs.getString("current_text"),
                             rs.getString("remaining_text"), rs.getObject("latest_evidence_id", UUID.class),
-                            offerEndChoice);
+                            offerEndChoice, proposalId, rs.getString("completion_recap"));
                 }).optional().orElseThrow(InterviewAccessDeniedException::new);
     }
 
@@ -456,6 +466,11 @@ class InterviewRepository {
                 """).params(revisionId, session.organisationId(), session.discoveryId(), session.id(),
                 session.missionId(), session.participantId(), evidence.questionId(), evidence.itemId(), answer,
                 evidenceId).update();
+        jdbc.sql("""
+                UPDATE investigation_results SET status = 'exploring'
+                WHERE interview_session_id = ? AND investigation_item_id = ?
+                  AND organisation_id = ? AND status = 'explicit_outcome'
+                """).params(session.id(), evidence.itemId(), session.organisationId()).update();
         var nextRevision = expectedRevision + 1;
         var changed = jdbc.sql("""
                 UPDATE interview_sessions SET active_question_id = NULL, revision = revision + 1
@@ -482,12 +497,83 @@ class InterviewRepository {
     }
 
     @Transactional
+    void continueAfterCompletionProposal(String accessToken, UUID proposalId, int expectedRevision) {
+        var session = participantState(accessToken);
+        requireCurrentProposal(session, proposalId, expectedRevision);
+        var now = clock.instant();
+        changed(jdbc.sql("""
+                UPDATE interview_completion_proposals SET status = 'continued', decided_at = ?
+                WHERE id = ? AND interview_session_id = ? AND organisation_id = ? AND status = 'pending'
+                """).params(timestamp(now), proposalId, session.id(), session.organisationId()).update());
+        changed(jdbc.sql("""
+                UPDATE interview_sessions
+                SET current_completion_proposal_id = NULL, revision = revision + 1
+                WHERE id = ? AND revision = ? AND status = 'active'
+                  AND current_completion_proposal_id = ?
+                """).params(session.id(), expectedRevision, proposalId).update());
+        cancelRuntime(session.id(), now);
+        insertRuntime(session, "resume", null, null, expectedRevision + 1);
+        tenant.auditSystem("interview_completion_continued", "interview_session", session.id());
+    }
+
+    @Transactional
+    void finish(String accessToken, UUID proposalId, int expectedRevision) {
+        var session = participantState(accessToken);
+        requireCurrentProposal(session, proposalId, expectedRevision);
+        completion.requireEligible(session.id(), session.missionId(), session.organisationId());
+        var current = completion.unresolved(session.id(), session.missionId(), session.organisationId())
+                .stream().map(InterviewCompletionEligibility.Unresolved::outcomeId).toList();
+        var proposed = jdbc.sql("""
+                SELECT outcome_id FROM interview_completion_unresolved_refs
+                WHERE completion_proposal_id = ? AND interview_session_id = ? AND organisation_id = ?
+                ORDER BY position
+                """).params(proposalId, session.id(), session.organisationId()).query(UUID.class).list();
+        if (!proposed.equals(current)) {
+            throw new IllegalArgumentException("The completion recap is stale. Continue the Interview instead.");
+        }
+        var now = clock.instant();
+        changed(jdbc.sql("""
+                UPDATE interview_completion_proposals SET status = 'confirmed', decided_at = ?
+                WHERE id = ? AND interview_session_id = ? AND organisation_id = ? AND status = 'pending'
+                """).params(timestamp(now), proposalId, session.id(), session.organisationId()).update());
+        changed(jdbc.sql("""
+                UPDATE interview_sessions
+                SET status = 'completed', completed_at = ?,
+                    active_seconds = active_seconds + greatest(
+                        0, extract(epoch from (? - active_started_at))::bigint),
+                    active_started_at = NULL, active_question_id = NULL,
+                    current_completion_proposal_id = NULL, revision = revision + 1
+                WHERE id = ? AND revision = ? AND status = 'active'
+                  AND current_completion_proposal_id = ?
+                """).params(timestamp(now), timestamp(now), session.id(), expectedRevision, proposalId).update());
+        cancelRuntime(session.id(), now);
+        tenant.auditSystem("interview_session_completed", "interview_session", session.id());
+    }
+
+    private void requireCurrentProposal(ParticipantState session, UUID proposalId, int expectedRevision) {
+        if (proposalId == null || session.revision() != expectedRevision || !"active".equals(session.status())
+                || !proposalId.equals(session.currentCompletionProposalId())) {
+            throw new IllegalArgumentException("This completion choice is stale. Refresh and try again.");
+        }
+        var pending = jdbc.sql("""
+                SELECT count(*) FROM interview_completion_proposals
+                WHERE id = ? AND interview_session_id = ? AND interview_mission_id = ?
+                  AND organisation_id = ? AND status = 'pending'
+                """).params(proposalId, session.id(), session.missionId(), session.organisationId())
+                .query(Integer.class).single();
+        if (pending != 1) {
+            throw new IllegalArgumentException("This completion choice is no longer available.");
+        }
+    }
+
+    @Transactional
     void endEarly(String accessToken, int expectedRevision, boolean confirmed) {
         if (!confirmed) {
             throw new IllegalArgumentException("Confirm that you want to finish this Interview now.");
         }
         var session = participantState(accessToken);
         if (session.revision() != expectedRevision
+                || session.currentCompletionProposalId() != null
                 || !("active".equals(session.status()) || "paused".equals(session.status()))) {
             throw new IllegalArgumentException("This Interview Session changed before it could end.");
         }
@@ -527,8 +613,27 @@ class InterviewRepository {
                               AND coalesce(r.status, 'unaddressed') <> 'explicit_outcome'
                             ORDER BY i.position
                             """).params(sessionId, missionId).query(String.class).list();
+                    var followUp = jdbc.sql("""
+                            SELECT DISTINCT i.knowledge_gap FROM investigation_items i
+                            JOIN investigation_outcomes o ON o.investigation_item_id = i.id
+                                AND o.interview_session_id = ?
+                            JOIN investigation_results r ON r.id = o.investigation_result_id
+                                AND r.status = 'explicit_outcome'
+                            WHERE i.interview_mission_id = ? AND i.required
+                              AND o.kind IN ('unknown', 'conflict', 'ownership_gap')
+                              AND EXISTS (
+                                SELECT 1 FROM investigation_outcome_evidence oe
+                                JOIN evidence e ON e.id = oe.evidence_id
+                                WHERE oe.outcome_id = o.id
+                                  AND NOT EXISTS (
+                                    SELECT 1 FROM evidence revision
+                                    WHERE revision.revises_evidence_id = e.id
+                                  )
+                              )
+                            ORDER BY i.knowledge_gap
+                            """).params(sessionId, missionId).query(String.class).list();
                     return new MissionSession(sessionId, rs.getString("status"), rs.getInt("revision"),
-                            rs.getString("intended_name"), remaining);
+                            rs.getString("intended_name"), remaining, followUp);
                 }).optional().orElse(null);
     }
 
@@ -536,26 +641,36 @@ class InterviewRepository {
     void terminate(UUID missionId, UUID sessionId, int expectedRevision, String email) {
         var investigator = tenant.investigator(email);
         var session = jdbc.sql("""
-                SELECT s.id, s.status, s.revision, s.organisation_id
+                SELECT s.id, s.status, s.revision, s.organisation_id,
+                       s.current_completion_proposal_id
                 FROM interview_sessions s
                 JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
                 WHERE s.id = ? AND s.interview_mission_id = ? AND d.owner_membership_id = ?
                 FOR UPDATE OF s
                 """).params(sessionId, missionId, investigator.membershipId())
                 .query((rs, ignored) -> new OwnerSession(rs.getObject("id", UUID.class), rs.getString("status"),
-                        rs.getInt("revision"), rs.getObject("organisation_id", UUID.class)))
+                        rs.getInt("revision"), rs.getObject("organisation_id", UUID.class),
+                        rs.getObject("current_completion_proposal_id", UUID.class)))
                 .optional().orElseThrow(() -> new IllegalArgumentException("Interview Session not found."));
         if (session.revision() != expectedRevision
                 || !("active".equals(session.status()) || "paused".equals(session.status()))) {
             throw new IllegalArgumentException("Only an active or paused Interview Session can be terminated.");
         }
         var now = clock.instant();
+        if (session.currentCompletionProposalId() != null) {
+            jdbc.sql("""
+                    UPDATE interview_completion_proposals SET status = 'withdrawn', decided_at = ?
+                    WHERE id = ? AND interview_session_id = ? AND organisation_id = ? AND status = 'pending'
+                    """).params(timestamp(now), session.currentCompletionProposalId(), session.id(),
+                    session.organisationId()).update();
+        }
         var changed = jdbc.sql("""
                 UPDATE interview_sessions
                 SET status = 'terminated', terminated_at = ?, active_seconds = active_seconds + CASE
                         WHEN active_started_at IS NULL THEN 0
                         ELSE greatest(0, extract(epoch from (? - active_started_at))::bigint) END,
-                    active_started_at = NULL, active_question_id = NULL, revision = revision + 1
+                    active_started_at = NULL, active_question_id = NULL,
+                    current_completion_proposal_id = NULL, revision = revision + 1
                 WHERE id = ? AND revision = ? AND status IN ('active', 'paused')
                 """).params(timestamp(now), timestamp(now), session.id(), expectedRevision).update();
         changed(changed);
@@ -604,7 +719,8 @@ class InterviewRepository {
         tenant.select();
         return jdbc.sql("""
                 SELECT s.id, s.status, s.revision, s.organisation_id, s.discovery_id,
-                       s.interview_mission_id, s.participant_id, s.active_question_id
+                       s.interview_mission_id, s.participant_id, s.active_question_id,
+                       s.current_completion_proposal_id
                 FROM interview_access_grants g
                 JOIN interview_sessions s ON s.id = g.interview_session_id
                     AND s.participant_id = g.participant_id AND s.organisation_id = g.organisation_id
@@ -620,7 +736,8 @@ class InterviewRepository {
                                 rs.getObject("discovery_id", UUID.class),
                                 rs.getObject("interview_mission_id", UUID.class),
                                 rs.getObject("participant_id", UUID.class),
-                                rs.getObject("active_question_id", UUID.class)))
+                                rs.getObject("active_question_id", UUID.class),
+                                rs.getObject("current_completion_proposal_id", UUID.class)))
                 .optional().orElseThrow(InterviewAccessDeniedException::new);
     }
 
@@ -660,7 +777,8 @@ class InterviewRepository {
     }
 
     private static void requireState(ParticipantState session, int expectedRevision, String status) {
-        if (session.revision() != expectedRevision || !status.equals(session.status())) {
+        if (session.revision() != expectedRevision || !status.equals(session.status())
+                || session.currentCompletionProposalId() != null) {
             throw new IllegalArgumentException("This Interview Session changed. Refresh and try again.");
         }
     }
@@ -738,9 +856,11 @@ class InterviewRepository {
             String runtimeState, int revision, UUID questionId, String question, String humanContext,
             boolean answerSaved, boolean clarificationRequested,
             Integer coveredCount, Integer totalRequired, String coveredText,
-            String currentText, String remainingText, UUID latestEvidenceId, boolean offerEndChoice) {}
+            String currentText, String remainingText, UUID latestEvidenceId, boolean offerEndChoice,
+            UUID completionProposalId, String completionRecap) {}
     record Finding(String knowledgeGap, String answer, Instant answeredAt) {}
-    record MissionSession(UUID id, String status, int revision, String participantName, List<String> remainingItems) {}
+    record MissionSession(UUID id, String status, int revision, String participantName,
+            List<String> remainingItems, List<String> followUpItems) {}
     private record Invitation(UUID id, UUID organisationId, UUID discoveryId, UUID missionId, UUID participantId) {}
     private record Session(UUID id, UUID participantId) {}
     private record SessionState(UUID id, String status, int revision, UUID organisationId,
@@ -749,7 +869,9 @@ class InterviewRepository {
             UUID discoveryId, UUID missionId, UUID participantId, UUID activeQuestionId) {}
     private record AcceptedAnswer(String answer, String participationSignal) {}
     private record ParticipantState(UUID id, String status, int revision, UUID organisationId,
-            UUID discoveryId, UUID missionId, UUID participantId, UUID activeQuestionId) {}
+            UUID discoveryId, UUID missionId, UUID participantId, UUID activeQuestionId,
+            UUID currentCompletionProposalId) {}
     private record EvidenceState(UUID questionId, UUID itemId, String answer) {}
-    private record OwnerSession(UUID id, String status, int revision, UUID organisationId) {}
+    private record OwnerSession(UUID id, String status, int revision, UUID organisationId,
+            UUID currentCompletionProposalId) {}
 }

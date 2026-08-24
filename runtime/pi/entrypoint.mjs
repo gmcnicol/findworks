@@ -99,7 +99,7 @@ pi.stdout.on("data", (chunk) => {
 pi.stdin.write(`${JSON.stringify({
   id: context.runId,
   type: "prompt",
-  message: `Create the next adaptive question from this authoritative FindWorks projection:\n${JSON.stringify(context)}`,
+  message: `Create the next semantic Interview turn from this authoritative FindWorks projection:\n${JSON.stringify(context)}`,
 })}\n`);
 pi.stdin.end();
 
