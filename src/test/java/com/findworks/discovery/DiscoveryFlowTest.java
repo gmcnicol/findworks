@@ -23,7 +23,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest
+@SpringBootTest(properties = "findworks.shaping.worker-cron=-")
 @AutoConfigureMockMvc
 @Testcontainers
 class DiscoveryFlowTest {

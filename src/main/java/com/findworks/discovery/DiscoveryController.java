@@ -1,7 +1,10 @@
 package com.findworks.discovery;
 
+import com.findworks.shaping.ShapingRepository;
+import com.findworks.retention.RetentionRepository;
 import java.security.Principal;
 import java.util.UUID;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -13,12 +16,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 @Controller
+@ConditionalOnExpression("'${findworks.process-role:local}' == 'local' || '${findworks.process-role:local}' == 'web'")
 final class DiscoveryController {
 
     private final DiscoveryRepository repository;
+    private final ShapingRepository shaping;
+    private final RetentionRepository retention;
 
-    DiscoveryController(DiscoveryRepository repository) {
+    DiscoveryController(DiscoveryRepository repository, ShapingRepository shaping,
+            RetentionRepository retention) {
         this.repository = repository;
+        this.shaping = shaping;
+        this.retention = retention;
     }
 
     @GetMapping("/discoveries")
@@ -41,7 +50,24 @@ final class DiscoveryController {
     @GetMapping("/discoveries/{id}")
     String discovery(Principal principal, @PathVariable UUID id, Model model) {
         model.addAttribute("discovery", repository.get(principal.getName(), id));
+        model.addAttribute("shaping", shaping.view(principal.getName(), id));
         return "discovery";
+    }
+
+    @PostMapping("/discoveries/{id}/shaping")
+    String shape(Principal principal, @PathVariable UUID id, @RequestParam String content) {
+        shaping.submit(principal.getName(), id, content);
+        return "redirect:/discoveries/" + id;
+    }
+
+    @PostMapping("/discoveries/{id}/delete")
+    String delete(Principal principal, @PathVariable UUID id,
+            @RequestParam(defaultValue = "false") boolean confirmed) {
+        if (!confirmed) {
+            throw new IllegalArgumentException("Confirm that you want to delete this Discovery.");
+        }
+        retention.requestDiscoveryDeletion(id, principal.getName());
+        return "redirect:/discoveries";
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

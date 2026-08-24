@@ -2,28 +2,168 @@
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title th:text="${interview.title + ' | FindWorks'}">Interview | FindWorks</title><link rel="stylesheet" href="/styles.css">
-    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.2/bundles/datastar.js"></script>
+    <meta th:if="${interview.runtimeState == 'working'}" http-equiv="refresh" content="2">
+    <title>Private interview | FindWorks</title><link rel="stylesheet" href="/styles.css">
 </head>
 <body class="interview-body">
-<header class="shell header"><a class="brand" href="/"><span class="brand-mark">F</span><span>FindWorks</span></a><span class="pilot-label">Private interview</span></header>
+<header class="shell header"><span class="brand"><span class="brand-mark">F</span><span>FindWorks</span></span><span class="pilot-label">Private interview</span></header>
 <main class="shell interview-shell">
-    <section id="interview-card" class="interview-card" th:fragment="interview-card">
+    <section class="interview-card">
         <div th:if="${interview.status == 'completed'}" class="completion">
             <span class="completion-mark">✓</span><p class="eyebrow">Interview complete</p>
-            <h1>Thank you, <span th:text="${interview.intervieweeName}">there</span>.</h1>
-            <p>Your answers have been saved. The investigator can now review what you shared.</p>
+            <h1>Thank you, <span th:text="${interview.participantName}">there</span>.</h1>
+            <p>Your responses are saved and your participation is complete. You can close this page.</p>
         </div>
-        <div th:unless="${interview.status == 'completed'}">
-            <div class="progress-row"><span th:text="${'Question ' + (interview.position + 1) + ' of ' + interview.total}">Question 1 of 3</span><progress th:value="${interview.position}" th:max="${interview.total}"></progress></div>
-            <p class="eyebrow" th:text="${interview.title}">Mission</p><h1 class="question" th:text="${interview.question}">Question</h1>
-            <form method="post" th:action="@{/interview/answers}" data-on:submit="@post('/interview/answers', {contentType: 'form'})">
-                <input type="hidden" name="itemId" th:value="${interview.itemId}"><label class="sr-only" for="answer">Your answer</label>
-                <textarea id="answer" name="answer" maxlength="10000" required rows="8" autofocus placeholder="Answer in your own words. You do not need to use technical language."></textarea>
-                <button class="button" type="submit">Save and continue</button>
+        <div th:if="${interview.status == 'ended_early'}" class="completion">
+            <span class="completion-mark">✓</span><p class="eyebrow">Interview finished</p>
+            <h1>Thank you, <span th:text="${interview.participantName}">there</span>.</h1>
+            <p>Your responses remain saved. You can close this page.</p>
+        </div>
+        <div th:if="${interview.status == 'not_started'}">
+            <p class="eyebrow">Before you begin</p>
+            <h1 th:text="${'Hello, ' + interview.participantName + '.'}">Hello.</h1>
+            <p>You have been invited to contribute to a private Interview Mission.</p>
+            <dl class="participation-details">
+                <div><dt>Investigator</dt><dd th:text="${interview.investigatorEmail}">investigator@example.com</dd></div>
+                <div><dt>Organisation</dt><dd th:text="${interview.organisationName}">Organisation</dd></div>
+                <div><dt>Purpose</dt><dd th:text="${interview.purpose}">Purpose</dd></div>
+                <div><dt>Expected commitment</dt><dd th:text="${interview.expectedCommitment}">20 minutes</dd></div>
+                <div><dt>How your responses will be used</dt><dd th:text="${interview.dataUseSummary}">Data use</dd></div>
+                <div><dt>Retention</dt><dd th:text="${'Interview content is retained for ' + interview.retentionDays + ' days after the Investigator accepts or rejects the findings.'}">90 days</dd></div>
+                <div><dt>Questions or deletion requests</dt><dd th:text="${interview.contact}">Contact</dd></div>
+            </dl>
+            <form method="post" th:action="@{/interview/start}">
+                <button class="button" type="submit">Begin interview</button>
             </form>
-            <p class="interview-help">It is fine to say you do not know, or name somebody better placed to answer.</p>
+            <p class="interview-help">Starting records only that the invitation link was used. It does not verify real-world identity.</p>
         </div>
+        <div th:if="${(interview.status == 'active' || interview.status == 'in_progress') && interview.runtimeState == 'working'}" class="completion">
+            <span class="completion-mark">✓</span><p class="eyebrow">Interview started</p>
+            <h1 th:text="${interview.clarificationRequested ? 'Clarification requested' : (interview.answerSaved ? 'Answer saved' : 'Preparing your first question')}">Preparing your first question</h1>
+            <p th:text="${interview.clarificationRequested ? 'FindWorks is preparing a clearer question.' : (interview.answerSaved ? 'Your response is safe. FindWorks is preparing the next question.' : 'FindWorks is reviewing the Interview Mission. The first adaptive question will appear here shortly.')}">The next question will appear shortly.</p>
+        </div>
+        <div th:if="${(interview.status == 'active' || interview.status == 'in_progress') && interview.runtimeState == 'question_ready'}">
+            <div class="progress-row">
+                <span>Mission coverage</span>
+                <progress th:value="${interview.coveredCount}" th:max="${interview.totalRequired}"></progress>
+            </div>
+            <p class="eyebrow">Your current question</p>
+            <h1 class="question" th:text="${interview.question}">Question</h1>
+            <p class="question-context" th:if="${interview.humanContext != null}" th:text="${interview.humanContext}">Context</p>
+            <dl class="progress-summary">
+                <div><dt>Covered</dt><dd th:text="${interview.coveredText}">Nothing yet</dd></div>
+                <div><dt>Current</dt><dd th:text="${interview.currentText}">Current area</dd></div>
+                <div><dt>Remaining</dt><dd th:text="${interview.remainingText}">Remaining areas</dd></div>
+            </dl>
+            <form method="post" th:action="@{/interview/answer}">
+                <input type="hidden" name="questionId" th:value="${interview.questionId}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <label for="answer">Your answer</label>
+                <textarea id="answer" name="answer" rows="7" maxlength="10000" required></textarea>
+                <button class="button" type="submit">Submit answer</button>
+            </form>
+            <p class="interview-help">You can also answer naturally with one of these choices.</p>
+            <form method="post" th:action="@{/interview/choice}">
+                <input type="hidden" name="questionId" th:value="${interview.questionId}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <button type="submit" name="choice" value="did_not_know">I do not know</button>
+                <button type="submit" name="choice" value="declined">I prefer not to answer</button>
+            </form>
+            <form method="post" th:action="@{/interview/choice}">
+                <input type="hidden" name="questionId" th:value="${interview.questionId}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <input type="hidden" name="choice" value="other_owner">
+                <label for="owner">Someone else knows</label>
+                <input id="owner" name="owner" maxlength="300" placeholder="Name or description" required>
+                <button type="submit">Share owner</button>
+            </form>
+            <form method="post" th:action="@{/interview/clarify}">
+                <input type="hidden" name="questionId" th:value="${interview.questionId}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <button class="button secondary" type="submit">Please clarify</button>
+            </form>
+            <section class="readiness" th:if="${interview.offerEndChoice}">
+                <strong>You are nearing the expected time commitment.</strong>
+                <p>Choose whether to continue or finish now. Everything already shared stays saved.</p>
+                <form method="post" th:action="@{/interview/continue}">
+                    <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                    <button class="button" type="submit">Continue interview</button>
+                </form>
+                <form method="post" th:action="@{/interview/end}">
+                    <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                    <input type="hidden" name="confirmed" value="true">
+                    <button class="button secondary" type="submit">Finish now</button>
+                </form>
+            </section>
+        </div>
+        <div th:if="${(interview.status == 'active' || interview.status == 'in_progress') && interview.runtimeState == 'runtime_failed'}" class="completion">
+            <p class="eyebrow">Interview paused</p>
+            <h1>We could not prepare the next question</h1>
+            <p>Your answer and place are saved. Retry without entering your answer again, pause, or finish now.</p>
+            <form method="post" th:action="@{/interview/retry}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <button class="button" type="submit">Retry</button>
+            </form>
+        </div>
+        <div th:if="${interview.status == 'active' && interview.runtimeState == 'completion_confirmation_ready'}" class="completion">
+            <p class="eyebrow">Ready to finish</p>
+            <h1>Would you like to finish the interview?</h1>
+            <p th:text="${interview.completionRecap}">Brief unresolved-point recap.</p>
+            <p>Your responses remain saved whichever option you choose.</p>
+            <form method="post" th:action="@{/interview/completion/finish}">
+                <input type="hidden" name="proposalId" th:value="${interview.completionProposalId}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <button class="button" type="submit">Finish interview</button>
+            </form>
+            <form method="post" th:action="@{/interview/completion/continue}">
+                <input type="hidden" name="proposalId" th:value="${interview.completionProposalId}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <button class="button secondary" type="submit">Continue interviewing</button>
+            </form>
+        </div>
+        <section th:if="${(interview.status == 'active' || interview.status == 'in_progress') && interview.runtimeState != 'completion_confirmation_ready'}" class="mission-actions">
+            <form method="post" th:action="@{/interview/pause}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <button class="button secondary" type="submit">Pause and leave</button>
+            </form>
+            <form method="post" th:action="@{/interview/end}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <label class="checkbox-label"><input type="checkbox" name="confirmed" value="true" required>
+                    Finish this Interview now. Everything already shared stays saved.</label>
+                <button class="button secondary" type="submit">End interview early</button>
+            </form>
+        </section>
+        <div th:if="${interview.status == 'paused'}" class="completion">
+            <p class="eyebrow">Interview paused</p>
+            <h1>Your place is saved</h1>
+            <p>Your current question and all responses remain available when you resume.</p>
+            <form method="post" th:action="@{/interview/resume}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <button class="button" type="submit">Resume interview</button>
+            </form>
+            <form method="post" th:action="@{/interview/end}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <label class="checkbox-label"><input type="checkbox" name="confirmed" value="true" required>
+                    Finish now. Everything already shared stays saved.</label>
+                <button class="button secondary" type="submit">End interview early</button>
+            </form>
+        </div>
+        <section th:if="${(interview.status == 'active' || interview.status == 'in_progress') && !interview.previousAnswers.empty && interview.runtimeState != 'completion_confirmation_ready'}" class="editor-section">
+            <h2>Your previous responses</h2>
+            <p>You may revise any response below. Each change is linked and the original remains preserved.</p>
+            <article th:each="previous : ${interview.previousAnswers}">
+                <h3 th:text="${previous.question}">Previous question</h3>
+                <p th:text="${previous.answer}">Previous response</p>
+                <form method="post" th:action="@{/interview/revise}">
+                    <input type="hidden" name="evidenceId" th:value="${previous.evidenceId}">
+                    <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                    <label>Revised response
+                        <textarea name="answer" rows="7" maxlength="10000" required></textarea>
+                    </label>
+                    <button class="button secondary" type="submit">Save linked revision</button>
+                </form>
+            </article>
+        </section>
     </section>
 </main>
 </body>
