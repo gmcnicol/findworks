@@ -41,7 +41,9 @@ validate_matrix() {
   awk -F, '
     BEGIN { known=" LIVE-01 LIVE-INTERVIEW-RUBRIC LIVE-FINDINGS-RUBRIC S01-SHAPING S02-ADAPTIVE-INTERVIEW B01-UNKNOWN B02-DECLINE B03-OWNER B04-CONTRADICTION B05-REVISION B06-ASSUMPTION B07-INVITATION B08-OUT-OF-SCOPE F01-INTERRUPTION F02-MODEL F03-PI-DEATH F04-EXTRACTION I01-SCOPE I02-COMPLETION O01-OPERATIONS R01-RESTORE " }
     NR == 1 { next }
-    $1 !~ /^[0-9]+$/ || $1 < 1 || $1 > 90 || seen[$1]++ || index(known, " " $4 " ") == 0 || $7 != "pass" { exit 1 }
+    NF != 7 || $1 !~ /^[0-9]+$/ || $1 < 1 || $1 > 90 || seen[$1]++ ||
+      $2 !~ /^#[0-9]+(\/#[0-9]+)*$/ || $3 !~ /^AC35-[1-8]$/ || index(known, " " $4 " ") == 0 ||
+      $5 == "" || tolower($5) ~ /^pass(ed)?$/ || $6 != "exact-frozen-release" || $7 != "pass" { exit 1 }
     END { if (NR != 91) exit 1; for (i=1; i<=90; i++) if (!seen[i]) exit 1 }
   ' "$matrix"
 }
@@ -83,7 +85,7 @@ case "$mode" in
     validate_checks "$output_directory/checks.csv" || { echo "scripted checks outcome=failed" >&2; exit 1; }
     results_digest=$(digest "$output_directory/checks.csv")
     "$M0_ACCEPTANCE_COMMAND" record-scripted "$config_directory/release.json" \
-      "$output_directory/checks.csv" "$traceability_digest" "$results_digest"
+      "$output_directory/checks.csv" "$matrix" "$traceability_digest" "$results_digest"
     echo "m0_scripted outcome=passed"
     ;;
   open-live)

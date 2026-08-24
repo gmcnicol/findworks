@@ -6,13 +6,11 @@ import com.findworks.runtime.RuntimeFailure;
 import com.findworks.runtime.RuntimeProperties;
 import com.findworks.security.PilotTenant;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -1101,12 +1099,7 @@ public class InterviewRuntimeRepository {
     }
 
     private static String hash(String value) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return SecureTokenHash.sha256(value);
     }
 
     private static Timestamp timestamp(Instant instant) {
