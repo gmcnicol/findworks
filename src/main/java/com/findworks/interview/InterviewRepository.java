@@ -547,6 +547,13 @@ class InterviewRepository {
                   AND current_completion_proposal_id = ?
                 """).params(timestamp(now), timestamp(now), session.id(), expectedRevision, proposalId).update());
         cancelRuntime(session.id(), now);
+        jdbc.sql("""
+                INSERT INTO interview_runtime_runs (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    work_kind, trigger, expected_revision, generation
+                ) VALUES (?, ?, ?, ?, ?, 'findings_extraction', 'findings_extraction', ?, 1)
+                """).params(UUID.randomUUID(), session.organisationId(), session.discoveryId(), session.id(),
+                session.missionId(), expectedRevision + 1).update();
         tenant.auditSystem("interview_session_completed", "interview_session", session.id());
     }
 
@@ -694,26 +701,6 @@ class InterviewRepository {
         tenant.auditSystemDenied("interview_access_denied", "interview_access");
     }
 
-    @Transactional(readOnly = true)
-    List<Finding> findings(UUID missionId, String email) {
-        var investigator = tenant.investigator(email);
-        return jdbc.sql("""
-                SELECT i.knowledge_gap, e.answer, e.created_at
-                FROM investigation_items i
-                JOIN interview_missions m ON m.id = i.interview_mission_id
-                LEFT JOIN interview_sessions s ON s.interview_mission_id = i.interview_mission_id
-                LEFT JOIN evidence e ON e.interview_session_id = s.id AND e.investigation_item_id = i.id
-                    AND NOT EXISTS (SELECT 1 FROM evidence revision WHERE revision.revises_evidence_id = e.id)
-                JOIN discoveries d ON d.id = m.discovery_id
-                WHERE i.interview_mission_id = ? AND d.owner_membership_id = ?
-                ORDER BY i.position
-                """).params(missionId, investigator.membershipId()).query((rs, ignored) -> {
-                    var answeredAt = rs.getTimestamp("created_at");
-                    return new Finding(rs.getString("knowledge_gap"), rs.getString("answer"),
-                            answeredAt == null ? null : answeredAt.toInstant());
-                }).list();
-    }
-
     private ParticipantState participantState(String accessToken) {
         requireToken(accessToken);
         tenant.select();
@@ -858,7 +845,6 @@ class InterviewRepository {
             Integer coveredCount, Integer totalRequired, String coveredText,
             String currentText, String remainingText, UUID latestEvidenceId, boolean offerEndChoice,
             UUID completionProposalId, String completionRecap) {}
-    record Finding(String knowledgeGap, String answer, Instant answeredAt) {}
     record MissionSession(UUID id, String status, int revision, String participantName,
             List<String> remainingItems, List<String> followUpItems) {}
     private record Invitation(UUID id, UUID organisationId, UUID discoveryId, UUID missionId, UUID participantId) {}

@@ -8,13 +8,15 @@ FROM ${PI_BASE_IMAGE}
 RUN npm install --global --ignore-scripts @earendil-works/pi-coding-agent@0.84.2 \
     && addgroup -S -g 10001 findworks \
     && adduser -S -D -H -u 10001 -G findworks findworks \
-    && mkdir -p /opt/findworks/interview-skill /run/findworks \
+    && mkdir -p /opt/findworks/interview-skill /opt/findworks/findings-skill /run/findworks \
     && chown -R 10001:10001 /run/findworks
 
 COPY runtime/pi/entrypoint.mjs /opt/findworks/entrypoint.mjs
 COPY runtime/pi/settings.json /opt/findworks/pi-config/settings.json
 COPY src/main/resources/pi/interview-extension.ts /opt/findworks/interview-extension.ts
 COPY src/main/resources/pi/interview/SKILL.md /opt/findworks/interview-skill/SKILL.md
+COPY src/main/resources/pi/findings-extension.ts /opt/findworks/findings-extension.ts
+COPY src/main/resources/pi/findings/SKILL.md /opt/findworks/findings-skill/SKILL.md
 
 USER 10001:10001
 WORKDIR /run/findworks

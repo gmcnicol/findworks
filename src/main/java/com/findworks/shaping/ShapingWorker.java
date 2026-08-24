@@ -1,6 +1,8 @@
 package com.findworks.shaping;
 
 import com.findworks.interview.InterviewRuntimeRepository;
+import com.findworks.interview.FindingsRepository;
+import com.findworks.runtime.FindingsExtractionRunner;
 import com.findworks.runtime.InterviewTurnRunner;
 import com.findworks.runtime.RuntimeFailure;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,13 +14,18 @@ public class ShapingWorker {
     private final ShapingRepository repository;
     private final InterviewRuntimeRepository interviews;
     private final InterviewTurnRunner interviewRunner;
+    private final FindingsRepository findings;
+    private final FindingsExtractionRunner findingsRunner;
     private final PiShapingAdapter pi;
 
     ShapingWorker(ShapingRepository repository, InterviewRuntimeRepository interviews,
-            InterviewTurnRunner interviewRunner, PiShapingAdapter pi) {
+            InterviewTurnRunner interviewRunner, FindingsRepository findings,
+            FindingsExtractionRunner findingsRunner, PiShapingAdapter pi) {
         this.repository = repository;
         this.interviews = interviews;
         this.interviewRunner = interviewRunner;
+        this.findings = findings;
+        this.findingsRunner = findingsRunner;
         this.pi = pi;
     }
 
@@ -28,12 +35,20 @@ public class ShapingWorker {
         if (interview != null) {
             String runtimeVersion = null;
             try {
-                runtimeVersion = interviewRunner.runtimeVersion();
-                var prepared = interviews.prepare(interview, runtimeVersion);
-                var result = interviewRunner.run(new InterviewTurnRunner.Request(
-                        prepared.context(), prepared.checkpoint(), prepared.credential(),
-                        prepared.credentialExpiresAt()));
-                interviews.complete(interview, result);
+                if ("findings_extraction".equals(interview.workKind())) {
+                    runtimeVersion = findingsRunner.runtimeVersion();
+                    var prepared = findings.prepare(interview, runtimeVersion);
+                    var result = findingsRunner.run(new FindingsExtractionRunner.Request(
+                            prepared.context(), prepared.credential(), prepared.credentialExpiresAt()));
+                    findings.complete(interview, result);
+                } else {
+                    runtimeVersion = interviewRunner.runtimeVersion();
+                    var prepared = interviews.prepare(interview, runtimeVersion);
+                    var result = interviewRunner.run(new InterviewTurnRunner.Request(
+                            prepared.context(), prepared.checkpoint(), prepared.credential(),
+                            prepared.credentialExpiresAt()));
+                    interviews.complete(interview, result);
+                }
             } catch (RuntimeFailure failure) {
                 interviews.fail(interview, runtimeVersion, failure);
             } catch (Exception error) {

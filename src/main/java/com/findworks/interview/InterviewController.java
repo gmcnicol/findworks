@@ -25,13 +25,15 @@ final class InterviewController {
     private final InterviewRepository interviews;
     private final MissionRepository missions;
     private final InvitationRepository invitations;
+    private final FindingsRepository findings;
     private final Clock clock;
 
     InterviewController(InterviewRepository interviews, MissionRepository missions,
-            InvitationRepository invitations, Clock clock) {
+            InvitationRepository invitations, FindingsRepository findings, Clock clock) {
         this.interviews = interviews;
         this.missions = missions;
         this.invitations = invitations;
+        this.findings = findings;
         this.clock = clock;
     }
 
@@ -221,8 +223,14 @@ final class InterviewController {
     @GetMapping("/missions/{id}/findings")
     String findings(Principal principal, @PathVariable UUID id, Model model) {
         model.addAttribute("mission", missions.mission(id, principal.getName()));
-        model.addAttribute("findings", interviews.findings(id, principal.getName()));
+        model.addAttribute("findings", findings.view(id, principal.getName()));
         return "findings";
+    }
+
+    @PostMapping("/missions/{id}/findings/retry")
+    String retryFindings(Principal principal, @PathVariable UUID id) {
+        findings.retry(id, principal.getName());
+        return "redirect:/missions/" + id + "/findings";
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
