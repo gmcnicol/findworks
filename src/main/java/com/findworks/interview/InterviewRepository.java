@@ -13,6 +13,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 class InterviewRepository {
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Pattern COMMITMENT = Pattern.compile(
+            "(?i)(\\d+)\\s*(minutes?|mins?|hours?|hrs?)");
     private final JdbcClient jdbc;
     private final PilotTenant tenant;
     private final Clock clock;
@@ -109,8 +112,10 @@ class InterviewRepository {
                 SELECT s.status, p.intended_name, o.name organisation_name, o.retention_days,
                        u.email investigator_email,
                        m.objective, m.expected_commitment, m.data_use_summary,
-                       s.revision, q.id question_id, q.question, q.human_context,
+                       s.revision, s.active_seconds, s.active_started_at,
+                       s.commitment_acknowledged_at, q.id question_id, q.question, q.human_context,
                        e.covered_count, e.total_required, e.covered_text, e.current_text, e.remaining_text,
+                       latest_evidence.id latest_evidence_id,
                        latest_run.status runtime_status,
                        EXISTS (SELECT 1 FROM evidence accepted
                                WHERE accepted.interview_session_id = s.id
@@ -135,6 +140,15 @@ class InterviewRepository {
                     SELECT r.status FROM interview_runtime_runs r
                     WHERE r.interview_session_id = s.id ORDER BY r.created_at DESC LIMIT 1
                 ) latest_run ON true
+                LEFT JOIN LATERAL (
+                    SELECT accepted.id
+                    FROM evidence accepted
+                    LEFT JOIN evidence revision ON revision.revises_evidence_id = accepted.id
+                    WHERE accepted.interview_session_id = s.id
+                      AND accepted.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
+                      AND revision.id IS NULL
+                    ORDER BY accepted.created_at DESC, accepted.id DESC LIMIT 1
+                ) latest_evidence ON true
                 WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
                   AND d.status = 'active' AND m.approved_at IS NOT NULL
                   AND (s.status <> 'not_started' OR m.status = 'approved')
@@ -143,8 +157,14 @@ class InterviewRepository {
                     var question = rs.getString("question");
                     var runtimeStatus = rs.getString("runtime_status");
                     var status = rs.getString("status");
-                    var runtimeState = "not_started".equals(status) ? null : question != null ? "question_ready"
+                    var live = "active".equals(status) || "in_progress".equals(status);
+                    var runtimeState = !live ? null : question != null ? "question_ready"
                             : "failed".equals(runtimeStatus) ? "runtime_failed" : "working";
+                    var activeStarted = rs.getTimestamp("active_started_at");
+                    var activeSeconds = rs.getLong("active_seconds") + (activeStarted == null ? 0
+                            : Math.max(0, Duration.between(activeStarted.toInstant(), clock.instant()).toSeconds()));
+                    var offerEndChoice = question != null && rs.getTimestamp("commitment_acknowledged_at") == null
+                            && nearCommitment(rs.getString("expected_commitment"), activeSeconds);
                     return new AccessView(status, rs.getString("intended_name"),
                             rs.getString("organisation_name"), investigatorEmail, rs.getString("objective"),
                             rs.getString("expected_commitment"), rs.getString("data_use_summary"),
@@ -154,7 +174,8 @@ class InterviewRepository {
                             rs.getObject("covered_count", Integer.class),
                             rs.getObject("total_required", Integer.class),
                             rs.getString("covered_text"), rs.getString("current_text"),
-                            rs.getString("remaining_text"));
+                            rs.getString("remaining_text"), rs.getObject("latest_evidence_id", UUID.class),
+                            offerEndChoice);
                 }).optional().orElseThrow(InterviewAccessDeniedException::new);
     }
 
@@ -186,9 +207,9 @@ class InterviewRepository {
         var expectedRevision = session.revision() + 1;
         jdbc.sql("""
                 UPDATE interview_sessions
-                SET status = 'active', started_at = ?, revision = revision + 1
+                SET status = 'active', started_at = ?, active_started_at = ?, revision = revision + 1
                 WHERE id = ? AND status = 'not_started'
-                """).params(timestamp(clock.instant()), session.id()).update();
+                """).params(timestamp(clock.instant()), timestamp(clock.instant()), session.id()).update();
         jdbc.sql("""
                 INSERT INTO interview_runtime_runs (
                     id, organisation_id, discovery_id, interview_session_id,
@@ -283,6 +304,213 @@ class InterviewRepository {
     }
 
     @Transactional
+    void pause(String accessToken, int expectedRevision) {
+        var session = participantState(accessToken);
+        requireState(session, expectedRevision, "active");
+        var now = clock.instant();
+        var changed = jdbc.sql("""
+                UPDATE interview_sessions
+                SET status = 'paused', active_seconds = active_seconds
+                        + greatest(0, extract(epoch from (? - active_started_at))::bigint),
+                    active_started_at = NULL, revision = revision + 1
+                WHERE id = ? AND status = 'active' AND revision = ?
+                """).params(timestamp(now), session.id(), expectedRevision).update();
+        changed(changed);
+        cancelRuntime(session.id(), now);
+        tenant.auditSystem("interview_session_paused", "interview_session", session.id());
+    }
+
+    @Transactional
+    void resume(String accessToken, int expectedRevision) {
+        var session = participantState(accessToken);
+        requireState(session, expectedRevision, "paused");
+        var nextRevision = expectedRevision + 1;
+        var changed = jdbc.sql("""
+                UPDATE interview_sessions
+                SET status = 'active', active_started_at = ?, revision = revision + 1
+                WHERE id = ? AND status = 'paused' AND revision = ?
+                """).params(timestamp(clock.instant()), session.id(), expectedRevision).update();
+        changed(changed);
+        if (session.activeQuestionId() == null) {
+            insertRuntime(session, "resume", null, null, nextRevision);
+        }
+        tenant.auditSystem("interview_session_resumed", "interview_session", session.id());
+    }
+
+    @Transactional
+    void requestClarification(String accessToken, UUID questionId, int expectedRevision) {
+        var session = participantState(accessToken);
+        requireState(session, expectedRevision, "active");
+        if (!questionId.equals(session.activeQuestionId())) {
+            throw new IllegalArgumentException("This Interview question is no longer active.");
+        }
+        var changed = jdbc.sql("""
+                UPDATE interview_sessions SET revision = revision + 1
+                WHERE id = ? AND status = 'active' AND revision = ? AND active_question_id = ?
+                """).params(session.id(), expectedRevision, questionId).update();
+        changed(changed);
+        cancelRuntime(session.id(), clock.instant());
+        insertRuntime(session, "clarification_request", null, questionId, expectedRevision + 1);
+        tenant.auditSystem("interview_clarification_requested", "interview_session", session.id());
+    }
+
+    @Transactional
+    void revise(String accessToken, UUID evidenceId, int expectedRevision, String submittedAnswer) {
+        var answer = answerText(submittedAnswer);
+        var session = participantState(accessToken);
+        requireState(session, expectedRevision, "active");
+        var evidence = jdbc.sql("""
+                SELECT e.question_id, e.investigation_item_id, e.answer
+                FROM evidence e
+                LEFT JOIN evidence successor ON successor.revises_evidence_id = e.id
+                WHERE e.id = ? AND e.interview_session_id = ? AND e.participant_id = ?
+                  AND e.organisation_id = ?
+                  AND e.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
+                  AND successor.id IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM evidence later
+                      LEFT JOIN evidence later_successor ON later_successor.revises_evidence_id = later.id
+                      WHERE later.interview_session_id = e.interview_session_id
+                        AND later.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
+                        AND later_successor.id IS NULL
+                        AND (later.created_at, later.id) > (e.created_at, e.id)
+                  )
+                """).params(evidenceId, session.id(), session.participantId(), session.organisationId())
+                .query((rs, ignored) -> new EvidenceState(
+                        rs.getObject("question_id", UUID.class),
+                        rs.getObject("investigation_item_id", UUID.class), rs.getString("answer")))
+                .optional().orElseThrow(() -> new IllegalArgumentException("Only the latest response can be revised."));
+        if (evidence.answer().equals(answer)) {
+            throw new IllegalArgumentException("The revised response must be different.");
+        }
+        var revisionId = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO evidence (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    participant_id, question_id, investigation_item_id, source_type, answer,
+                    revises_evidence_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'interviewee_answer_revision', ?, ?)
+                """).params(revisionId, session.organisationId(), session.discoveryId(), session.id(),
+                session.missionId(), session.participantId(), evidence.questionId(), evidence.itemId(), answer,
+                evidenceId).update();
+        var nextRevision = expectedRevision + 1;
+        var changed = jdbc.sql("""
+                UPDATE interview_sessions SET active_question_id = NULL, revision = revision + 1
+                WHERE id = ? AND status = 'active' AND revision = ?
+                """).params(session.id(), expectedRevision).update();
+        changed(changed);
+        cancelRuntime(session.id(), clock.instant());
+        insertRuntime(session, "accepted_evidence", revisionId, null, nextRevision);
+        tenant.auditSystem("interview_answer_revised", "interview_session", session.id());
+    }
+
+    @Transactional
+    void continueInterview(String accessToken, int expectedRevision) {
+        var session = participantState(accessToken);
+        requireState(session, expectedRevision, "active");
+        var changed = jdbc.sql("""
+                UPDATE interview_sessions
+                SET commitment_acknowledged_at = ?, revision = revision + 1
+                WHERE id = ? AND status = 'active' AND revision = ?
+                  AND commitment_acknowledged_at IS NULL
+                """).params(timestamp(clock.instant()), session.id(), expectedRevision).update();
+        changed(changed);
+        tenant.auditSystem("interview_commitment_continued", "interview_session", session.id());
+    }
+
+    @Transactional
+    void endEarly(String accessToken, int expectedRevision, boolean confirmed) {
+        if (!confirmed) {
+            throw new IllegalArgumentException("Confirm that you want to finish this Interview now.");
+        }
+        var session = participantState(accessToken);
+        if (session.revision() != expectedRevision
+                || !("active".equals(session.status()) || "paused".equals(session.status()))) {
+            throw new IllegalArgumentException("This Interview Session changed before it could end.");
+        }
+        var now = clock.instant();
+        var changed = jdbc.sql("""
+                UPDATE interview_sessions
+                SET status = 'ended_early', ended_at = ?, active_seconds = active_seconds + CASE
+                        WHEN active_started_at IS NULL THEN 0
+                        ELSE greatest(0, extract(epoch from (? - active_started_at))::bigint) END,
+                    active_started_at = NULL, active_question_id = NULL, revision = revision + 1
+                WHERE id = ? AND revision = ? AND status IN ('active', 'paused')
+                """).params(timestamp(now), timestamp(now), session.id(), expectedRevision).update();
+        changed(changed);
+        cancelRuntime(session.id(), now);
+        tenant.auditSystem("interview_session_ended_early", "interview_session", session.id());
+    }
+
+    @Transactional(readOnly = true)
+    MissionSession missionSession(UUID missionId, String email) {
+        var investigator = tenant.investigator(email);
+        return jdbc.sql("""
+                SELECT s.id, s.status, s.revision, p.intended_name
+                FROM interview_sessions s
+                JOIN interview_missions m ON m.id = s.interview_mission_id
+                    AND m.organisation_id = s.organisation_id
+                JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
+                JOIN discovery_participants p ON p.id = s.participant_id
+                    AND p.organisation_id = s.organisation_id
+                WHERE s.interview_mission_id = ? AND d.owner_membership_id = ?
+                """).params(missionId, investigator.membershipId()).query((rs, ignored) -> {
+                    var sessionId = rs.getObject("id", UUID.class);
+                    var remaining = jdbc.sql("""
+                            SELECT i.knowledge_gap FROM investigation_items i
+                            LEFT JOIN investigation_results r ON r.interview_session_id = ?
+                                AND r.investigation_item_id = i.id
+                            WHERE i.interview_mission_id = ? AND i.required
+                              AND coalesce(r.status, 'unaddressed') <> 'terminal'
+                            ORDER BY i.position
+                            """).params(sessionId, missionId).query(String.class).list();
+                    return new MissionSession(sessionId, rs.getString("status"), rs.getInt("revision"),
+                            rs.getString("intended_name"), remaining);
+                }).optional().orElse(null);
+    }
+
+    @Transactional
+    void terminate(UUID missionId, UUID sessionId, int expectedRevision, String email) {
+        var investigator = tenant.investigator(email);
+        var session = jdbc.sql("""
+                SELECT s.id, s.status, s.revision, s.organisation_id
+                FROM interview_sessions s
+                JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
+                WHERE s.id = ? AND s.interview_mission_id = ? AND d.owner_membership_id = ?
+                FOR UPDATE OF s
+                """).params(sessionId, missionId, investigator.membershipId())
+                .query((rs, ignored) -> new OwnerSession(rs.getObject("id", UUID.class), rs.getString("status"),
+                        rs.getInt("revision"), rs.getObject("organisation_id", UUID.class)))
+                .optional().orElseThrow(() -> new IllegalArgumentException("Interview Session not found."));
+        if (session.revision() != expectedRevision
+                || !("active".equals(session.status()) || "paused".equals(session.status()))) {
+            throw new IllegalArgumentException("Only an active or paused Interview Session can be terminated.");
+        }
+        var now = clock.instant();
+        var changed = jdbc.sql("""
+                UPDATE interview_sessions
+                SET status = 'terminated', terminated_at = ?, active_seconds = active_seconds + CASE
+                        WHEN active_started_at IS NULL THEN 0
+                        ELSE greatest(0, extract(epoch from (? - active_started_at))::bigint) END,
+                    active_started_at = NULL, active_question_id = NULL, revision = revision + 1
+                WHERE id = ? AND revision = ? AND status IN ('active', 'paused')
+                """).params(timestamp(now), timestamp(now), session.id(), expectedRevision).update();
+        changed(changed);
+        cancelRuntime(session.id(), now);
+        jdbc.sql("""
+                UPDATE invitations SET revoked_at = coalesce(revoked_at, ?),
+                    delivery_status = CASE WHEN delivery_status = 'legacy_inert'
+                        THEN delivery_status ELSE 'revoked' END
+                WHERE interview_mission_id = ? AND revoked_at IS NULL
+                """).params(timestamp(now), missionId).update();
+        jdbc.sql("""
+                UPDATE interview_access_grants SET revoked_at = coalesce(revoked_at, ?)
+                WHERE interview_session_id = ? AND revoked_at IS NULL
+                """).params(timestamp(now), session.id()).update();
+        tenant.auditSystem("interview_session_terminated", "interview_session", session.id());
+    }
+
+    @Transactional
     void auditDenied() {
         tenant.select();
         tenant.auditSystemDenied("interview_access_denied", "interview_access");
@@ -297,6 +525,7 @@ class InterviewRepository {
                 JOIN interview_missions m ON m.id = i.interview_mission_id
                 LEFT JOIN interview_sessions s ON s.interview_mission_id = i.interview_mission_id
                 LEFT JOIN evidence e ON e.interview_session_id = s.id AND e.investigation_item_id = i.id
+                    AND NOT EXISTS (SELECT 1 FROM evidence revision WHERE revision.revises_evidence_id = e.id)
                 JOIN discoveries d ON d.id = m.discovery_id
                 WHERE i.interview_mission_id = ? AND d.owner_membership_id = ?
                 ORDER BY i.position
@@ -305,6 +534,78 @@ class InterviewRepository {
                     return new Finding(rs.getString("knowledge_gap"), rs.getString("answer"),
                             answeredAt == null ? null : answeredAt.toInstant());
                 }).list();
+    }
+
+    private ParticipantState participantState(String accessToken) {
+        requireToken(accessToken);
+        tenant.select();
+        return jdbc.sql("""
+                SELECT s.id, s.status, s.revision, s.organisation_id, s.discovery_id,
+                       s.interview_mission_id, s.participant_id, s.active_question_id
+                FROM interview_access_grants g
+                JOIN interview_sessions s ON s.id = g.interview_session_id
+                    AND s.participant_id = g.participant_id AND s.organisation_id = g.organisation_id
+                JOIN interview_missions m ON m.id = s.interview_mission_id
+                    AND m.discovery_id = s.discovery_id AND m.organisation_id = s.organisation_id
+                JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
+                WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
+                  AND d.status = 'active' AND m.approved_at IS NOT NULL
+                FOR UPDATE OF s
+                """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) ->
+                        new ParticipantState(rs.getObject("id", UUID.class), rs.getString("status"),
+                                rs.getInt("revision"), rs.getObject("organisation_id", UUID.class),
+                                rs.getObject("discovery_id", UUID.class),
+                                rs.getObject("interview_mission_id", UUID.class),
+                                rs.getObject("participant_id", UUID.class),
+                                rs.getObject("active_question_id", UUID.class)))
+                .optional().orElseThrow(InterviewAccessDeniedException::new);
+    }
+
+    private void insertRuntime(ParticipantState session, String trigger, UUID evidenceId,
+            UUID clarificationQuestionId, int expectedRevision) {
+        jdbc.sql("""
+                INSERT INTO interview_runtime_runs (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    trigger, evidence_id, clarifies_question_id, expected_revision
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """).params(UUID.randomUUID(), session.organisationId(), session.discoveryId(), session.id(),
+                session.missionId(), trigger, evidenceId, clarificationQuestionId, expectedRevision).update();
+    }
+
+    private void cancelRuntime(UUID sessionId, Instant now) {
+        jdbc.sql("""
+                UPDATE interview_runtime_runs
+                SET status = 'cancelled', cancelled_at = ?, lease_until = NULL, updated_at = ?
+                WHERE interview_session_id = ? AND status IN ('queued', 'running')
+                """).params(timestamp(now), timestamp(now), sessionId).update();
+    }
+
+    private static void requireState(ParticipantState session, int expectedRevision, String status) {
+        if (session.revision() != expectedRevision || !status.equals(session.status())) {
+            throw new IllegalArgumentException("This Interview Session changed. Refresh and try again.");
+        }
+    }
+
+    private static void changed(int count) {
+        if (count != 1) {
+            throw new IllegalArgumentException("This Interview Session changed. Refresh and try again.");
+        }
+    }
+
+    private static boolean nearCommitment(String commitment, long activeSeconds) {
+        if (commitment == null) {
+            return false;
+        }
+        var matcher = COMMITMENT.matcher(commitment);
+        if (!matcher.find()) {
+            return false;
+        }
+        try {
+            var eightyPercentSeconds = matcher.group(2).toLowerCase().startsWith("h") ? 2_880L : 48L;
+            return activeSeconds >= Math.multiplyExact(Long.parseLong(matcher.group(1)), eightyPercentSeconds);
+        } catch (ArithmeticException ignored) {
+            return false;
+        }
     }
 
     private static void requireToken(String token) {
@@ -349,12 +650,17 @@ class InterviewRepository {
             String purpose, String expectedCommitment, String dataUseSummary, int retentionDays, String contact,
             String runtimeState, int revision, UUID questionId, String question, String humanContext,
             boolean answerSaved, Integer coveredCount, Integer totalRequired, String coveredText,
-            String currentText, String remainingText) {}
+            String currentText, String remainingText, UUID latestEvidenceId, boolean offerEndChoice) {}
     record Finding(String knowledgeGap, String answer, Instant answeredAt) {}
+    record MissionSession(UUID id, String status, int revision, String participantName, List<String> remainingItems) {}
     private record Invitation(UUID id, UUID organisationId, UUID discoveryId, UUID missionId, UUID participantId) {}
     private record Session(UUID id, UUID participantId) {}
     private record SessionState(UUID id, String status, int revision, UUID organisationId,
             UUID discoveryId, UUID missionId) {}
     private record AnswerState(UUID id, String status, int revision, UUID organisationId,
             UUID discoveryId, UUID missionId, UUID participantId, UUID activeQuestionId) {}
+    private record ParticipantState(UUID id, String status, int revision, UUID organisationId,
+            UUID discoveryId, UUID missionId, UUID participantId, UUID activeQuestionId) {}
+    private record EvidenceState(UUID questionId, UUID itemId, String answer) {}
+    private record OwnerSession(UUID id, String status, int revision, UUID organisationId) {}
 }

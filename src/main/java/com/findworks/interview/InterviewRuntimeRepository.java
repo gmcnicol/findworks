@@ -39,12 +39,13 @@ public class InterviewRuntimeRepository {
                     lease_until = now() + interval '2 minutes', updated_at = now(), error_code = NULL
                 WHERE id = ?
                 RETURNING id, organisation_id, interview_session_id, interview_mission_id,
-                          trigger, evidence_id, expected_revision, attempts
+                          trigger, evidence_id, clarifies_question_id, expected_revision, attempts
                 """).param(id.get()).query((rs, ignored) -> new Work(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("interview_session_id", UUID.class),
                         rs.getObject("interview_mission_id", UUID.class),
                         rs.getString("trigger"), rs.getObject("evidence_id", UUID.class),
+                        rs.getObject("clarifies_question_id", UUID.class),
                         rs.getInt("expected_revision"), rs.getInt("attempts"))).single();
     }
 
@@ -63,13 +64,16 @@ public class InterviewRuntimeRepository {
                 WHERE r.id = ? AND r.interview_session_id = ? AND r.interview_mission_id = ?
                   AND r.organisation_id = ? AND r.status = 'running'
                   AND s.status = 'active' AND s.revision = r.expected_revision
-                  AND s.active_question_id IS NULL AND m.approved_at IS NOT NULL AND d.status = 'active'
-                  AND ((r.trigger = 'session_start' AND r.evidence_id IS NULL)
+                  AND ((r.trigger = 'clarification_request' AND s.active_question_id = r.clarifies_question_id)
+                    OR (r.trigger <> 'clarification_request' AND s.active_question_id IS NULL))
+                  AND m.approved_at IS NOT NULL AND d.status = 'active'
+                  AND ((r.trigger IN ('session_start', 'resume') AND r.evidence_id IS NULL)
                     OR (r.trigger = 'accepted_evidence' AND EXISTS (
                         SELECT 1 FROM evidence e
                         WHERE e.id = r.evidence_id AND e.interview_session_id = r.interview_session_id
                           AND e.organisation_id = r.organisation_id
-                          AND e.source_type = 'interviewee_answer')))
+                          AND e.source_type IN ('interviewee_answer', 'interviewee_answer_revision')))
+                    OR (r.trigger = 'clarification_request' AND r.clarifies_question_id IS NOT NULL))
                 """).params(work.id(), work.sessionId(), work.missionId(), work.organisationId())
                 .query((rs, ignored) -> new Mission(
                         rs.getString("objective"), rs.getString("desired_outcome"),
@@ -115,7 +119,11 @@ public class InterviewRuntimeRepository {
                 SELECT q.id question_id, q.investigation_item_id, q.sequence, q.question, q.human_context,
                        e.id evidence_id, e.answer
                 FROM interview_questions q
-                LEFT JOIN evidence e ON e.question_id = q.id AND e.source_type = 'interviewee_answer'
+                LEFT JOIN evidence e ON e.question_id = q.id
+                    AND e.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
+                    AND NOT EXISTS (
+                        SELECT 1 FROM evidence revision WHERE revision.revises_evidence_id = e.id
+                    )
                 WHERE q.interview_session_id = ? AND q.interview_mission_id = ?
                 ORDER BY q.sequence
                 """).params(work.sessionId(), work.missionId()).query((rs, ignored) -> new Exchange(
@@ -124,7 +132,7 @@ public class InterviewRuntimeRepository {
                         rs.getString("question"), rs.getString("human_context"),
                         rs.getObject("evidence_id", UUID.class), rs.getString("answer"))).list();
         return new Context(work.id(), work.sessionId(), work.expectedRevision(), work.missionId(),
-                work.trigger(), work.evidenceId(),
+                work.trigger(), work.evidenceId(), work.clarifiesQuestionId(),
                 mission.objective(), mission.desiredOutcome(), sharedContext, boundaries, terminology,
                 mission.completionCriteria(), mission.expectedCommitment(), openingGuidance, items, conversation);
     }
@@ -132,6 +140,15 @@ public class InterviewRuntimeRepository {
     @Transactional
     public Event complete(Work work, Submission submission) {
         tenant.select();
+        var session = jdbc.sql("""
+                SELECT status, revision, active_question_id
+                FROM interview_sessions
+                WHERE id = ? AND interview_mission_id = ? AND organisation_id = ? FOR UPDATE
+                """).params(work.sessionId(), work.missionId(), work.organisationId())
+                .query((rs, ignored) -> new SessionState(
+                        rs.getString("status"), rs.getInt("revision"),
+                        rs.getObject("active_question_id", UUID.class))).optional()
+                .orElseThrow(() -> new IllegalStateException("Interview Session no longer exists."));
         var status = jdbc.sql("""
                 SELECT status FROM interview_runtime_runs
                 WHERE id = ? AND interview_session_id = ? AND interview_mission_id = ?
@@ -146,17 +163,8 @@ public class InterviewRuntimeRepository {
             throw new IllegalStateException("Interview runtime Run is not running.");
         }
         validateEnvelope(work, submission);
-        var session = jdbc.sql("""
-                SELECT status, revision, active_question_id
-                FROM interview_sessions
-                WHERE id = ? AND interview_mission_id = ? AND organisation_id = ? FOR UPDATE
-                """).params(work.sessionId(), work.missionId(), work.organisationId())
-                .query((rs, ignored) -> new SessionState(
-                        rs.getString("status"), rs.getInt("revision"),
-                        rs.getObject("active_question_id", UUID.class))).optional()
-                .orElseThrow(() -> new IllegalStateException("Interview Session no longer exists."));
         if (!"active".equals(session.status()) || session.revision() != work.expectedRevision()
-                || session.activeQuestionId() != null) {
+                || !java.util.Objects.equals(session.activeQuestionId(), work.clarifiesQuestionId())) {
             throw new IllegalArgumentException("Interview runtime Run is stale.");
         }
         var action = submission.nextAction();
@@ -205,12 +213,13 @@ public class InterviewRuntimeRepository {
         jdbc.sql("""
                 INSERT INTO interview_questions (
                     id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
-                    investigation_item_id, sequence, question, human_context
+                    investigation_item_id, sequence, question, human_context, clarifies_question_id
                 )
                 SELECT ?, r.organisation_id, r.discovery_id, r.interview_session_id,
-                       r.interview_mission_id, ?, ?, ?, ?
+                       r.interview_mission_id, ?, ?, ?, ?, ?
                 FROM interview_runtime_runs r WHERE r.id = ?
-                """).params(questionId, action.targetInvestigationItemId(), sequence, question, context, work.id())
+                """).params(questionId, action.targetInvestigationItemId(), sequence, question, context,
+                work.clarifiesQuestionId(), work.id())
                 .update();
         var eventId = UUID.randomUUID();
         jdbc.sql("""
@@ -227,8 +236,8 @@ public class InterviewRuntimeRepository {
         var advanced = jdbc.sql("""
                 UPDATE interview_sessions
                 SET active_question_id = ?, revision = revision + 1
-                WHERE id = ? AND revision = ? AND active_question_id IS NULL AND status = 'active'
-                """).params(questionId, work.sessionId(), work.expectedRevision()).update();
+                WHERE id = ? AND revision = ? AND active_question_id IS NOT DISTINCT FROM ? AND status = 'active'
+                """).params(questionId, work.sessionId(), work.expectedRevision(), work.clarifiesQuestionId()).update();
         if (advanced != 1) {
             throw new IllegalArgumentException("Interview Session changed before the question committed.");
         }
@@ -296,9 +305,9 @@ public class InterviewRuntimeRepository {
     }
 
     public record Work(UUID id, UUID organisationId, UUID sessionId, UUID missionId,
-            String trigger, UUID evidenceId, int expectedRevision, int attempts) {}
+            String trigger, UUID evidenceId, UUID clarifiesQuestionId, int expectedRevision, int attempts) {}
     public record Context(UUID runId, UUID sessionId, int expectedRevision, UUID missionVersionId,
-            String trigger, UUID acceptedEvidenceId,
+            String trigger, UUID acceptedEvidenceId, UUID clarifiesQuestionId,
             String objective, String desiredOutcome, List<String> sharedContext, List<Boundary> boundaries,
             List<Term> terminology, String completionCriteria, String expectedCommitment,
             List<String> openingGuidance, List<Item> investigationItems, List<Exchange> conversation) {}

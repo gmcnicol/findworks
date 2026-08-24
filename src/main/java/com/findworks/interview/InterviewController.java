@@ -39,6 +39,7 @@ final class InterviewController {
     String mission(Principal principal, @PathVariable UUID id, Model model) {
         model.addAttribute("mission", missions.mission(id, principal.getName()));
         model.addAttribute("invitation", invitations.forMission(id, principal.getName()));
+        model.addAttribute("interviewSession", interviews.missionSession(id, principal.getName()));
         return "mission";
     }
 
@@ -126,6 +127,66 @@ final class InterviewController {
         interviews.answer(accessToken, questionId, expectedRevision, answer);
         privateResponse(response);
         return "redirect:/interview";
+    }
+
+    @PostMapping("/interview/pause")
+    String pause(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam int expectedRevision, HttpServletResponse response) {
+        interviews.pause(accessToken, expectedRevision);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
+    @PostMapping("/interview/resume")
+    String resume(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam int expectedRevision, HttpServletResponse response) {
+        interviews.resume(accessToken, expectedRevision);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
+    @PostMapping("/interview/clarify")
+    String clarify(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam UUID questionId, @RequestParam int expectedRevision, HttpServletResponse response) {
+        interviews.requestClarification(accessToken, questionId, expectedRevision);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
+    @PostMapping("/interview/revise")
+    String revise(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam UUID evidenceId, @RequestParam int expectedRevision, @RequestParam String answer,
+            HttpServletResponse response) {
+        interviews.revise(accessToken, evidenceId, expectedRevision, answer);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
+    @PostMapping("/interview/continue")
+    String continueInterview(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam int expectedRevision, HttpServletResponse response) {
+        interviews.continueInterview(accessToken, expectedRevision);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
+    @PostMapping("/interview/end")
+    String endEarly(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam int expectedRevision, @RequestParam(defaultValue = "false") boolean confirmed,
+            HttpServletResponse response) {
+        interviews.endEarly(accessToken, expectedRevision, confirmed);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
+    @PostMapping("/missions/{missionId}/sessions/{sessionId}/terminate")
+    String terminate(Principal principal, @PathVariable UUID missionId, @PathVariable UUID sessionId,
+            @RequestParam int expectedRevision, @RequestParam(defaultValue = "false") boolean confirmed) {
+        if (!confirmed) {
+            throw new IllegalArgumentException("Confirm that you want to terminate this Interview Session.");
+        }
+        interviews.terminate(missionId, sessionId, expectedRevision, principal.getName());
+        return "redirect:/missions/" + missionId;
     }
 
     @GetMapping("/missions/{id}/findings")

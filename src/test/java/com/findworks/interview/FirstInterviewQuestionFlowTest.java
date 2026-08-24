@@ -101,7 +101,7 @@ class FirstInterviewQuestionFlowTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("No areas covered yet")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Retry decision rules")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Ownership and exceptions")))
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Pi"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Pi RPC"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("runtime"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(
                         "PRIVATE-MISSION-CONTEXT"))))
@@ -288,6 +288,115 @@ class FirstInterviewQuestionFlowTest {
         var event = runtime.complete(work, good);
         assertThat(runtime.complete(work, good)).isEqualTo(event);
         assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void participantControlsPreservePlaceClarifyAndAppendARevision() throws Exception {
+        var cookie = new Cookie("findworks_interview", GRANT);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/start")
+                        .cookie(cookie).with(csrf())).andExpect(status().is3xxRedirection());
+        worker.runNext();
+        var firstQuestion = jdbc.sql("SELECT id FROM interview_questions").query(UUID.class).single();
+
+        jdbc.sql("UPDATE interview_sessions SET active_started_at = now() - interval '17 minutes'").update();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview").cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "You are nearing the expected time commitment.")));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/continue")
+                        .cookie(cookie).with(csrf()).param("expectedRevision", "2"))
+                .andExpect(status().is3xxRedirection());
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/pause")
+                        .cookie(cookie).with(csrf()).param("expectedRevision", "3"))
+                .andExpect(status().is3xxRedirection());
+        assertThat(state()).isEqualTo("paused:4:true");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview").cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Your place is saved")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Resume interview")));
+        assertThatThrownBy(() -> interviews.pause(GRANT, 3)).isInstanceOf(IllegalArgumentException.class);
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/resume")
+                        .cookie(cookie).with(csrf()).param("expectedRevision", "4"))
+                .andExpect(status().is3xxRedirection());
+        assertThat(state()).isEqualTo("active:5:true");
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isEqualTo(1);
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/clarify")
+                        .cookie(cookie).with(csrf()).param("questionId", firstQuestion.toString())
+                        .param("expectedRevision", "5"))
+                .andExpect(status().is3xxRedirection());
+        var clarificationWork = runtime.claimNext();
+        assertThat(clarificationWork.trigger()).isEqualTo("clarification_request");
+        assertThat(clarificationWork.clarifiesQuestionId()).isEqualTo(firstQuestion);
+        var clarificationContext = runtime.context(clarificationWork);
+        assertThat(clarificationContext.clarifiesQuestionId()).isEqualTo(firstQuestion);
+        var clarified = runtime.complete(clarificationWork, new InterviewRuntimeRepository.Submission(
+                clarificationWork.id(), clarificationWork.sessionId(), clarificationWork.expectedRevision(),
+                List.of(), new InterviewRuntimeRepository.NextAction("ask_question", HIGH_ITEM,
+                        "Which retry case should you describe?", "A concrete case is enough.",
+                        new InterviewRuntimeRepository.Progress("None", "Retry rules", "Ownership"))));
+        assertThat(jdbc.sql("SELECT clarifies_question_id FROM interview_questions WHERE id = ?")
+                .param(clarified.questionId()).query(UUID.class).single()).isEqualTo(firstQuestion);
+        assertThat(state()).isEqualTo("active:7:true");
+
+        interviews.answer(GRANT, clarified.questionId(), 7, "Original exact response");
+        var originalEvidence = jdbc.sql("SELECT id FROM evidence").query(UUID.class).single();
+        interviews.revise(GRANT, originalEvidence, 8, "Corrected exact response");
+        assertThat(jdbc.sql("SELECT source_type || ':' || answer FROM evidence ORDER BY created_at, id")
+                .query(String.class).list()).containsExactlyInAnyOrder(
+                        "interviewee_answer:Original exact response",
+                        "interviewee_answer_revision:Corrected exact response");
+        assertThat(jdbc.sql("SELECT revises_evidence_id FROM evidence WHERE source_type = 'interviewee_answer_revision'")
+                .query(UUID.class).single()).isEqualTo(originalEvidence);
+        assertThatThrownBy(() -> interviews.revise(GRANT, originalEvidence, 9, "Another response"))
+                .isInstanceOf(IllegalArgumentException.class);
+        var revision = jdbc.sql("SELECT id FROM evidence WHERE source_type = 'interviewee_answer_revision'")
+                .query(UUID.class).single();
+        assertThatThrownBy(() -> interviews.revise(GRANT, revision, 9, "Corrected exact response"))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        interviews.pause(GRANT, 9);
+        assertThat(state()).isEqualTo("paused:10:false");
+        interviews.resume(GRANT, 10);
+        assertThat(state()).isEqualTo("active:11:false");
+        var resumeWork = runtime.claimNext();
+        assertThat(resumeWork.trigger()).isEqualTo("resume");
+        assertThat(runtime.context(resumeWork).conversation())
+                .extracting(InterviewRuntimeRepository.Exchange::answer)
+                .contains("Corrected exact response");
+
+        interviews.endEarly(GRANT, 11, true);
+        assertThat(state()).isEqualTo("ended_early:12:false");
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_runtime_runs WHERE status = 'cancelled'")
+                .query(Integer.class).single()).isGreaterThanOrEqualTo(1);
+        assertThatThrownBy(() -> runtime.complete(resumeWork, submission(resumeWork)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> interviews.resume(GRANT, 12)).isInstanceOf(IllegalArgumentException.class);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview").cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Your responses remain saved")));
+    }
+
+    @Test
+    void investigatorTerminationRevokesAccessCancelsRuntimeAndReportsRemainingItems() throws Exception {
+        interviews.start(GRANT);
+        var session = interviews.missionSession(MISSION, "investigator@findworks.local");
+        assertThat(session.remainingItems()).containsExactly("Retry decision rules", "Ownership and exceptions");
+
+        interviews.terminate(MISSION, SESSION, 1, "investigator@findworks.local");
+
+        assertThat(state()).isEqualTo("terminated:2:false");
+        assertThat(jdbc.sql("SELECT status FROM interview_runtime_runs").query(String.class).single())
+                .isEqualTo("cancelled");
+        assertThat(jdbc.sql("SELECT revoked_at IS NOT NULL FROM interview_access_grants")
+                .query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isZero();
+        assertThatThrownBy(() -> interviews.interview(GRANT)).isInstanceOf(InterviewAccessDeniedException.class);
+        assertThatThrownBy(() -> interviews.terminate(MISSION, SESSION, 2, "investigator@findworks.local"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private InterviewRuntimeRepository.Submission submission(InterviewRuntimeRepository.Work work) {

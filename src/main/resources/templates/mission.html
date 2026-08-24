@@ -118,6 +118,24 @@
         <a class="text-link" th:href="@{/discoveries/{id}(id=${mission.discoveryId})}">Continue grilling instead</a>
     </section>
 
+    <section class="editor-section" th:if="${interviewSession != null}">
+        <p class="eyebrow">Interview Session</p>
+        <h2 th:text="${interviewSession.participantName + ' · ' + interviewSession.status}">Participant · active</h2>
+        <div th:if="${!interviewSession.remainingItems.empty}">
+            <strong>Required Investigation Items still remaining</strong>
+            <ul><li th:each="item : ${interviewSession.remainingItems}" th:text="${item}">Knowledge gap</li></ul>
+        </div>
+        <p th:if="${interviewSession.remainingItems.empty}">No required Investigation Items remain.</p>
+        <form method="post"
+              th:if="${interviewSession.status == 'active' || interviewSession.status == 'paused'}"
+              th:action="@{/missions/{missionId}/sessions/{sessionId}/terminate(missionId=${mission.id},sessionId=${interviewSession.id})}">
+            <input type="hidden" name="expectedRevision" th:value="${interviewSession.revision}">
+            <label class="checkbox-label"><input type="checkbox" name="confirmed" value="true" required>
+                Terminate access and stop pending Interview work. Existing Evidence remains unchanged.</label>
+            <button class="button secondary" type="submit">Terminate Interview Session</button>
+        </form>
+    </section>
+
     <section class="version-history">
         <h2>Version history</h2>
         <ol><li th:each="version : ${mission.history}"><a th:href="@{/missions/{id}(id=${version.id})}" th:text="${'Version ' + version.version + ' · ' + version.status}">Version</a><time th:text="${#temporals.format(version.createdAt, 'd MMM yyyy, HH:mm')}">Time</time></li></ol>
