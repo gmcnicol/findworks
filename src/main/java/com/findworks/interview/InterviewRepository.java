@@ -108,7 +108,9 @@ class InterviewRepository {
         return jdbc.sql("""
                 SELECT s.status, p.intended_name, o.name organisation_name, o.retention_days,
                        u.email investigator_email,
-                       m.objective, m.expected_commitment, m.data_use_summary
+                       m.objective, m.expected_commitment, m.data_use_summary,
+                       q.question, q.human_context, e.covered_count, e.total_required,
+                       e.covered_text, e.current_text, e.remaining_text, latest_run.status runtime_status
                 FROM interview_access_grants g
                 JOIN interview_sessions s ON s.id = g.interview_session_id
                     AND s.participant_id = g.participant_id AND s.organisation_id = g.organisation_id
@@ -121,15 +123,33 @@ class InterviewRepository {
                     AND owner.organisation_id = d.organisation_id AND owner.role = 'investigator'
                 JOIN users u ON u.id = owner.user_id AND u.email_verified_at IS NOT NULL
                 JOIN organisations o ON o.id = d.organisation_id
+                LEFT JOIN interview_questions q ON q.id = s.active_question_id
+                    AND q.interview_session_id = s.id AND q.organisation_id = s.organisation_id
+                LEFT JOIN interview_application_events e ON e.question_id = q.id
+                    AND e.interview_session_id = s.id AND e.organisation_id = s.organisation_id
+                LEFT JOIN LATERAL (
+                    SELECT r.status FROM interview_runtime_runs r
+                    WHERE r.interview_session_id = s.id ORDER BY r.created_at DESC LIMIT 1
+                ) latest_run ON true
                 WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
                   AND d.status = 'active' AND m.approved_at IS NOT NULL
                   AND (s.status <> 'not_started' OR m.status = 'approved')
                 """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) -> {
                     var investigatorEmail = rs.getString("investigator_email");
-                    return new AccessView(rs.getString("status"), rs.getString("intended_name"),
+                    var question = rs.getString("question");
+                    var runtimeStatus = rs.getString("runtime_status");
+                    var status = rs.getString("status");
+                    var runtimeState = "not_started".equals(status) ? null : question != null ? "question_ready"
+                            : "failed".equals(runtimeStatus) ? "runtime_failed" : "working";
+                    return new AccessView(status, rs.getString("intended_name"),
                             rs.getString("organisation_name"), investigatorEmail, rs.getString("objective"),
                             rs.getString("expected_commitment"), rs.getString("data_use_summary"),
-                            rs.getInt("retention_days"), properties.contactOr(investigatorEmail));
+                            rs.getInt("retention_days"), properties.contactOr(investigatorEmail),
+                            runtimeState, question, rs.getString("human_context"),
+                            rs.getObject("covered_count", Integer.class),
+                            rs.getObject("total_required", Integer.class),
+                            rs.getString("covered_text"), rs.getString("current_text"),
+                            rs.getString("remaining_text"));
                 }).optional().orElseThrow(InterviewAccessDeniedException::new);
     }
 
@@ -138,7 +158,8 @@ class InterviewRepository {
         requireToken(accessToken);
         tenant.select();
         var session = jdbc.sql("""
-                SELECT s.id, s.status
+                SELECT s.id, s.status, s.revision, s.organisation_id, s.discovery_id,
+                       s.interview_mission_id
                 FROM interview_access_grants g
                 JOIN interview_sessions s ON s.id = g.interview_session_id
                     AND s.participant_id = g.participant_id AND s.organisation_id = g.organisation_id
@@ -150,16 +171,26 @@ class InterviewRepository {
                   AND (s.status <> 'not_started' OR m.status = 'approved')
                 FOR UPDATE OF s
                 """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) -> new SessionState(
-                        rs.getObject("id", UUID.class), rs.getString("status"))).optional()
+                        rs.getObject("id", UUID.class), rs.getString("status"), rs.getInt("revision"),
+                        rs.getObject("organisation_id", UUID.class), rs.getObject("discovery_id", UUID.class),
+                        rs.getObject("interview_mission_id", UUID.class))).optional()
                 .orElseThrow(InterviewAccessDeniedException::new);
         if (!"not_started".equals(session.status())) {
             return;
         }
+        var expectedRevision = session.revision() + 1;
         jdbc.sql("""
                 UPDATE interview_sessions
                 SET status = 'active', started_at = ?, revision = revision + 1
                 WHERE id = ? AND status = 'not_started'
                 """).params(timestamp(clock.instant()), session.id()).update();
+        jdbc.sql("""
+                INSERT INTO interview_runtime_runs (
+                    id, organisation_id, discovery_id, interview_session_id,
+                    interview_mission_id, trigger, expected_revision
+                ) VALUES (?, ?, ?, ?, ?, 'session_start', ?)
+                """).params(UUID.randomUUID(), session.organisationId(), session.discoveryId(), session.id(),
+                session.missionId(), expectedRevision).update();
         tenant.auditSystem("interview_session_started", "interview_session", session.id());
     }
 
@@ -216,9 +247,12 @@ class InterviewRepository {
 
     record RedeemedInvitation(String accessToken, Instant expiresAt) {}
     record AccessView(String status, String participantName, String organisationName, String investigatorEmail,
-            String purpose, String expectedCommitment, String dataUseSummary, int retentionDays, String contact) {}
+            String purpose, String expectedCommitment, String dataUseSummary, int retentionDays, String contact,
+            String runtimeState, String question, String humanContext, Integer coveredCount, Integer totalRequired,
+            String coveredText, String currentText, String remainingText) {}
     record Finding(String knowledgeGap, String answer, Instant answeredAt) {}
     private record Invitation(UUID id, UUID organisationId, UUID discoveryId, UUID missionId, UUID participantId) {}
     private record Session(UUID id, UUID participantId) {}
-    private record SessionState(UUID id, String status) {}
+    private record SessionState(UUID id, String status, int revision, UUID organisationId,
+            UUID discoveryId, UUID missionId) {}
 }

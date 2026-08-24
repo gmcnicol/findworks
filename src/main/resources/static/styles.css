@@ -226,6 +226,11 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .participation-details div:last-child { border-bottom: 1px solid var(--line); }
 .participation-details dt { color: var(--muted); font-size: .82rem; font-weight: 760; }
 .participation-details dd { margin: 6px 0 0; line-height: 1.5; }
+.question-context { margin: -18px 0 30px; color: var(--muted); line-height: 1.6; }
+.progress-summary { display: grid; gap: 12px; margin-top: 34px; }
+.progress-summary div { padding-top: 12px; border-top: 1px solid var(--line); }
+.progress-summary dt { color: var(--muted); font-size: .82rem; font-weight: 760; }
+.progress-summary dd { margin: 5px 0 0; }
 .completion { text-align: center; padding-block: 36px; }
 .completion h1 { margin-inline: auto; font-size: clamp(2.6rem, 7vw, 4.8rem); }
 .completion p:last-child { color: var(--muted); font-size: 1.1rem; }
