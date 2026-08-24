@@ -12,7 +12,7 @@ This repository supplies one-host topology and gates. It does not prove a live h
 
 ## Role and secret matrix
 
-The same application image runs `web`, `worker`, `migrate`, one-shot `support`, or one-shot `recovery`. Web, worker, support, and recovery disable Flyway. Migrate enables Flyway, serves no HTTP, and exits after validation/migration.
+The same application image runs `web`, `worker`, `migrate`, one-shot `support`, one-shot `recovery`, or one-shot `acceptance`. Web, worker, support, recovery, and acceptance disable Flyway. Migrate enables Flyway, serves no HTTP, and exits after validation/migration.
 
 - Ingress: TLS certificate and key only.
 - Web: web database password, Investigator password, invitation token keys.
@@ -20,6 +20,7 @@ The same application image runs `web`, `worker`, `migrate`, one-shot `support`, 
 - Migrator: schema-owner database password only.
 - Support: narrow support database password, named operator ID, break-glass key only when requested, and a protected reason supplied as a config-tree file. It receives no schema-owner, worker, model, email-provider, or runtime credential.
 - Recovery: short-lived recovery database password, signed-bundle key, opaque restore metadata, and private bundle directory only. It receives no web, email, model, OCI, or schema-owner credential. Use [backup-restore-runbook.md](backup-restore-runbook.md).
+- Acceptance: support database password, named operator identity, and one protected content-free input manifest. It receives no web, email, model, OCI, recovery, break-glass, or schema-owner credential.
 - Pi turn: model credential and one turn-scoped FindWorks credential through stdin. No host environment, mount, database credential, socket, or application secrets.
 
 Secret files are mounted at runtime and imported with Spring `configtree`. Rotate a file, revoke the old value, and restart only its consumer. Never put values in environment files, Compose literals, image layers, command arguments, logs, checkpoints, Mission context, or browsers.

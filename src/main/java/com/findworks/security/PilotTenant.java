@@ -27,7 +27,7 @@ public final class PilotTenant {
         this.correlations = correlations;
         this.databaseRole = switch (processRole) {
             case "web" -> "findworks_application";
-            case "support" -> "findworks_support";
+            case "support", "acceptance" -> "findworks_support";
             case "recovery" -> "findworks_recovery";
             default -> "findworks_worker";
         };
