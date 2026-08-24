@@ -65,13 +65,14 @@ public class InterviewRuntimeRepository {
                 WHERE r.id = ? AND r.interview_session_id = ? AND r.interview_mission_id = ?
                   AND r.organisation_id = ? AND r.status = 'running'
                   AND s.status = 'active' AND s.revision = r.expected_revision
-                  AND s.active_question_id IS NULL AND m.approved_at IS NOT NULL AND d.status = 'active'
-                  AND ((r.trigger = 'session_start' AND r.evidence_id IS NULL)
+                  AND s.active_question_id IS NULL
+                  AND m.approved_at IS NOT NULL AND d.status = 'active'
+                  AND ((r.trigger IN ('session_start', 'resume') AND r.evidence_id IS NULL)
                     OR (r.trigger = 'accepted_evidence' AND EXISTS (
                         SELECT 1 FROM evidence e
                         WHERE e.id = r.evidence_id AND e.interview_session_id = r.interview_session_id
                           AND e.organisation_id = r.organisation_id
-                          AND e.source_type = 'interviewee_answer'))
+                          AND e.source_type IN ('interviewee_answer', 'interviewee_answer_revision')))
                     OR (r.trigger = 'clarification_request' AND EXISTS (
                         SELECT 1 FROM interview_questions q
                         WHERE q.id = r.source_question_id
@@ -138,7 +139,11 @@ public class InterviewRuntimeRepository {
                        q.question_kind, q.clarifies_question_id, q.source_evidence_id,
                        e.id evidence_id, e.answer, e.participation_signal, a.assessment scope_assessment
                 FROM interview_questions q
-                LEFT JOIN evidence e ON e.question_id = q.id AND e.source_type = 'interviewee_answer'
+                LEFT JOIN evidence e ON e.question_id = q.id
+                    AND e.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
+                    AND NOT EXISTS (
+                        SELECT 1 FROM evidence revision WHERE revision.revises_evidence_id = e.id
+                    )
                 LEFT JOIN evidence_scope_assessments a ON a.evidence_id = e.id
                 WHERE q.interview_session_id = ? AND q.interview_mission_id = ?
                 ORDER BY q.sequence
@@ -159,6 +164,15 @@ public class InterviewRuntimeRepository {
     @Transactional
     public Event complete(Work work, Submission submission) {
         tenant.select();
+        var session = jdbc.sql("""
+                SELECT status, revision, active_question_id
+                FROM interview_sessions
+                WHERE id = ? AND interview_mission_id = ? AND organisation_id = ? FOR UPDATE
+                """).params(work.sessionId(), work.missionId(), work.organisationId())
+                .query((rs, ignored) -> new SessionState(
+                        rs.getString("status"), rs.getInt("revision"),
+                        rs.getObject("active_question_id", UUID.class))).optional()
+                .orElseThrow(() -> new IllegalStateException("Interview Session no longer exists."));
         var status = jdbc.sql("""
                 SELECT status FROM interview_runtime_runs
                 WHERE id = ? AND interview_session_id = ? AND interview_mission_id = ?
@@ -173,15 +187,6 @@ public class InterviewRuntimeRepository {
             throw new IllegalStateException("Interview runtime Run is not running.");
         }
         validateEnvelope(work, submission);
-        var session = jdbc.sql("""
-                SELECT status, revision, active_question_id
-                FROM interview_sessions
-                WHERE id = ? AND interview_mission_id = ? AND organisation_id = ? FOR UPDATE
-                """).params(work.sessionId(), work.missionId(), work.organisationId())
-                .query((rs, ignored) -> new SessionState(
-                        rs.getString("status"), rs.getInt("revision"),
-                        rs.getObject("active_question_id", UUID.class))).optional()
-                .orElseThrow(() -> new IllegalStateException("Interview Session no longer exists."));
         if (!"active".equals(session.status()) || session.revision() != work.expectedRevision()
                 || session.activeQuestionId() != null) {
             throw new IllegalArgumentException("Interview runtime Run is stale.");
@@ -419,7 +424,7 @@ public class InterviewRuntimeRepository {
                     AND s.participant_id = e.participant_id AND s.organisation_id = e.organisation_id
                 WHERE e.id = ? AND e.interview_session_id = ? AND e.interview_mission_id = ?
                   AND e.organisation_id = ? AND e.investigation_item_id = ?
-                  AND e.source_type = 'interviewee_answer'
+                  AND e.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
                 """).params(evidenceId, work.sessionId(), work.missionId(), work.organisationId(), itemId)
                 .query((rs, ignored) -> new EvidenceState(rs.getObject("id", UUID.class),
                         rs.getString("participation_signal"), rs.getString("answer"))).optional()
@@ -458,7 +463,8 @@ public class InterviewRuntimeRepository {
             var evidence = jdbc.sql("""
                     SELECT investigation_item_id FROM evidence
                     WHERE id = ? AND interview_session_id = ? AND interview_mission_id = ?
-                      AND organisation_id = ? AND source_type = 'interviewee_answer'
+                      AND organisation_id = ?
+                      AND source_type IN ('interviewee_answer', 'interviewee_answer_revision')
                     """).params(proposal.evidenceId(), work.sessionId(), work.missionId(), work.organisationId())
                     .query(UUID.class).optional()
                     .orElseThrow(() -> new IllegalArgumentException("Scope Evidence is outside the Interview."));
@@ -621,7 +627,7 @@ public class InterviewRuntimeRepository {
                 || submission.nextAction().progress() == null) {
             throw new IllegalArgumentException("Pi returned an invalid Interview turn.");
         }
-        if ("session_start".equals(work.trigger())
+        if (Set.of("session_start", "resume").contains(work.trigger())
                 && (!submission.outcomes().isEmpty() || !submission.scopeAssessments().isEmpty()
                     || !"ask_question".equals(submission.nextAction().kind()))
                 || "clarification_request".equals(work.trigger())
