@@ -161,7 +161,7 @@ class InterviewRepository {
                     ORDER BY accepted.created_at DESC, accepted.id DESC LIMIT 1
                 ) latest_evidence ON true
                 WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
-                  AND d.status = 'active' AND m.approved_at IS NOT NULL
+                  AND d.status = 'active' AND s.access_blocked_at IS NULL AND m.approved_at IS NOT NULL
                   AND (s.status <> 'not_started' OR m.status = 'approved')
                 """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) -> {
                     var investigatorEmail = rs.getString("investigator_email");
@@ -207,7 +207,7 @@ class InterviewRepository {
                     AND m.discovery_id = s.discovery_id AND m.organisation_id = s.organisation_id
                 JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
                 WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
-                  AND d.status = 'active' AND m.approved_at IS NOT NULL
+                  AND d.status = 'active' AND s.access_blocked_at IS NULL AND m.approved_at IS NOT NULL
                   AND (s.status <> 'not_started' OR m.status = 'approved')
                 FOR UPDATE OF s
                 """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) -> new SessionState(
@@ -329,7 +329,7 @@ class InterviewRepository {
                     AND m.discovery_id = s.discovery_id AND m.organisation_id = s.organisation_id
                 JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
                 WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
-                  AND d.status = 'active' AND m.approved_at IS NOT NULL
+                  AND d.status = 'active' AND s.access_blocked_at IS NULL AND m.approved_at IS NOT NULL
                 FOR UPDATE OF s
                 """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) -> new AnswerState(
                         rs.getObject("id", UUID.class), rs.getString("status"), rs.getInt("revision"),
@@ -715,7 +715,7 @@ class InterviewRepository {
                     AND m.discovery_id = s.discovery_id AND m.organisation_id = s.organisation_id
                 JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
                 WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
-                  AND d.status = 'active' AND m.approved_at IS NOT NULL
+                  AND d.status = 'active' AND s.access_blocked_at IS NULL AND m.approved_at IS NOT NULL
                 FOR UPDATE OF s
                 """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) ->
                         new ParticipantState(rs.getObject("id", UUID.class), rs.getString("status"),

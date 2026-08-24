@@ -76,7 +76,7 @@ class InvitationRepository {
                 JOIN interview_missions m ON m.id = i.interview_mission_id
                 JOIN discoveries d ON d.id = m.discovery_id
                 LEFT JOIN invitation_delivery_jobs j ON j.invitation_id = i.id
-                WHERE i.interview_mission_id = ? AND d.owner_membership_id = ?
+                WHERE i.interview_mission_id = ? AND d.owner_membership_id = ? AND d.status = 'active'
                 ORDER BY i.created_at DESC LIMIT 1
                 """).params(timestamp(clock.instant()), missionId, investigator.membershipId()).query((rs, ignored) -> new View(
                         rs.getObject("id", UUID.class), rs.getString("recipient_email"),
@@ -150,7 +150,9 @@ class InvitationRepository {
                 FROM invitation_delivery_jobs j
                 JOIN invitations i ON i.id = j.invitation_id
                 JOIN interview_missions m ON m.id = i.interview_mission_id
+                JOIN discoveries d ON d.id = i.discovery_id AND d.organisation_id = i.organisation_id
                 WHERE i.delivery_status = 'pending' AND i.revoked_at IS NULL
+                  AND d.status = 'active'
                   AND j.attempt_count < 3 AND j.next_attempt_at <= ?
                   AND (j.status = 'pending' OR (j.status = 'leased' AND j.lease_expires_at <= ?))
                 ORDER BY j.next_attempt_at, j.created_at

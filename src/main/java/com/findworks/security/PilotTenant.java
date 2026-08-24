@@ -1,6 +1,8 @@
 package com.findworks.security;
 
 import com.findworks.PilotProperties;
+import java.sql.Timestamp;
+import java.time.Clock;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
@@ -11,10 +13,12 @@ public final class PilotTenant {
 
     private final JdbcClient jdbc;
     private final PilotProperties properties;
+    private final Clock clock;
 
-    public PilotTenant(JdbcClient jdbc, PilotProperties properties) {
+    public PilotTenant(JdbcClient jdbc, PilotProperties properties, Clock clock) {
         this.jdbc = jdbc;
         this.properties = properties;
+        this.clock = clock;
     }
 
     public void select() {
@@ -61,10 +65,12 @@ public final class PilotTenant {
             String action, String resourceKind, UUID resourceId, String outcome) {
         jdbc.sql("""
                 INSERT INTO audit_records
-                    (id, organisation_id, actor_kind, actor_id, action, resource_kind, resource_id, outcome, correlation_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, organisation_id, actor_kind, actor_id, action, resource_kind, resource_id,
+                     outcome, correlation_id, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::timestamptz + interval '12 months')
                 """).params(UUID.randomUUID(), organisationId, actorKind, actorId, action, resourceKind,
-                        resourceId, outcome, UUID.randomUUID()).update();
+                        resourceId, outcome, UUID.randomUUID(), Timestamp.from(clock.instant()),
+                        Timestamp.from(clock.instant())).update();
     }
 
     public record Investigator(UUID membershipId, UUID userId, UUID organisationId) {}

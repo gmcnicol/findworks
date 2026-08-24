@@ -2,6 +2,8 @@ package com.findworks.interview;
 
 import com.findworks.runtime.FindingsExtractionRunner;
 import com.findworks.security.PilotTenant;
+import com.findworks.retention.RetentionRepository;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,11 +25,16 @@ public class FindingsRepository {
     private final JdbcClient jdbc;
     private final PilotTenant tenant;
     private final InterviewRuntimeRepository runtime;
+    private final RetentionRepository retention;
+    private final Clock clock;
 
-    FindingsRepository(JdbcClient jdbc, PilotTenant tenant, InterviewRuntimeRepository runtime) {
+    FindingsRepository(JdbcClient jdbc, PilotTenant tenant, InterviewRuntimeRepository runtime,
+            RetentionRepository retention, Clock clock) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.runtime = runtime;
+        this.retention = retention;
+        this.clock = clock;
     }
 
     @Transactional
@@ -51,6 +58,7 @@ public class FindingsRepository {
                   AND r.work_kind = 'findings_extraction' AND r.trigger = 'findings_extraction'
                   AND s.status = 'completed' AND s.revision = r.expected_revision
                   AND m.approved_at IS NOT NULL AND d.status = 'active'
+                  AND s.access_blocked_at IS NULL
                   AND NOT EXISTS (SELECT 1 FROM findings_packages p
                                   WHERE p.interview_session_id = r.interview_session_id)
                 """).params(work.id(), work.leaseOwner()).query((rs, ignored) -> new Mission(
@@ -398,15 +406,17 @@ public class FindingsRepository {
         if ("accepted".equals(decision) && missingRequiredReviews(packageVersionId) != 0) {
             throw new IllegalArgumentException("Review every required finding before accepting this package.");
         }
+        var decidedAt = clock.instant();
         jdbc.sql("""
                 INSERT INTO findings_package_decisions (
                     id, organisation_id, findings_package_review_id, findings_package_version_id,
                     interview_session_id, interview_mission_id, decision, notes,
-                    actor_membership_id, review_revision
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    actor_membership_id, review_revision, decided_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """).params(UUID.randomUUID(), review.organisationId(), review.id(), packageVersionId,
                 review.sessionId(), review.missionId(), decision, decisionNotes,
-                investigator.membershipId(), expectedRevision).update();
+                investigator.membershipId(), expectedRevision, java.sql.Timestamp.from(decidedAt)).update();
+        retention.scheduleReviewed(review.discoveryId(), decidedAt);
         tenant.audit(investigator, "findings_package_" + decision, "findings_package", review.packageId());
     }
 
@@ -541,6 +551,7 @@ public class FindingsRepository {
                 LEFT JOIN findings_package_decisions d
                     ON d.findings_package_version_id = v.id
                 WHERE v.id = ? AND v.interview_mission_id = ? AND x.owner_membership_id = ?
+                  AND x.status = 'active' AND v.invalidated_at IS NULL
                 FOR UPDATE OF r
                 """).params(packageVersionId, missionId, ownerMembershipId)
                 .query((rs, ignored) -> reviewScope(rs)).optional()
@@ -559,6 +570,7 @@ public class FindingsRepository {
                 LEFT JOIN findings_package_decisions d
                     ON d.findings_package_version_id = v.id
                 WHERE v.id = ? AND v.interview_mission_id = ? AND x.owner_membership_id = ?
+                  AND x.status = 'active' AND v.invalidated_at IS NULL
                 """).params(packageVersionId, missionId, ownerMembershipId)
                 .query((rs, ignored) -> reviewScope(rs)).optional()
                 .orElseThrow(() -> new AccessDeniedException("Findings review access denied."));
@@ -757,6 +769,7 @@ public class FindingsRepository {
                 FROM interview_sessions s
                 JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
                 WHERE s.interview_mission_id = ? AND d.owner_membership_id = ?
+                  AND d.status = 'active' AND s.access_blocked_at IS NULL
                 """).params(missionId, ownerMembershipId).query((rs, ignored) -> new OwnerSession(
                         rs.getObject("id", UUID.class), rs.getString("status"), rs.getInt("revision"),
                         rs.getObject("organisation_id", UUID.class), rs.getObject("discovery_id", UUID.class),

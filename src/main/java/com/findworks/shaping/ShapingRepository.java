@@ -128,11 +128,13 @@ public class ShapingRepository {
     public Work claimNext() {
         tenant.select();
         var id = jdbc.sql("""
-                SELECT id FROM shaping_runtime_work
-                WHERE attempts < 3 AND available_at <= now()
-                  AND (status = 'queued' OR (status = 'running' AND lease_until < now()))
-                ORDER BY created_at
-                FOR UPDATE SKIP LOCKED LIMIT 1
+                SELECT w.id FROM shaping_runtime_work w
+                JOIN discovery_shaping_sessions s ON s.id = w.shaping_session_id
+                JOIN discoveries d ON d.id = s.discovery_id
+                WHERE w.attempts < 3 AND w.available_at <= now() AND d.status = 'active'
+                  AND (w.status = 'queued' OR (w.status = 'running' AND w.lease_until < now()))
+                ORDER BY w.created_at
+                FOR UPDATE OF w SKIP LOCKED LIMIT 1
                 """).query(UUID.class).optional();
         if (id.isEmpty()) {
             return null;
@@ -158,6 +160,7 @@ public class ShapingRepository {
                 JOIN discovery_shaping_sessions s ON s.id = w.shaping_session_id
                 JOIN discoveries d ON d.id = s.discovery_id
                 WHERE w.id = ? AND w.shaping_session_id = ? AND w.organisation_id = ?
+                  AND d.status = 'active'
                 """).params(work.id(), work.sessionId(), work.organisationId())
                 .query((rs, row) -> new DiscoveryContext(rs.getString("title"), rs.getString("objective")))
                 .optional().orElseThrow(() -> new IllegalStateException("Shaping runtime scope no longer exists."));

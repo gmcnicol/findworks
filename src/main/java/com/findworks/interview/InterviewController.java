@@ -1,5 +1,6 @@
 package com.findworks.interview;
 
+import com.findworks.retention.RetentionRepository;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import java.security.Principal;
@@ -26,14 +27,17 @@ final class InterviewController {
     private final MissionRepository missions;
     private final InvitationRepository invitations;
     private final FindingsRepository findings;
+    private final RetentionRepository retention;
     private final Clock clock;
 
     InterviewController(InterviewRepository interviews, MissionRepository missions,
-            InvitationRepository invitations, FindingsRepository findings, Clock clock) {
+            InvitationRepository invitations, FindingsRepository findings,
+            RetentionRepository retention, Clock clock) {
         this.interviews = interviews;
         this.missions = missions;
         this.invitations = invitations;
         this.findings = findings;
+        this.retention = retention;
         this.clock = clock;
     }
 
@@ -218,6 +222,16 @@ final class InterviewController {
             throw new IllegalArgumentException("Confirm that you want to terminate this Interview Session.");
         }
         interviews.terminate(missionId, sessionId, expectedRevision, principal.getName());
+        return "redirect:/missions/" + missionId;
+    }
+
+    @PostMapping("/missions/{missionId}/sessions/{sessionId}/delete")
+    String deleteSession(Principal principal, @PathVariable UUID missionId, @PathVariable UUID sessionId,
+            @RequestParam(defaultValue = "false") boolean confirmed) {
+        if (!confirmed) {
+            throw new IllegalArgumentException("Confirm that you want to delete this Interview Session.");
+        }
+        retention.requestSessionDeletion(missionId, sessionId, principal.getName());
         return "redirect:/missions/" + missionId;
     }
     @GetMapping("/missions/{id}/findings")
