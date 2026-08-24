@@ -178,6 +178,13 @@ public class FindingsRepository {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
                 """).params(versionId, work.organisationId(), work.discoveryId(), packageId,
                 work.sessionId(), work.missionId(), work.id()).update();
+        jdbc.sql("""
+                INSERT INTO findings_package_reviews (
+                    id, organisation_id, findings_package_version_id,
+                    interview_session_id, interview_mission_id
+                ) VALUES (?, ?, ?, ?, ?)
+                """).params(UUID.randomUUID(), work.organisationId(), versionId,
+                work.sessionId(), work.missionId()).update();
         var versionIds = new HashMap<UUID, UUID>();
         for (var group : preparedGroups) {
             jdbc.sql("""
@@ -267,6 +274,165 @@ public class FindingsRepository {
         tenant.audit(investigator, "findings_extraction_retried", "interview_session", state.sessionId());
     }
 
+    @Transactional
+    public void reviewKnowledge(UUID missionId, UUID packageVersionId, UUID knowledgeVersionId,
+            int expectedRevision, String state, String email) {
+        if (!Set.of("accepted", "rejected").contains(state)) {
+            throw new IllegalArgumentException("Choose accept or reject for this Knowledge Item.");
+        }
+        var investigator = tenant.investigator(email);
+        var review = lockReview(missionId, packageVersionId, investigator.membershipId());
+        requirePending(review, expectedRevision);
+        var item = currentKnowledge(review, knowledgeVersionId);
+        if (!"unreviewed".equals(item.state())) {
+            throw new IllegalArgumentException("This Knowledge Item was already reviewed.");
+        }
+        changed(jdbc.sql("""
+                UPDATE knowledge_item_versions SET confirmation_state = ?
+                WHERE id = ? AND confirmation_state = 'unreviewed'
+                """).params(state, knowledgeVersionId).update());
+        insertKnowledgeReview(review, item.knowledgeItemId(), knowledgeVersionId, state,
+                investigator.membershipId());
+        advance(review);
+        tenant.audit(investigator, "knowledge_item_" + state, "knowledge_item", item.knowledgeItemId());
+    }
+
+    @Transactional
+    public void correctKnowledge(UUID missionId, UUID packageVersionId, UUID knowledgeVersionId,
+            int expectedRevision, String correction, String email) {
+        var corrected = reviewText(correction, "correction");
+        var investigator = tenant.investigator(email);
+        var review = lockReview(missionId, packageVersionId, investigator.membershipId());
+        requirePending(review, expectedRevision);
+        var item = currentKnowledge(review, knowledgeVersionId);
+        if (!"unreviewed".equals(item.state())) {
+            throw new IllegalArgumentException("Only an unreviewed current Knowledge Item can be corrected.");
+        }
+        var source = jdbc.sql("""
+                SELECT c.evidence_id, e.question_id
+                FROM knowledge_item_evidence_citations c
+                JOIN evidence e ON e.id = c.evidence_id
+                WHERE c.knowledge_item_version_id = ? ORDER BY c.position LIMIT 1
+                """).param(knowledgeVersionId).query((rs, ignored) -> new CorrectionSource(
+                        rs.getObject("evidence_id", UUID.class), rs.getObject("question_id", UUID.class)))
+                .optional().orElseThrow(() -> new IllegalArgumentException("Knowledge Item provenance is missing."));
+        var evidenceId = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO evidence (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    participant_id, question_id, investigation_item_id, source_type, answer,
+                    actor_membership_id, corrects_evidence_id
+                ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 'investigator_correction', ?, ?, ?)
+                """).params(evidenceId, review.organisationId(), review.discoveryId(), review.sessionId(),
+                review.missionId(), source.questionId(), item.investigationItemId(), corrected,
+                investigator.membershipId(), source.evidenceId()).update();
+        changed(jdbc.sql("""
+                UPDATE knowledge_item_versions SET confirmation_state = 'corrected'
+                WHERE id = ? AND confirmation_state = 'unreviewed'
+                """).param(knowledgeVersionId).update());
+        insertKnowledgeReview(review, item.knowledgeItemId(), knowledgeVersionId, "corrected",
+                investigator.membershipId());
+        var nextVersionId = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO knowledge_item_versions (
+                    id, organisation_id, knowledge_item_id, findings_package_version_id,
+                    investigation_item_id, interview_session_id, interview_mission_id,
+                    version, category, claim, confirmation_state,
+                    previous_version_id, correction_evidence_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?)
+                """).params(nextVersionId, review.organisationId(), item.knowledgeItemId(), packageVersionId,
+                item.investigationItemId(), review.sessionId(), review.missionId(), item.version() + 1,
+                item.category(), corrected, knowledgeVersionId, evidenceId).update();
+        jdbc.sql("""
+                INSERT INTO knowledge_item_evidence_citations (
+                    organisation_id, knowledge_item_version_id, investigation_item_id,
+                    interview_session_id, interview_mission_id, evidence_id, position,
+                    start_offset, end_offset, quotation
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+                """).params(review.organisationId(), nextVersionId, item.investigationItemId(),
+                review.sessionId(), review.missionId(), evidenceId,
+                corrected.codePointCount(0, corrected.length()), corrected).update();
+        insertKnowledgeReview(review, item.knowledgeItemId(), nextVersionId, "accepted",
+                investigator.membershipId());
+        changed(jdbc.sql("""
+                UPDATE knowledge_items SET current_version = ?
+                WHERE id = ? AND current_version = ?
+                """).params(item.version() + 1, item.knowledgeItemId(), item.version()).update());
+        advance(review);
+        tenant.audit(investigator, "knowledge_item_corrected", "knowledge_item", item.knowledgeItemId());
+    }
+
+    @Transactional
+    public void acknowledgeOutcome(UUID missionId, UUID packageVersionId, UUID outcomeId,
+            int expectedRevision, String email) {
+        var investigator = tenant.investigator(email);
+        var review = lockReview(missionId, packageVersionId, investigator.membershipId());
+        requirePending(review, expectedRevision);
+        var exists = jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM findings_package_unresolved_outcomes
+                    WHERE findings_package_version_id = ? AND outcome_id = ? AND organisation_id = ?)
+                """).params(packageVersionId, outcomeId, review.organisationId()).query(Boolean.class).single();
+        if (!exists) {
+            throw new IllegalArgumentException("Unresolved outcome is outside this Findings Package.");
+        }
+        jdbc.sql("""
+                INSERT INTO findings_unresolved_outcome_reviews (
+                    id, organisation_id, findings_package_version_id, outcome_id, actor_membership_id
+                ) VALUES (?, ?, ?, ?, ?)
+                """).params(UUID.randomUUID(), review.organisationId(), packageVersionId,
+                outcomeId, investigator.membershipId()).update();
+        advance(review);
+        tenant.audit(investigator, "findings_outcome_acknowledged", "investigation_outcome", outcomeId);
+    }
+
+    @Transactional
+    public void decide(UUID missionId, UUID packageVersionId, int expectedRevision,
+            String decision, String notes, String email) {
+        if (!Set.of("accepted", "rejected").contains(decision)) {
+            throw new IllegalArgumentException("Choose accept or reject for this Findings Package.");
+        }
+        var decisionNotes = reviewText(notes, "decision notes");
+        var investigator = tenant.investigator(email);
+        var review = lockReview(missionId, packageVersionId, investigator.membershipId());
+        requirePending(review, expectedRevision);
+        if ("accepted".equals(decision) && missingRequiredReviews(packageVersionId) != 0) {
+            throw new IllegalArgumentException("Review every required finding before accepting this package.");
+        }
+        jdbc.sql("""
+                INSERT INTO findings_package_decisions (
+                    id, organisation_id, findings_package_review_id, findings_package_version_id,
+                    interview_session_id, interview_mission_id, decision, notes,
+                    actor_membership_id, review_revision
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """).params(UUID.randomUUID(), review.organisationId(), review.id(), packageVersionId,
+                review.sessionId(), review.missionId(), decision, decisionNotes,
+                investigator.membershipId(), expectedRevision).update();
+        tenant.audit(investigator, "findings_package_" + decision, "findings_package", review.packageId());
+    }
+
+    @Transactional(readOnly = true)
+    public SourceContext sourceContext(UUID missionId, UUID packageVersionId,
+            UUID knowledgeVersionId, UUID evidenceId, String email) {
+        var investigator = tenant.investigator(email);
+        reviewScope(missionId, packageVersionId, investigator.membershipId());
+        return jdbc.sql("""
+                SELECT q.question, e.answer, c.quotation, c.start_offset, c.end_offset,
+                       e.source_type, e.created_at,
+                       coalesce(p.intended_name, 'Investigator correction') source_name
+                FROM knowledge_item_evidence_citations c
+                JOIN knowledge_item_versions v ON v.id = c.knowledge_item_version_id
+                JOIN evidence e ON e.id = c.evidence_id
+                JOIN interview_questions q ON q.id = e.question_id
+                LEFT JOIN discovery_participants p ON p.id = e.participant_id
+                WHERE v.findings_package_version_id = ? AND v.id = ? AND e.id = ?
+                """).params(packageVersionId, knowledgeVersionId, evidenceId)
+                .query((rs, ignored) -> new SourceContext(rs.getString("question"), rs.getString("answer"),
+                        rs.getString("quotation"), rs.getInt("start_offset"), rs.getInt("end_offset"),
+                        rs.getString("source_name"), rs.getString("source_type"),
+                        rs.getTimestamp("created_at").toInstant())).optional()
+                .orElseThrow(() -> new AccessDeniedException("Findings source context denied."));
+    }
+
     @Transactional(readOnly = true)
     public View view(UUID missionId, String email) {
         var investigator = tenant.investigator(email);
@@ -281,49 +447,213 @@ public class FindingsRepository {
                     WHERE interview_session_id = ? AND work_kind = 'findings_extraction'
                     ORDER BY generation DESC LIMIT 1
                     """).param(session.sessionId()).query(String.class).optional().orElse("queued");
-            return new View("failed".equals(status) ? "failed" : "pending", List.of());
+            return new View("failed".equals(status) ? "failed" : "pending", null,
+                    0, null, null, 0, 0, List.of());
         }
+        return reviewView(version.get());
+    }
+
+    @Transactional(readOnly = true)
+    public View view(UUID missionId, UUID packageVersionId, String email) {
+        var investigator = tenant.investigator(email);
+        reviewScope(missionId, packageVersionId, investigator.membershipId());
+        return reviewView(packageVersionId);
+    }
+
+    private View reviewView(UUID packageVersionId) {
+        var review = jdbc.sql("""
+                SELECT r.review_revision, d.decision, d.notes
+                FROM findings_package_reviews r
+                LEFT JOIN findings_package_decisions d
+                    ON d.findings_package_version_id = r.findings_package_version_id
+                WHERE r.findings_package_version_id = ?
+                """).param(packageVersionId).query((rs, ignored) -> new ReviewView(
+                        rs.getInt("review_revision"), rs.getString("decision"), rs.getString("notes"))).single();
         var groups = jdbc.sql("""
                 SELECT r.investigation_item_id, i.knowledge_gap, r.required
                 FROM findings_package_results r
                 JOIN investigation_items i ON i.id = r.investigation_item_id
                 WHERE r.findings_package_version_id = ? ORDER BY r.position
-                """).param(version.get()).query((rs, ignored) -> {
+                """).param(packageVersionId).query((rs, ignored) -> {
                     var itemId = rs.getObject("investigation_item_id", UUID.class);
                     var knowledge = jdbc.sql("""
-                            SELECT v.id, v.category, v.claim, v.confirmation_state
+                            SELECT v.id, v.knowledge_item_id, v.category, v.claim, v.confirmation_state
                             FROM knowledge_item_versions v
+                            JOIN knowledge_items k ON k.id = v.knowledge_item_id
+                                AND k.current_version = v.version
                             WHERE v.findings_package_version_id = ? AND v.investigation_item_id = ?
-                            ORDER BY v.created_at, v.id
-                            """).params(version.get(), itemId).query((knowledgeRs, ignored2) -> {
+                            ORDER BY k.created_at, v.id
+                            """).params(packageVersionId, itemId).query((knowledgeRs, ignored2) -> {
                                 var itemVersionId = knowledgeRs.getObject("id", UUID.class);
                                 var citations = jdbc.sql("""
-                                        SELECT c.quotation, c.start_offset, c.end_offset,
-                                               p.intended_name, e.source_type, e.created_at, e.answer
+                                        SELECT e.id evidence_id, c.quotation, c.start_offset, c.end_offset,
+                                               coalesce(p.intended_name, 'Investigator correction') source_name,
+                                               e.source_type, e.created_at
                                         FROM knowledge_item_evidence_citations c
                                         JOIN evidence e ON e.id = c.evidence_id
-                                        JOIN discovery_participants p ON p.id = e.participant_id
+                                        LEFT JOIN discovery_participants p ON p.id = e.participant_id
                                         WHERE c.knowledge_item_version_id = ? ORDER BY c.position
                                         """).param(itemVersionId).query((citationRs, ignored3) -> new CitationView(
+                                                citationRs.getObject("evidence_id", UUID.class),
                                                 citationRs.getString("quotation"), citationRs.getInt("start_offset"),
-                                                citationRs.getInt("end_offset"), citationRs.getString("intended_name"),
+                                                citationRs.getInt("end_offset"), citationRs.getString("source_name"),
                                                 citationRs.getString("source_type"),
-                                                citationRs.getTimestamp("created_at").toInstant(),
-                                                citationRs.getString("answer"))).list();
-                                return new KnowledgeView(knowledgeRs.getString("category"),
+                                                citationRs.getTimestamp("created_at").toInstant())).list();
+                                return new KnowledgeView(knowledgeRs.getObject("knowledge_item_id", UUID.class),
+                                        itemVersionId, knowledgeRs.getString("category"),
                                         knowledgeRs.getString("claim"), knowledgeRs.getString("confirmation_state"),
                                         citations);
                             }).list();
                     var unresolved = jdbc.sql("""
-                            SELECT kind, summary FROM findings_package_unresolved_outcomes
-                            WHERE findings_package_version_id = ? AND investigation_item_id = ? ORDER BY position
-                            """).params(version.get(), itemId).query((outcomeRs, ignored2) ->
-                                    new UnresolvedView(outcomeRs.getString("kind"),
-                                            outcomeRs.getString("summary"))).list();
+                            SELECT o.outcome_id, o.kind, o.summary, (r.id IS NOT NULL) reviewed
+                            FROM findings_package_unresolved_outcomes o
+                            LEFT JOIN findings_unresolved_outcome_reviews r
+                                ON r.findings_package_version_id = o.findings_package_version_id
+                                AND r.outcome_id = o.outcome_id
+                            WHERE o.findings_package_version_id = ? AND o.investigation_item_id = ?
+                            ORDER BY o.position
+                            """).params(packageVersionId, itemId).query((outcomeRs, ignored2) ->
+                                    new UnresolvedView(outcomeRs.getObject("outcome_id", UUID.class),
+                                            outcomeRs.getString("kind"), outcomeRs.getString("summary"),
+                                            outcomeRs.getBoolean("reviewed"))).list();
                     return new GroupView(itemId, rs.getString("knowledge_gap"),
                             rs.getBoolean("required"), knowledge, unresolved);
                 }).list();
-        return new View("ready", groups);
+        var requiredTotal = (int) groups.stream().filter(GroupView::required).count();
+        var requiredReviewed = (int) groups.stream().filter(GroupView::required)
+                .filter(group -> !group.knowledgeItems().isEmpty() || !group.unresolvedOutcomes().isEmpty())
+                .filter(group -> group.knowledgeItems().stream()
+                        .noneMatch(item -> "unreviewed".equals(item.reviewState())))
+                .filter(group -> group.unresolvedOutcomes().stream().allMatch(UnresolvedView::reviewed)).count();
+        return new View("ready", packageVersionId, review.revision(), review.decision(), review.notes(),
+                requiredReviewed, requiredTotal, groups);
+    }
+
+    private ReviewScope lockReview(UUID missionId, UUID packageVersionId, UUID ownerMembershipId) {
+        return jdbc.sql("""
+                SELECT r.id, r.review_revision, p.id package_id, v.id package_version_id, v.organisation_id,
+                       v.discovery_id, v.interview_session_id, v.interview_mission_id,
+                       (d.id IS NOT NULL) decided
+                FROM findings_package_reviews r
+                JOIN findings_package_versions v ON v.id = r.findings_package_version_id
+                JOIN findings_packages p ON p.id = v.findings_package_id
+                JOIN discoveries x ON x.id = v.discovery_id AND x.organisation_id = v.organisation_id
+                LEFT JOIN findings_package_decisions d
+                    ON d.findings_package_version_id = v.id
+                WHERE v.id = ? AND v.interview_mission_id = ? AND x.owner_membership_id = ?
+                FOR UPDATE OF r
+                """).params(packageVersionId, missionId, ownerMembershipId)
+                .query((rs, ignored) -> reviewScope(rs)).optional()
+                .orElseThrow(() -> new AccessDeniedException("Findings review access denied."));
+    }
+
+    private ReviewScope reviewScope(UUID missionId, UUID packageVersionId, UUID ownerMembershipId) {
+        return jdbc.sql("""
+                SELECT r.id, r.review_revision, p.id package_id, v.id package_version_id, v.organisation_id,
+                       v.discovery_id, v.interview_session_id, v.interview_mission_id,
+                       (d.id IS NOT NULL) decided
+                FROM findings_package_reviews r
+                JOIN findings_package_versions v ON v.id = r.findings_package_version_id
+                JOIN findings_packages p ON p.id = v.findings_package_id
+                JOIN discoveries x ON x.id = v.discovery_id AND x.organisation_id = v.organisation_id
+                LEFT JOIN findings_package_decisions d
+                    ON d.findings_package_version_id = v.id
+                WHERE v.id = ? AND v.interview_mission_id = ? AND x.owner_membership_id = ?
+                """).params(packageVersionId, missionId, ownerMembershipId)
+                .query((rs, ignored) -> reviewScope(rs)).optional()
+                .orElseThrow(() -> new AccessDeniedException("Findings review access denied."));
+    }
+
+    private static ReviewScope reviewScope(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new ReviewScope(rs.getObject("id", UUID.class), rs.getInt("review_revision"),
+                rs.getObject("package_id", UUID.class), rs.getObject("package_version_id", UUID.class),
+                rs.getObject("organisation_id", UUID.class),
+                rs.getObject("discovery_id", UUID.class), rs.getObject("interview_session_id", UUID.class),
+                rs.getObject("interview_mission_id", UUID.class), rs.getBoolean("decided"));
+    }
+
+    private void requirePending(ReviewScope review, int expectedRevision) {
+        if (review.decided() || review.revision() != expectedRevision) {
+            throw new IllegalArgumentException("This Findings review changed. Refresh and try again.");
+        }
+    }
+
+    private CurrentKnowledge currentKnowledge(ReviewScope review, UUID versionId) {
+        return jdbc.sql("""
+                SELECT v.knowledge_item_id, v.investigation_item_id, v.version,
+                       v.category, v.confirmation_state
+                FROM knowledge_item_versions v
+                JOIN knowledge_items k ON k.id = v.knowledge_item_id
+                    AND k.current_version = v.version
+                WHERE v.id = ? AND v.findings_package_version_id = ?
+                  AND v.organisation_id = ?
+                """).params(versionId, review.packageVersionId(), review.organisationId())
+                .query((rs, ignored) -> new CurrentKnowledge(
+                        rs.getObject("knowledge_item_id", UUID.class),
+                        rs.getObject("investigation_item_id", UUID.class), rs.getInt("version"),
+                        rs.getString("category"), rs.getString("confirmation_state"))).optional()
+                .orElseThrow(() -> new IllegalArgumentException("Knowledge Item is stale or outside this package."));
+    }
+
+    private void insertKnowledgeReview(ReviewScope review, UUID knowledgeItemId,
+            UUID versionId, String state, UUID actorMembershipId) {
+        jdbc.sql("""
+                INSERT INTO knowledge_item_reviews (
+                    id, organisation_id, findings_package_version_id, knowledge_item_id,
+                    knowledge_item_version_id, state, actor_membership_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """).params(UUID.randomUUID(), review.organisationId(), review.packageVersionId(),
+                knowledgeItemId, versionId, state, actorMembershipId).update();
+    }
+
+    private void advance(ReviewScope review) {
+        changed(jdbc.sql("""
+                UPDATE findings_package_reviews SET review_revision = review_revision + 1
+                WHERE id = ? AND review_revision = ?
+                """).params(review.id(), review.revision()).update());
+    }
+
+    private int missingRequiredReviews(UUID packageVersionId) {
+        return jdbc.sql("""
+                SELECT count(*) FROM findings_package_results r
+                WHERE r.findings_package_version_id = ? AND r.required AND (
+                    (NOT EXISTS (SELECT 1 FROM knowledge_items k
+                         JOIN knowledge_item_versions v ON v.knowledge_item_id = k.id
+                            AND v.version = k.current_version
+                         WHERE k.findings_package_id = (SELECT findings_package_id
+                                 FROM findings_package_versions WHERE id = r.findings_package_version_id)
+                           AND k.investigation_item_id = r.investigation_item_id)
+                     AND NOT EXISTS (SELECT 1 FROM findings_package_unresolved_outcomes o
+                         WHERE o.findings_package_version_id = r.findings_package_version_id
+                           AND o.investigation_item_id = r.investigation_item_id))
+                    OR EXISTS (SELECT 1 FROM knowledge_items k
+                         JOIN knowledge_item_versions v ON v.knowledge_item_id = k.id
+                            AND v.version = k.current_version
+                         WHERE k.findings_package_id = (SELECT findings_package_id
+                                 FROM findings_package_versions WHERE id = r.findings_package_version_id)
+                           AND k.investigation_item_id = r.investigation_item_id
+                           AND v.confirmation_state = 'unreviewed')
+                    OR EXISTS (SELECT 1 FROM findings_package_unresolved_outcomes o
+                         LEFT JOIN findings_unresolved_outcome_reviews x
+                           ON x.findings_package_version_id = o.findings_package_version_id
+                          AND x.outcome_id = o.outcome_id
+                         WHERE o.findings_package_version_id = r.findings_package_version_id
+                           AND o.investigation_item_id = r.investigation_item_id AND x.id IS NULL)
+                )
+                """).param(packageVersionId).query(Integer.class).single();
+    }
+
+    private static String reviewText(String value, String name) {
+        if (value == null || value.isBlank() || value.length() > 4_000 || value.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("Enter valid " + name + ".");
+        }
+        return value.trim();
+    }
+
+    private static void changed(int count) {
+        if (count != 1) {
+            throw new IllegalArgumentException("This Findings review changed. Refresh and try again.");
+        }
     }
 
     private PreparedKnowledge validateKnowledge(InterviewRuntimeRepository.Work work, UUID itemId,
@@ -470,14 +800,19 @@ public class FindingsRepository {
     public record CitationProposal(UUID evidenceId, int startOffset, int endOffset, String quotation) {}
     public record LinkProposal(String kind, UUID targetKnowledgeItemId) {}
     public record PackageRef(UUID id, int version) {}
-    public record View(String status, List<GroupView> groups) {}
+    public record View(String status, UUID packageVersionId, int reviewRevision,
+            String decision, String decisionNotes, int requiredReviewed,
+            int requiredTotal, List<GroupView> groups) {}
     public record GroupView(UUID investigationItemId, String knowledgeGap, boolean required,
             List<KnowledgeView> knowledgeItems, List<UnresolvedView> unresolvedOutcomes) {}
-    public record KnowledgeView(String category, String claim, String confirmationState,
+    public record KnowledgeView(UUID knowledgeItemId, UUID versionId, String category,
+            String claim, String reviewState,
             List<CitationView> citations) {}
-    public record CitationView(String quotation, int startOffset, int endOffset,
-            String participantName, String sourceType, Instant createdAt, String answerContext) {}
-    public record UnresolvedView(String kind, String summary) {}
+    public record CitationView(UUID evidenceId, String quotation, int startOffset, int endOffset,
+            String participantName, String sourceType, Instant createdAt) {}
+    public record UnresolvedView(UUID outcomeId, String kind, String summary, boolean reviewed) {}
+    public record SourceContext(String question, String answer, String quotation,
+            int startOffset, int endOffset, String sourceName, String sourceType, Instant createdAt) {}
 
     private record Mission(String objective, String desiredOutcome, String completionCriteria,
             String expectedCommitment) {}
@@ -491,4 +826,10 @@ public class FindingsRepository {
     private record OwnerSession(UUID sessionId, String status, int revision, UUID organisationId,
             UUID discoveryId, UUID missionId) {}
     private record RunStatus(String status, int generation) {}
+    private record ReviewView(int revision, String decision, String notes) {}
+    private record ReviewScope(UUID id, int revision, UUID packageId, UUID packageVersionId, UUID organisationId,
+            UUID discoveryId, UUID sessionId, UUID missionId, boolean decided) {}
+    private record CurrentKnowledge(UUID knowledgeItemId, UUID investigationItemId,
+            int version, String category, String state) {}
+    private record CorrectionSource(UUID evidenceId, UUID questionId) {}
 }
