@@ -68,6 +68,14 @@ export default function (pi: ExtensionAPI) {
           paraphraseReason: StringEnum(["ambiguity", "contradiction", "inference", "material_importance"] as const),
           progress,
         }),
+        Type.Object({
+          kind: StringEnum(["propose_completion"] as const),
+          completionRecap: Type.String({ minLength: 1, maxLength: 2000 }),
+          unresolvedReferences: Type.Array(Type.Object({
+            investigationItemId: uuid,
+            kind: StringEnum(["unknown", "conflict", "ownership_gap"] as const),
+          }), { maxItems: 50 }),
+        }),
       ]),
     }),
     async execute(_toolCallId, submission) {

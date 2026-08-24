@@ -3,6 +3,7 @@ package com.findworks.interview;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -80,6 +81,7 @@ class FirstInterviewQuestionFlowTest {
     @Autowired JdbcClient jdbc;
     @Autowired ShapingWorker worker;
     @Autowired InterviewRuntimeRepository runtime;
+    @Autowired InterviewTurnRunner interviewRunner;
     @Autowired InterviewRepository interviews;
     @Autowired PlatformTransactionManager transactions;
 
@@ -793,6 +795,254 @@ class FirstInterviewQuestionFlowTest {
                 """).query(Integer.class).single()).isEqualTo(2);
     }
 
+    @Test
+    void questionCountAndAssumptionCannotBypassRequiredOutcomeEligibility() throws Exception {
+        var question = beginQuestion();
+        answer(question, "Support might retry after three failures.");
+        jdbc.sql("""
+                INSERT INTO interview_questions (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    investigation_item_id, sequence, question, question_kind, answered_at
+                ) SELECT gen_random_uuid(), organisation_id, discovery_id, id, interview_mission_id,
+                         ?, series, 'Already asked ' || series, 'ordinary', now()
+                  FROM interview_sessions, generate_series(2, 12) series WHERE id = ?
+                """).params(HIGH_ITEM, SESSION).update();
+        var work = runtime.claimNext();
+        var prepared = runtime.prepare(work, "test-runtime");
+        var evidence = jdbc.sql("SELECT id FROM evidence").query(UUID.class).single();
+        var assumption = new InterviewRuntimeRepository.OutcomeProposal("assumption", HIGH_ITEM,
+                List.of(evidence), null, null, "assumption", "Support may retry after three failures.",
+                null, null, null, null, List.of());
+
+        assertThatThrownBy(() -> complete(work, prepared, new InterviewRuntimeRepository.Submission(
+                work.id(), work.sessionId(), work.expectedRevision(), List.of(assumption), List.of(),
+                completionAction("All required work is covered.", List.of()))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("required Investigation Item");
+
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_completion_proposals")
+                .query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_application_events WHERE event_type = 'completion_confirmation_ready'")
+                .query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_outcomes")
+                .query(Integer.class).single()).isZero();
+        assertThat(state()).isEqualTo("active:3:false");
+    }
+
+    @Test
+    void eligibleProposalIsReplayableAndContinuePreservesWorkUnderRevision() throws Exception {
+        var pending = eligibleProposal();
+        var evidenceCount = jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single();
+        var outcomeCount = jdbc.sql("SELECT count(*) FROM investigation_outcomes").query(Integer.class).single();
+
+        assertThat(pending.event().type()).isEqualTo("completion_confirmation_ready");
+        assertThat(runtime.replay(pending.work().id())).isEqualTo(pending.event());
+        assertThat(state()).isEqualTo("active:4:false");
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_completion_unresolved_refs")
+                .query(Integer.class).single()).isEqualTo(1);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
+                        .cookie(new Cookie("findworks_interview", GRANT)))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Ready to finish")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Finish interview")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Continue interviewing")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("exception owner remains unknown")));
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/pause")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                        .param("expectedRevision", "4"))
+                .andExpect(status().isBadRequest());
+        assertThat(state()).isEqualTo("active:4:false");
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/interview/completion/continue")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                        .param("proposalId", pending.proposalId().toString()).param("expectedRevision", "4"))
+                .andExpect(status().is3xxRedirection());
+        assertThat(state()).isEqualTo("active:5:false");
+        assertThat(jdbc.sql("SELECT status FROM interview_completion_proposals")
+                .query(String.class).single()).isEqualTo("continued");
+        assertThat(jdbc.sql("SELECT trigger || ':' || expected_revision || ':' || status FROM interview_runtime_runs ORDER BY created_at DESC LIMIT 1")
+                .query(String.class).single()).isEqualTo("resume:5:queued");
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(evidenceCount);
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_outcomes")
+                .query(Integer.class).single()).isEqualTo(outcomeCount);
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/interview/completion/finish")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                        .param("proposalId", pending.proposalId().toString()).param("expectedRevision", "4"))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_runtime_runs WHERE trigger = 'resume'")
+                .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void finishRequiresExactCurrentRecapAndCompletesWithoutExtraction() throws Exception {
+        var pending = eligibleProposal();
+        var evidenceCount = jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single();
+        var outcomeCount = jdbc.sql("SELECT count(*) FROM investigation_outcomes").query(Integer.class).single();
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/interview/completion/finish")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                        .param("proposalId", UUID.randomUUID().toString()).param("expectedRevision", "4"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/interview/completion/finish")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                        .param("proposalId", pending.proposalId().toString()).param("expectedRevision", "4"))
+                .andExpect(status().is3xxRedirection());
+
+        assertThat(state()).isEqualTo("completed:5:false");
+        assertThat(jdbc.sql("SELECT status || ':' || (decided_at IS NOT NULL) FROM interview_completion_proposals")
+                .query(String.class).single()).isEqualTo("confirmed:true");
+        assertThat(jdbc.sql("SELECT completed_at IS NOT NULL FROM interview_sessions")
+                .query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(evidenceCount);
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_outcomes")
+                .query(Integer.class).single()).isEqualTo(outcomeCount);
+        assertThat(jdbc.sql("SELECT to_regclass('findings_packages') IS NULL")
+                .query(Boolean.class).single()).isTrue();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
+                        .cookie(new Cookie("findworks_interview", GRANT)))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("participation is complete")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(
+                        "Finish interview"))));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/missions/{id}", MISSION)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Required follow-up remains")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Ownership and exceptions")));
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_records WHERE action = 'interview_session_completed'")
+                .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void isolatedFakePiCanCommitTheCompletionSemanticAction() throws Exception {
+        var question = beginQuestion();
+        answer(question, "Support retries after three failures.");
+        var runId = jdbc.sql("SELECT id FROM interview_runtime_runs WHERE status = 'queued'")
+                .query(UUID.class).single();
+        seedEligibleOutcomes(runId);
+
+        var work = runtime.claimNext();
+        var prepared = runtime.prepare(work, interviewRunner.runtimeVersion());
+        var result = interviewRunner.run(new InterviewTurnRunner.Request(prepared.context(),
+                prepared.checkpoint(), prepared.credential(), prepared.credentialExpiresAt()));
+        runtime.complete(work, result);
+
+        assertThat(jdbc.sql("SELECT status || ':' || coalesce(error_code, 'none') FROM interview_runtime_runs WHERE id = ?")
+                .param(runId).query(String.class).single()).isEqualTo("committed:none");
+        assertThat(state()).isEqualTo("active:4:false");
+        assertThat(jdbc.sql("SELECT event_type FROM interview_application_events ORDER BY created_at DESC LIMIT 1")
+                .query(String.class).single()).isEqualTo("completion_confirmation_ready");
+        assertThat(jdbc.sql("SELECT recap FROM interview_completion_proposals")
+                .query(String.class).single()).contains("exception owner remains unknown");
+        assertThat(Files.readString(CAPTURE)).contains("completionCriteria", "expectedCommitment")
+                .doesNotContain("PRIVATE-MISSION-CONTEXT", GRANT, "fake-provider-credential");
+    }
+
+    private PendingCompletion eligibleProposal() throws Exception {
+        var question = beginQuestion();
+        answer(question, "Support retries after three failures.");
+        var work = runtime.claimNext();
+        var prepared = runtime.prepare(work, "test-runtime");
+        seedEligibleOutcomes(work.id());
+
+        assertThatThrownBy(() -> complete(work, prepared, new InterviewRuntimeRepository.Submission(
+                work.id(), work.sessionId(), work.expectedRevision(), List.of(), List.of(),
+                completionAction("The exception owner remains unknown.", List.of()))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("every unresolved outcome");
+        var action = completionAction("The exception owner remains unknown.", List.of(
+                new InterviewRuntimeRepository.UnresolvedReference(LOW_ITEM, "unknown")));
+        var event = complete(work, prepared, new InterviewRuntimeRepository.Submission(
+                work.id(), work.sessionId(), work.expectedRevision(), List.of(), List.of(), action));
+        assertThat(complete(work, prepared, new InterviewRuntimeRepository.Submission(
+                work.id(), work.sessionId(), work.expectedRevision(), List.of(), List.of(), action)))
+                .isEqualTo(event);
+        return new PendingCompletion(work, event, event.completionProposalId());
+    }
+
+    private void seedEligibleOutcomes(UUID runtimeRunId) {
+        var evidence = jdbc.sql("SELECT id FROM evidence").query(UUID.class).single();
+        var supported = UUID.randomUUID();
+        jdbc.sql("UPDATE investigation_results SET status = 'explicit_outcome' WHERE investigation_item_id = ?")
+                .param(HIGH_ITEM).update();
+        jdbc.sql("""
+                INSERT INTO investigation_outcomes (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    investigation_item_id, investigation_result_id, runtime_run_id, kind
+                ) SELECT ?, ?, ?, ?, ?, ?, id, ?, 'supported_knowledge'
+                  FROM investigation_results WHERE interview_session_id = ? AND investigation_item_id = ?
+                """).params(supported, ORGANISATION, DISCOVERY, SESSION, MISSION, HIGH_ITEM,
+                runtimeRunId, SESSION, HIGH_ITEM).update();
+        jdbc.sql("""
+                INSERT INTO investigation_outcome_evidence (
+                    organisation_id, interview_session_id, interview_mission_id,
+                    investigation_item_id, outcome_id, evidence_id
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """).params(ORGANISATION, SESSION, MISSION, HIGH_ITEM, supported, evidence).update();
+        jdbc.sql("""
+                INSERT INTO candidate_knowledge_claims (
+                    outcome_id, organisation_id, knowledge_kind, claim, confirmation_state
+                ) VALUES (?, ?, 'rule', 'Support retries after three failures.', 'confirmed')
+                """).params(supported, ORGANISATION).update();
+
+        var lowQuestion = UUID.randomUUID();
+        var lowEvidence = UUID.randomUUID();
+        var lowResult = UUID.randomUUID();
+        var unknown = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO interview_questions (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    investigation_item_id, sequence, question, question_kind, answered_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 2, 'Who owns payment exceptions?', 'ordinary', now())
+                """).params(lowQuestion, ORGANISATION, DISCOVERY, SESSION, MISSION, LOW_ITEM).update();
+        jdbc.sql("""
+                INSERT INTO evidence (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    participant_id, question_id, investigation_item_id, source_type, answer, participation_signal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'interviewee_answer', 'I do not know.', 'did_not_know')
+                """).params(lowEvidence, ORGANISATION, DISCOVERY, SESSION, MISSION,
+                PARTICIPANT, lowQuestion, LOW_ITEM).update();
+        jdbc.sql("""
+                INSERT INTO investigation_results (
+                    id, organisation_id, discovery_id, interview_session_id,
+                    interview_mission_id, investigation_item_id, status
+                ) VALUES (?, ?, ?, ?, ?, ?, 'explicit_outcome')
+                """).params(lowResult, ORGANISATION, DISCOVERY, SESSION, MISSION, LOW_ITEM).update();
+        jdbc.sql("""
+                INSERT INTO investigation_outcomes (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    investigation_item_id, investigation_result_id, runtime_run_id, kind
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unknown')
+                """).params(unknown, ORGANISATION, DISCOVERY, SESSION, MISSION,
+                LOW_ITEM, lowResult, runtimeRunId).update();
+        jdbc.sql("""
+                INSERT INTO investigation_outcome_evidence (
+                    organisation_id, interview_session_id, interview_mission_id,
+                    investigation_item_id, outcome_id, evidence_id
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """).params(ORGANISATION, SESSION, MISSION, LOW_ITEM, unknown, lowEvidence).update();
+        jdbc.sql("""
+                INSERT INTO unknown_outcomes (outcome_id, organisation_id, reason, explanation)
+                VALUES (?, ?, 'did_not_know', 'The exception owner remains unknown.')
+                """).params(unknown, ORGANISATION).update();
+
+    }
+
+    private static InterviewRuntimeRepository.NextAction completionAction(String recap,
+            List<InterviewRuntimeRepository.UnresolvedReference> unresolved) {
+        return new InterviewRuntimeRepository.NextAction("propose_completion", null, null, null,
+                null, null, null, null, recap, unresolved);
+    }
+
+    private record PendingCompletion(InterviewRuntimeRepository.Work work,
+            InterviewRuntimeRepository.Event event, UUID proposalId) {}
+
     private void start() throws Exception {
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/start")
                         .cookie(new Cookie("findworks_interview", GRANT)).with(csrf()))
@@ -1058,6 +1308,21 @@ class FirstInterviewQuestionFlowTest {
                             }
                         }
                     }
+                    required = [item for item in projection["investigationItems"] if item["required"]]
+                    if trigger in ["accepted_evidence", "resume"] and required and all(
+                            item["resultStatus"] == "explicit_outcome" for item in required):
+                        unresolved = [
+                            {"investigationItemId": item["id"], "kind": outcome["kind"]}
+                            for item in required for outcome in item["outcomes"]
+                            if outcome["kind"] in ["unknown", "conflict", "ownership_gap"]
+                        ]
+                        submission["outcomes"] = []
+                        submission["scopeAssessments"] = []
+                        submission["nextAction"] = {
+                            "kind": "propose_completion",
+                            "completionRecap": "The exception owner remains unknown.",
+                            "unresolvedReferences": unresolved,
+                        }
                     if source_question_id:
                         submission["nextAction"]["sourceQuestionId"] = source_question_id
                     if source_evidence_id:

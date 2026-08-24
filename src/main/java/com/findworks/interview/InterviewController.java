@@ -181,6 +181,25 @@ final class InterviewController {
         return "redirect:/interview";
     }
 
+    @PostMapping("/interview/completion/continue")
+    String continueAfterCompletionProposal(
+            @CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam UUID proposalId, @RequestParam int expectedRevision,
+            HttpServletResponse response) {
+        interviews.continueAfterCompletionProposal(accessToken, proposalId, expectedRevision);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
+    @PostMapping("/interview/completion/finish")
+    String finish(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam UUID proposalId, @RequestParam int expectedRevision,
+            HttpServletResponse response) {
+        interviews.finish(accessToken, proposalId, expectedRevision);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
     @PostMapping("/interview/end")
     String endEarly(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
             @RequestParam int expectedRevision, @RequestParam(defaultValue = "false") boolean confirmed,

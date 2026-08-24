@@ -28,14 +28,16 @@ public class InterviewRuntimeRepository {
     private static final SecureRandom RANDOM = new SecureRandom();
     private final JdbcClient jdbc;
     private final PilotTenant tenant;
+    private final InterviewCompletionEligibility completion;
     private final RuntimeCheckpointCipher checkpoints;
     private final RuntimeProperties properties;
     private final Clock clock;
 
-    InterviewRuntimeRepository(JdbcClient jdbc, PilotTenant tenant, RuntimeCheckpointCipher checkpoints,
-            RuntimeProperties properties, Clock clock) {
+    InterviewRuntimeRepository(JdbcClient jdbc, PilotTenant tenant, InterviewCompletionEligibility completion,
+            RuntimeCheckpointCipher checkpoints, RuntimeProperties properties, Clock clock) {
         this.jdbc = jdbc;
         this.tenant = tenant;
+        this.completion = completion;
         this.checkpoints = checkpoints;
         this.properties = properties;
         this.clock = clock;
@@ -260,28 +262,33 @@ public class InterviewRuntimeRepository {
         commitOutcomes(work, outcomes);
         commitAssessments(work, assessments);
         var action = submission.nextAction();
-        var targetPriority = jdbc.sql("""
-                SELECT i.priority FROM investigation_items i
+        if ("propose_completion".equals(action.kind())) {
+            return commitCompletion(work, execution, action);
+        }
+        var target = jdbc.sql("""
+                SELECT i.priority, i.required FROM investigation_items i
                 LEFT JOIN investigation_results r ON r.investigation_item_id = i.id
                     AND r.interview_session_id = ?
-                WHERE i.id = ? AND i.interview_mission_id = ? AND i.organisation_id = ? AND i.required
+                WHERE i.id = ? AND i.interview_mission_id = ? AND i.organisation_id = ?
                   AND coalesce(r.status, 'unaddressed') <> 'explicit_outcome'
                 """).params(work.sessionId(), action.targetInvestigationItemId(),
                 work.missionId(), work.organisationId())
-                .query(String.class).optional()
+                .query((rs, ignored) -> new Target(rs.getString("priority"), rs.getBoolean("required"))).optional()
                 .orElseThrow(() -> new IllegalArgumentException("Question target is outside the Mission."));
-        var highestPriority = jdbc.sql("""
-                SELECT i.priority FROM investigation_items i
+        var frontier = jdbc.sql("""
+                SELECT i.priority, i.required FROM investigation_items i
                 LEFT JOIN investigation_results r ON r.investigation_item_id = i.id
                     AND r.interview_session_id = ?
-                WHERE i.interview_mission_id = ? AND i.required
+                WHERE i.interview_mission_id = ?
                   AND coalesce(r.status, 'unaddressed') <> 'explicit_outcome'
-                ORDER BY CASE i.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, i.position
+                ORDER BY i.required DESC,
+                    CASE i.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, i.position
                 LIMIT 1
-                """).params(work.sessionId(), work.missionId()).query(String.class).optional()
-                .orElseThrow(() -> new IllegalArgumentException("No unresolved required area remains."));
-        if (!targetPriority.equals(highestPriority) || !PRIORITIES.contains(targetPriority)) {
-            throw new IllegalArgumentException("Question target is not in the highest-priority required area.");
+                """).params(work.sessionId(), work.missionId())
+                .query((rs, ignored) -> new Target(rs.getString("priority"), rs.getBoolean("required"))).optional()
+                .orElseThrow(() -> new IllegalArgumentException("No uncovered Investigation area remains."));
+        if (!target.equals(frontier) || !PRIORITIES.contains(target.priority())) {
+            throw new IllegalArgumentException("Question target is not in the current Investigation frontier.");
         }
         var questionPlan = validateQuestion(work, action);
         var question = plain(action.question(), 2_000, "question");
@@ -340,6 +347,77 @@ public class InterviewRuntimeRepository {
         if (advanced != 1) {
             throw new IllegalArgumentException("Interview Session changed before the question committed.");
         }
+        settle(work, execution);
+        tenant.auditSystem("interview_question_ready", "interview_session", work.sessionId());
+        return new Event(eventId, "question_ready", questionId, question, context, coveredCount,
+                totalRequired, covered, current, remaining, null, null);
+    }
+
+    private Event commitCompletion(Work work, InterviewTurnRunner.Result execution, NextAction action) {
+        completion.requireEligible(work.sessionId(), work.missionId(), work.organisationId());
+        var recap = plain(action.completionRecap(), 2_000, "completion recap");
+        var lowerRecap = recap.toLowerCase(java.util.Locale.ROOT);
+        if (lowerRecap.contains("all resolved") || lowerRecap.contains("no unresolved")) {
+            throw new IllegalArgumentException("Completion recap cannot describe unresolved points as resolved.");
+        }
+        var requested = action.unresolvedReferences();
+        if (requested == null || requested.size() > 50 || requested.stream().anyMatch(java.util.Objects::isNull)) {
+            throw new IllegalArgumentException("Completion proposal has invalid unresolved references.");
+        }
+        var unresolved = completion.unresolved(work.sessionId(), work.missionId(), work.organisationId());
+        var expected = unresolved.stream().map(value ->
+                new UnresolvedReference(value.investigationItemId(), value.kind())).toList();
+        if (!requested.equals(expected)) {
+            throw new IllegalArgumentException("Completion proposal does not reference every unresolved outcome.");
+        }
+        if (action.targetInvestigationItemId() != null || action.question() != null
+                || action.humanContext() != null || action.sourceQuestionId() != null
+                || action.sourceEvidenceId() != null || action.paraphraseReason() != null
+                || action.progress() != null) {
+            throw new IllegalArgumentException("Completion proposal cannot also ask a Question.");
+        }
+        var proposalId = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO interview_completion_proposals (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    runtime_run_id, proposed_revision, recap
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """).params(proposalId, work.organisationId(), work.discoveryId(), work.sessionId(),
+                work.missionId(), work.id(), work.expectedRevision(), recap).update();
+        for (int position = 0; position < unresolved.size(); position++) {
+            var reference = unresolved.get(position);
+            jdbc.sql("""
+                    INSERT INTO interview_completion_unresolved_refs (
+                        organisation_id, interview_session_id, interview_mission_id,
+                        investigation_item_id, completion_proposal_id, outcome_id, position
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """).params(work.organisationId(), work.sessionId(), work.missionId(),
+                    reference.investigationItemId(), proposalId, reference.outcomeId(), position).update();
+        }
+        var eventId = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO interview_application_events (
+                    id, organisation_id, discovery_id, interview_session_id,
+                    runtime_run_id, completion_proposal_id, event_type
+                ) VALUES (?, ?, ?, ?, ?, ?, 'completion_confirmation_ready')
+                """).params(eventId, work.organisationId(), work.discoveryId(), work.sessionId(),
+                work.id(), proposalId).update();
+        var advanced = jdbc.sql("""
+                UPDATE interview_sessions
+                SET current_completion_proposal_id = ?, revision = revision + 1
+                WHERE id = ? AND revision = ? AND active_question_id IS NULL
+                  AND current_completion_proposal_id IS NULL AND status = 'active'
+                """).params(proposalId, work.sessionId(), work.expectedRevision()).update();
+        if (advanced != 1) {
+            throw new IllegalArgumentException("Interview Session changed before completion was proposed.");
+        }
+        settle(work, execution);
+        tenant.auditSystem("interview_completion_proposed", "interview_session", work.sessionId());
+        return new Event(eventId, "completion_confirmation_ready", null, null, null,
+                null, null, null, null, null, proposalId, recap);
+    }
+
+    private void settle(Work work, InterviewTurnRunner.Result execution) {
         saveCheckpoint(work, execution.runtimeVersion(), execution.checkpoint());
         var settled = jdbc.sql("""
                 UPDATE interview_runtime_runs
@@ -353,9 +431,6 @@ public class InterviewRuntimeRepository {
         }
         finishAttempt(work, "committed", execution.modelAttempts(), null);
         useCredential(execution.credential());
-        tenant.auditSystem("interview_question_ready", "interview_session", work.sessionId());
-        return new Event(eventId, "question_ready", questionId, question, context, coveredCount,
-                totalRequired, covered, current, remaining);
     }
 
     @Transactional
@@ -579,16 +654,20 @@ public class InterviewRuntimeRepository {
     private Event event(UUID runId) {
         return jdbc.sql("""
                 SELECT e.id event_id, e.event_type, q.id question_id, q.question, q.human_context,
-                       e.covered_count, e.total_required, e.covered_text, e.current_text, e.remaining_text
+                       e.covered_count, e.total_required, e.covered_text, e.current_text, e.remaining_text,
+                       p.id completion_proposal_id, p.recap completion_recap
                 FROM interview_application_events e
                 LEFT JOIN interview_questions q ON q.id = e.question_id
+                LEFT JOIN interview_completion_proposals p ON p.id = e.completion_proposal_id
                 WHERE e.runtime_run_id = ?
                 """).param(runId).query((rs, ignored) -> new Event(
                         rs.getObject("event_id", UUID.class), rs.getString("event_type"),
                         rs.getObject("question_id", UUID.class), rs.getString("question"),
                         rs.getString("human_context"), rs.getObject("covered_count", Integer.class),
                         rs.getObject("total_required", Integer.class), rs.getString("covered_text"),
-                        rs.getString("current_text"), rs.getString("remaining_text"))).single();
+                        rs.getString("current_text"), rs.getString("remaining_text"),
+                        rs.getObject("completion_proposal_id", UUID.class),
+                        rs.getString("completion_recap"))).single();
     }
 
     private List<PreparedOutcome> validateOutcomes(Work work, List<OutcomeProposal> proposals) {
@@ -670,7 +749,7 @@ public class InterviewRuntimeRepository {
                         throw new IllegalArgumentException("Candidate claim requires a valid kind.");
                     }
                     yield new PreparedOutcome(id, result.id(), proposal.withClaim(claim, knowledgeKind),
-                            evidenceIds, null, List.of(), false);
+                            evidenceIds, null, List.of(), "supported_knowledge".equals(proposal.kind()));
                 }
                 case "conflict" -> {
                     if (members.size() < 2 || members.size() > 10) {
@@ -841,6 +920,10 @@ public class InterviewRuntimeRepository {
     }
 
     private QuestionPlan validateQuestion(Work work, NextAction action) {
+        if (action.completionRecap() != null
+                || action.unresolvedReferences() != null && !action.unresolvedReferences().isEmpty()) {
+            throw new IllegalArgumentException("Question action cannot carry a completion proposal.");
+        }
         return switch (action.kind()) {
             case "ask_question" -> {
                 if (action.sourceQuestionId() != null || action.sourceEvidenceId() != null
@@ -894,14 +977,18 @@ public class InterviewRuntimeRepository {
                 || work.expectedRevision() != submission.expectedRevision()
                 || submission.outcomes() == null || submission.scopeAssessments() == null
                 || submission.nextAction() == null
-                || !Set.of("ask_question", "ask_clarification", "ask_paraphrase_confirmation")
+                || !Set.of("ask_question", "ask_clarification", "ask_paraphrase_confirmation", "propose_completion")
                         .contains(submission.nextAction().kind())
-                || submission.nextAction().progress() == null) {
+                || (!"propose_completion".equals(submission.nextAction().kind())
+                    && submission.nextAction().progress() == null)) {
             throw new IllegalArgumentException("Pi returned an invalid Interview turn.");
         }
-        if (Set.of("session_start", "resume").contains(work.trigger())
+        if ("session_start".equals(work.trigger())
                 && (!submission.outcomes().isEmpty() || !submission.scopeAssessments().isEmpty()
                     || !"ask_question".equals(submission.nextAction().kind()))
+                || "resume".equals(work.trigger())
+                && (!submission.outcomes().isEmpty() || !submission.scopeAssessments().isEmpty()
+                    || !Set.of("ask_question", "propose_completion").contains(submission.nextAction().kind()))
                 || "clarification_request".equals(work.trigger())
                 && (!submission.outcomes().isEmpty() || !submission.scopeAssessments().isEmpty()
                     || !"ask_clarification".equals(submission.nextAction().kind()))) {
@@ -998,15 +1085,25 @@ public class InterviewRuntimeRepository {
             UUID missionBoundaryId, String rationale) {}
     public record NextAction(String kind, UUID targetInvestigationItemId, String question,
             String humanContext, UUID sourceQuestionId, UUID sourceEvidenceId,
-            String paraphraseReason, Progress progress) {
+            String paraphraseReason, Progress progress, String completionRecap,
+            List<UnresolvedReference> unresolvedReferences) {
+        public NextAction(String kind, UUID targetInvestigationItemId, String question,
+                String humanContext, UUID sourceQuestionId, UUID sourceEvidenceId,
+                String paraphraseReason, Progress progress) {
+            this(kind, targetInvestigationItemId, question, humanContext, sourceQuestionId,
+                    sourceEvidenceId, paraphraseReason, progress, null, List.of());
+        }
         public NextAction(String kind, UUID targetInvestigationItemId, String question,
                 String humanContext, Progress progress) {
-            this(kind, targetInvestigationItemId, question, humanContext, null, null, null, progress);
+            this(kind, targetInvestigationItemId, question, humanContext, null, null, null, progress,
+                    null, List.of());
         }
     }
+    public record UnresolvedReference(UUID investigationItemId, String kind) {}
     public record Progress(String covered, String current, String remaining) {}
     public record Event(UUID id, String type, UUID questionId, String question, String humanContext,
-            Integer coveredCount, Integer totalRequired, String coveredText, String currentText, String remainingText) {}
+            Integer coveredCount, Integer totalRequired, String coveredText, String currentText,
+            String remainingText, UUID completionProposalId, String completionRecap) {}
     private record Claim(UUID id, String status) {}
     private record Mission(String objective, String desiredOutcome, String completionCriteria,
             String expectedCommitment) {}
@@ -1020,6 +1117,7 @@ public class InterviewRuntimeRepository {
             String assessment, UUID boundaryId, String rationale) {}
     private record QuestionPlan(String kind, UUID clarifiesQuestionId,
             UUID sourceEvidenceId, String paraphraseReason) {}
+    private record Target(String priority, boolean required) {}
     private record RunState(String status, UUID leaseOwner, int modelAttempts, int processRestarts) {}
     private record StoredCheckpoint(UUID id, UUID sessionId, UUID missionId, int expectedRevision,
             String runtimeVersion, String keyId, byte[] nonce, byte[] ciphertext) {}

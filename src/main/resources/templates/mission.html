@@ -126,6 +126,10 @@
             <ul><li th:each="item : ${interviewSession.remainingItems}" th:text="${item}">Knowledge gap</li></ul>
         </div>
         <p th:if="${interviewSession.remainingItems.empty}">No required Investigation Items remain.</p>
+        <div th:if="${!interviewSession.followUpItems.empty}">
+            <strong>Required follow-up remains</strong>
+            <ul><li th:each="item : ${interviewSession.followUpItems}" th:text="${item}">Unresolved area</li></ul>
+        </div>
         <form method="post"
               th:if="${interviewSession.status == 'active' || interviewSession.status == 'paused'}"
               th:action="@{/missions/{missionId}/sessions/{sessionId}/terminate(missionId=${mission.id},sessionId=${interviewSession.id})}">
