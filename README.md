@@ -109,6 +109,21 @@ docker compose up -d --wait postgres
 mvn spring-boot:run
 ```
 
+Interview Pi turns are denied by default. To build their runtime image, use a verified digest-pinned
+Node base image and the repository root as the build context:
+
+```bash
+podman build -f runtime/pi/Dockerfile \
+  --build-arg PI_BASE_IMAGE=node:24-alpine@sha256:<verified-digest> \
+  -t findworks/pi .
+```
+
+Enable `INTERVIEW_RUNTIME_ENABLED` only after setting a digest-pinned `PI_RUNTIME_IMAGE`, an explicit
+provider credential, a 32-byte Base64 AES checkpoint key and key ID, and verifying the configured OCI
+engine reports rootless mode. The default `PI_RUNTIME_NETWORK=none` deliberately blocks live model
+access. A networked deployment also requires a credential-free HTTPS egress proxy and independent
+allow-list enforcement.
+
 Health endpoints:
 
 - `GET /actuator/health/liveness`

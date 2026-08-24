@@ -637,8 +637,24 @@ class InterviewRepository {
 
     private void cancelRuntime(UUID sessionId, Instant now) {
         jdbc.sql("""
+                UPDATE runtime_credentials SET revoked_at = coalesce(revoked_at, ?)
+                WHERE runtime_run_id IN (
+                    SELECT id FROM interview_runtime_runs
+                    WHERE interview_session_id = ? AND status IN ('queued', 'running')
+                ) AND used_at IS NULL
+                """).params(timestamp(now), sessionId).update();
+        jdbc.sql("""
+                UPDATE interview_runtime_attempts
+                SET outcome = 'cancelled', finished_at = ?
+                WHERE runtime_run_id IN (
+                    SELECT id FROM interview_runtime_runs
+                    WHERE interview_session_id = ? AND status = 'running'
+                ) AND outcome = 'running'
+                """).params(timestamp(now), sessionId).update();
+        jdbc.sql("""
                 UPDATE interview_runtime_runs
-                SET status = 'cancelled', cancelled_at = ?, lease_until = NULL, updated_at = ?
+                SET status = 'cancelled', cancelled_at = ?, lease_until = NULL,
+                    lease_owner = NULL, updated_at = ?
                 WHERE interview_session_id = ? AND status IN ('queued', 'running')
                 """).params(timestamp(now), timestamp(now), sessionId).update();
     }

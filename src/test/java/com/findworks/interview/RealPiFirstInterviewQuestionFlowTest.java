@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.findworks.shaping.ShapingWorker;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.UUID;
@@ -19,14 +18,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-@EnabledIfEnvironmentVariable(named = "RUN_PI_TESTS", matches = "true")
+@EnabledIfEnvironmentVariable(named = "RUN_OCI_PI_TESTS", matches = "true")
 @SpringBootTest(properties = {"findworks.shaping.worker-cron=-", "findworks.invitation.worker-cron=-"})
 @AutoConfigureMockMvc
 @Testcontainers
@@ -44,17 +41,6 @@ class RealPiFirstInterviewQuestionFlowTest {
     @Container
     @ServiceConnection
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
-
-    @DynamicPropertySource
-    static void pi(DynamicPropertyRegistry properties) {
-        properties.add("findworks.pi.session-directory", () -> {
-            try {
-                return Files.createTempDirectory("findworks-real-interview-pi-").toString();
-            } catch (Exception error) {
-                throw new ExceptionInInitializerError(error);
-            }
-        });
-    }
 
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
