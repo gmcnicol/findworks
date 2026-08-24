@@ -48,7 +48,7 @@ public class InterviewRuntimeRepository {
         tenant.select();
         exhaustDeadRestarts();
         var row = jdbc.sql("""
-                SELECT r.id, r.status FROM interview_runtime_runs r
+                SELECT r.id, r.organisation_id, r.status FROM interview_runtime_runs r
                 JOIN interview_sessions s ON s.id = r.interview_session_id
                     AND s.organisation_id = r.organisation_id
                 JOIN discoveries d ON d.id = r.discovery_id AND d.organisation_id = r.organisation_id
@@ -58,7 +58,8 @@ public class InterviewRuntimeRepository {
                 ORDER BY r.created_at
                 FOR UPDATE OF r SKIP LOCKED LIMIT 1
                 """).query((rs, ignored) -> new Claim(
-                        rs.getObject("id", UUID.class), rs.getString("status"))).optional();
+                        rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
+                        rs.getString("status"))).optional();
         if (row.isEmpty()) {
             return null;
         }
@@ -70,11 +71,26 @@ public class InterviewRuntimeRepository {
                     """).param(row.get().id()).update();
         }
         var leaseOwner = UUID.randomUUID();
+        var slot = jdbc.sql("""
+                UPDATE pi_worker_slots SET organisation_id = ?, runtime_run_id = ?, shaping_work_id = NULL,
+                    lease_owner = ?, lease_expires_at = now() + interval '2 minutes',
+                    heartbeat_at = now(), updated_at = now()
+                WHERE slot_number = (SELECT slot_number FROM pi_worker_slots
+                    WHERE runtime_run_id = ? OR lease_expires_at IS NULL OR lease_expires_at < now()
+                    ORDER BY CASE WHEN runtime_run_id = ? THEN 0 ELSE 1 END, slot_number
+                    FOR UPDATE SKIP LOCKED LIMIT 1)
+                RETURNING slot_number
+                """).params(row.get().organisationId(), row.get().id(), leaseOwner,
+                        row.get().id(), row.get().id())
+                .query(Integer.class).optional();
+        if (slot.isEmpty()) {
+            return null;
+        }
         var work = jdbc.sql("""
                 UPDATE interview_runtime_runs
                 SET status = 'running', attempts = attempts + 1,
                     process_restarts = process_restarts + CASE WHEN status = 'running' THEN 1 ELSE 0 END,
-                    lease_owner = ?, lease_until = now() + interval '2 minutes',
+                    lease_owner = ?, lease_until = now() + interval '2 minutes', heartbeat_at = now(),
                     updated_at = now(), error_code = NULL
                 WHERE id = ?
                 RETURNING id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
@@ -98,6 +114,25 @@ public class InterviewRuntimeRepository {
                 """).params(UUID.randomUUID(), work.organisationId(), work.id(), work.sessionId(),
                 work.executionAttempt()).update();
         return work;
+    }
+
+    @Transactional
+    public boolean heartbeat(Work work) {
+        tenant.select();
+        var slot = jdbc.sql("""
+                UPDATE pi_worker_slots SET heartbeat_at = now(),
+                    lease_expires_at = now() + interval '2 minutes', updated_at = now()
+                WHERE runtime_run_id = ? AND lease_owner = ? AND lease_expires_at >= now()
+                """).params(work.id(), work.leaseOwner()).update();
+        var run = jdbc.sql("""
+                UPDATE interview_runtime_runs SET heartbeat_at = now(),
+                    lease_until = now() + interval '2 minutes', updated_at = now()
+                WHERE id = ? AND status = 'running' AND lease_owner = ? AND lease_until >= now()
+                """).params(work.id(), work.leaseOwner()).update();
+        if (slot != run) {
+            throw new IllegalStateException("Interview runtime worker lease is inconsistent.");
+        }
+        return run == 1;
     }
 
     @Transactional
@@ -446,7 +481,7 @@ public class InterviewRuntimeRepository {
         var settled = jdbc.sql("""
                 UPDATE interview_runtime_runs
                 SET status = 'committed', model_attempts = model_attempts + ?, runtime_version = ?,
-                    lease_until = NULL, lease_owner = NULL, updated_at = now()
+                    lease_until = NULL, lease_owner = NULL, heartbeat_at = NULL, updated_at = now()
                 WHERE id = ? AND lease_owner = ?
                 """).params(modelAttempts, runtimeVersion, work.id(), work.leaseOwner())
                 .update();
@@ -455,6 +490,7 @@ public class InterviewRuntimeRepository {
         }
         finishAttempt(work, "committed", modelAttempts, null);
         useCredential(credential);
+        releaseSlot(work.id(), work.leaseOwner());
     }
 
     @Transactional
@@ -481,12 +517,14 @@ public class InterviewRuntimeRepository {
                     SET status = 'queued', model_attempts = ?,
                         process_restarts = process_restarts + CASE WHEN ? THEN 1 ELSE 0 END,
                         available_at = now() + interval '1 second', lease_until = NULL, lease_owner = NULL,
+                        heartbeat_at = NULL,
                         updated_at = now(), error_code = ?
                     WHERE id = ? AND lease_owner = ?
                     """).params(nextModelAttempts, retryProcess, failure.kind().code(), work.id(), work.leaseOwner())
                     .update();
             finishAttempt(work, retryProcess ? "process_died" : "transient_model_failure",
                     reportedModelAttempts, failure.kind().code());
+            releaseSlot(work.id(), work.leaseOwner());
             return null;
         }
         finishAttempt(work, "failed", reportedModelAttempts, failure.kind().code());
@@ -525,11 +563,12 @@ public class InterviewRuntimeRepository {
                     .update();
             jdbc.sql("""
                     UPDATE interview_runtime_runs
-                    SET status = 'failed', lease_until = NULL, lease_owner = NULL,
+                    SET status = 'failed', lease_until = NULL, lease_owner = NULL, heartbeat_at = NULL,
                         updated_at = now(), error_code = 'process_died'
                     WHERE id = ?
                     """).param(run.id()).update();
             revokeCredentials(run.id());
+            releaseSlot(run.id(), null);
             tenant.auditSystem("findings_extraction".equals(run.workKind())
                     ? "findings_extraction_failed" : "interview_runtime_failed",
                     "interview_session", run.sessionId());
@@ -547,13 +586,29 @@ public class InterviewRuntimeRepository {
         jdbc.sql("""
                 UPDATE interview_runtime_runs
                 SET status = 'failed', model_attempts = ?, runtime_version = ?,
-                    lease_until = NULL, lease_owner = NULL, updated_at = now(), error_code = ?
+                    lease_until = NULL, lease_owner = NULL, heartbeat_at = NULL,
+                    updated_at = now(), error_code = ?
                 WHERE id = ? AND lease_owner = ?
                 """).params(modelAttempts, runtimeVersion, errorCode, work.id(), work.leaseOwner()).update();
+        releaseSlot(work.id(), work.leaseOwner());
         tenant.auditSystem("findings_extraction".equals(work.workKind())
                 ? "findings_extraction_failed" : "interview_runtime_failed",
                 "interview_session", work.sessionId());
         return event(work.id());
+    }
+
+    private void releaseSlot(UUID runId, UUID leaseOwner) {
+        var sql = """
+                UPDATE pi_worker_slots SET organisation_id = NULL, runtime_run_id = NULL,
+                    shaping_work_id = NULL, lease_owner = NULL, lease_expires_at = NULL,
+                    heartbeat_at = NULL, updated_at = now()
+                WHERE runtime_run_id = ?
+                """ + (leaseOwner == null ? " AND lease_expires_at < now()" : " AND lease_owner = ?");
+        var operation = jdbc.sql(sql).param(runId);
+        if (leaseOwner != null) {
+            operation.param(leaseOwner);
+        }
+        operation.update();
     }
 
     private RunState lock(UUID runId) {
@@ -1134,7 +1189,7 @@ public class InterviewRuntimeRepository {
     public record Event(UUID id, String type, UUID questionId, String question, String humanContext,
             Integer coveredCount, Integer totalRequired, String coveredText, String currentText,
             String remainingText, UUID completionProposalId, String completionRecap) {}
-    private record Claim(UUID id, String status) {}
+    private record Claim(UUID id, UUID organisationId, String status) {}
     private record Mission(String objective, String desiredOutcome, String completionCriteria,
             String expectedCommitment) {}
     private record SessionState(String status, int revision, UUID activeQuestionId) {}

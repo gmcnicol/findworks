@@ -1,5 +1,8 @@
 package com.findworks.runtime;
 
+import com.findworks.shaping.ShapingRepository;
+import com.findworks.shaping.ShapingTurnRunner;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
@@ -12,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Component;
 
 @Component
-public final class OciInterviewTurnRunner implements InterviewTurnRunner, FindingsExtractionRunner {
+public final class OciInterviewTurnRunner implements InterviewTurnRunner, FindingsExtractionRunner, ShapingTurnRunner {
 
     private final ObjectMapper json;
     private final RuntimeProperties properties;
@@ -38,6 +41,15 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner, Findin
         if ("submitted".equals(envelope.status()) && envelope.submission() != null) {
             return new FindingsExtractionRunner.Result(envelope.submission(), properties.runtimeVersion(),
                     envelope.modelAttempts(), envelope.findWorksCredential());
+        }
+        throw failure(envelope.failureClass(), envelope.modelAttempts(), null);
+    }
+
+    @Override
+    public JsonNode runShaping(ShapingRepository.Context context) throws RuntimeFailure {
+        var envelope = jsonEnvelope(context.workId(), input(context), ShapingEnvelope.class);
+        if ("submitted".equals(envelope.status()) && envelope.submission() != null) {
+            return envelope.submission();
         }
         throw failure(envelope.failureClass(), envelope.modelAttempts(), null);
     }
@@ -108,6 +120,17 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner, Findin
         input.put("checkpoint", null);
         input.put("findWorksCredential", request.credential());
         input.put("credentialExpiresAt", request.credentialExpiresAt());
+        input.put("provider", properties.provider());
+        input.put("model", properties.model());
+        input.put("providerCredential", properties.providerCredential());
+        input.put("egressProxy", properties.proxyOrNull());
+        return input;
+    }
+
+    private Map<String, Object> input(ShapingRepository.Context context) {
+        var input = new LinkedHashMap<String, Object>();
+        input.put("jobKind", "discovery_shaping");
+        input.put("context", context);
         input.put("provider", properties.provider());
         input.put("model", properties.model());
         input.put("providerCredential", properties.providerCredential());
@@ -212,5 +235,7 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner, Findin
     private record Envelope(String status, com.findworks.interview.InterviewRuntimeRepository.Submission submission,
             String checkpoint, int modelAttempts, String failureClass, String findWorksCredential) {}
     private record FindingsEnvelope(String status, com.findworks.interview.FindingsRepository.Submission submission,
+            String checkpoint, int modelAttempts, String failureClass, String findWorksCredential) {}
+    private record ShapingEnvelope(String status, JsonNode submission,
             String checkpoint, int modelAttempts, String failureClass, String findWorksCredential) {}
 }

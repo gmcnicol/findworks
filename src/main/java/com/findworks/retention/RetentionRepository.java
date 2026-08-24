@@ -148,26 +148,37 @@ public class RetentionRepository {
         var leaseOwner = UUID.randomUUID();
         return jdbc.sql("""
                 UPDATE retention_warnings w SET status = 'leased', attempt_count = attempt_count + 1,
-                    lease_owner = ?, lease_expires_at = ?, updated_at = ?
+                    lease_owner = ?, lease_expires_at = now() + interval '5 minutes',
+                    heartbeat_at = now(), updated_at = now()
                 FROM discoveries d, memberships m, users u, organisations o
                 WHERE w.id = (SELECT candidate.id FROM retention_warnings candidate
                     JOIN discoveries active ON active.id = candidate.discovery_id
                     WHERE candidate.available_at <= ? AND candidate.attempt_count < 3
                       AND active.status = 'active' AND active.retention_due_at = candidate.due_at_snapshot
                       AND (candidate.status = 'pending' OR
-                           (candidate.status = 'leased' AND candidate.lease_expires_at <= ?))
+                           (candidate.status = 'leased' AND candidate.lease_expires_at <= now()))
                     ORDER BY candidate.available_at, candidate.created_at
                     FOR UPDATE OF candidate SKIP LOCKED LIMIT 1)
                   AND d.id = w.discovery_id AND m.id = d.owner_membership_id
                   AND u.id = m.user_id AND o.id = d.organisation_id
                 RETURNING w.id, w.organisation_id, w.discovery_id, w.due_at_snapshot,
                           w.attempt_count, u.email, d.title, o.name
-                """).params(leaseOwner, timestamp(now.plus(Duration.ofMinutes(5))), timestamp(now),
-                timestamp(now), timestamp(now)).query((rs, ignored) -> new Warning(
+                """).params(leaseOwner, timestamp(now)).query((rs, ignored) -> new Warning(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("discovery_id", UUID.class), rs.getTimestamp("due_at_snapshot").toInstant(),
                         rs.getInt("attempt_count"), rs.getString("email"), rs.getString("title"),
                         rs.getString("name"), leaseOwner)).optional().orElse(null);
+    }
+
+    @Transactional
+    public boolean heartbeatWarning(Warning warning) {
+        tenant.select();
+        return jdbc.sql("""
+                UPDATE retention_warnings SET heartbeat_at = now(),
+                    lease_expires_at = now() + interval '5 minutes', updated_at = now()
+                WHERE id = ? AND status = 'leased' AND lease_owner = ?
+                  AND attempt_count = ? AND lease_expires_at >= now()
+                """).params(warning.id(), warning.leaseOwner(), warning.attempt()).update() == 1;
     }
 
     @Transactional
@@ -191,18 +202,29 @@ public class RetentionRepository {
         var leaseOwner = UUID.randomUUID();
         return jdbc.sql("""
                 UPDATE deletion_ledger d SET stage = 'purging', attempts = attempts + 1,
-                    lease_owner = ?, lease_expires_at = ?, safe_error_class = NULL
+                    lease_owner = ?, lease_expires_at = now() + interval '5 minutes',
+                    heartbeat_at = now(), safe_error_class = NULL
                 WHERE d.id = (SELECT id FROM deletion_ledger
                     WHERE available_at <= ? AND attempts < 20
-                      AND (stage = 'blocked' OR (stage = 'purging' AND lease_expires_at <= ?))
+                      AND (stage = 'blocked' OR (stage = 'purging' AND lease_expires_at <= now()))
                     ORDER BY available_at, requested_at FOR UPDATE SKIP LOCKED LIMIT 1)
                 RETURNING id, organisation_id, target_kind, target_id, attempts, lease_owner
-                """).params(leaseOwner, timestamp(now.plus(Duration.ofMinutes(5))),
-                timestamp(now), timestamp(now)).query((rs, ignored) -> new Purge(
+                """).params(leaseOwner, timestamp(now)).query((rs, ignored) -> new Purge(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getString("target_kind"), rs.getObject("target_id", UUID.class),
                         rs.getInt("attempts"), rs.getObject("lease_owner", UUID.class)))
                 .optional().orElse(null);
+    }
+
+    @Transactional
+    public boolean heartbeatPurge(Purge work) {
+        scopeOwner();
+        return jdbc.sql("""
+                UPDATE deletion_ledger SET heartbeat_at = now(),
+                    lease_expires_at = now() + interval '5 minutes'
+                WHERE id = ? AND stage = 'purging' AND lease_owner = ?
+                  AND attempts = ? AND lease_expires_at >= now()
+                """).params(work.id(), work.leaseOwner(), work.attempt()).update() == 1;
     }
 
     @Transactional
@@ -235,7 +257,7 @@ public class RetentionRepository {
         jdbc.sql("""
                 UPDATE deletion_ledger SET stage = 'completed', completed_at = ?,
                     backup_expiry_due_at = ?::timestamptz + interval '30 days', lease_owner = NULL,
-                    lease_expires_at = NULL, safe_error_class = NULL
+                    lease_expires_at = NULL, heartbeat_at = NULL, safe_error_class = NULL
                 WHERE id = ? AND stage = 'purging' AND lease_owner = ?
                 """).params(timestamp(completed), timestamp(completed), work.id(), work.leaseOwner()).update();
     }
@@ -245,7 +267,8 @@ public class RetentionRepository {
         scopeOwner();
         jdbc.sql("""
                 UPDATE deletion_ledger SET stage = 'blocked', available_at = ?,
-                    lease_owner = NULL, lease_expires_at = NULL, safe_error_class = 'database_error'
+                    lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = NULL,
+                    safe_error_class = 'database_error'
                 WHERE id = ? AND stage = 'purging' AND lease_owner = ?
                 """).params(timestamp(clock.instant()), work.id(), work.leaseOwner()).update();
     }
@@ -325,7 +348,8 @@ public class RetentionRepository {
         var sent = "sent".equals(status) ? timestamp(clock.instant()) : null;
         jdbc.sql("""
                 UPDATE retention_warnings SET status = ?, sent_at = ?, error_class = ?,
-                    available_at = ?, lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
+                    available_at = ?, lease_owner = NULL, lease_expires_at = NULL,
+                    heartbeat_at = NULL, updated_at = ?
                 WHERE id = ? AND status = 'leased' AND lease_owner = ? AND attempt_count = ?
                 """).params(status, sent, errorClass, timestamp(clock.instant()), timestamp(clock.instant()),
                 warning.id(), warning.leaseOwner(), warning.attempt()).update();

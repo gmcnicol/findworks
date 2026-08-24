@@ -154,10 +154,10 @@ class InvitationRepository {
                 WHERE i.delivery_status = 'pending' AND i.revoked_at IS NULL
                   AND d.status = 'active'
                   AND j.attempt_count < 3 AND j.next_attempt_at <= ?
-                  AND (j.status = 'pending' OR (j.status = 'leased' AND j.lease_expires_at <= ?))
+                  AND (j.status = 'pending' OR (j.status = 'leased' AND j.lease_expires_at <= now()))
                 ORDER BY j.next_attempt_at, j.created_at
                 FOR UPDATE OF j SKIP LOCKED LIMIT 1
-                """).params(timestamp(now), timestamp(now)).query((rs, ignored) -> new Work(
+                """).param(timestamp(now)).query((rs, ignored) -> new Work(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("invitation_id", UUID.class), rs.getInt("delivery_cycle"),
                         rs.getInt("attempt_count") + 1, rs.getString("recipient_email"),
@@ -168,11 +168,23 @@ class InvitationRepository {
         }
         jdbc.sql("""
                 UPDATE invitation_delivery_jobs
-                SET status = 'leased', attempt_count = ?, lease_owner = ?, lease_expires_at = ?, updated_at = ?
+                SET status = 'leased', attempt_count = ?, lease_owner = ?,
+                    lease_expires_at = now() + interval '5 minutes', heartbeat_at = now(), updated_at = now()
                 WHERE id = ?
-                """).params(row.attemptNumber(), leaseOwner, timestamp(now.plus(Duration.ofMinutes(5))),
-                timestamp(now), row.jobId()).update();
+                """).params(row.attemptNumber(), leaseOwner, row.jobId()).update();
         return row;
+    }
+
+    @Transactional
+    boolean heartbeat(Work work) {
+        tenant.select();
+        return jdbc.sql("""
+                UPDATE invitation_delivery_jobs SET heartbeat_at = now(),
+                    lease_expires_at = now() + interval '5 minutes', updated_at = now()
+                WHERE id = ? AND delivery_cycle = ? AND attempt_count = ?
+                  AND status = 'leased' AND lease_owner = ? AND lease_expires_at >= now()
+                """).params(work.jobId(), work.deliveryCycle(), work.attemptNumber(), work.leaseOwner())
+                .update() == 1;
     }
 
     @Transactional
@@ -218,7 +230,7 @@ class InvitationRepository {
         return jdbc.sql("""
                 UPDATE invitation_delivery_jobs
                 SET status = ?, next_attempt_at = COALESCE(?, next_attempt_at),
-                    lease_owner = NULL, lease_expires_at = NULL, updated_at = ?
+                    lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = NULL, updated_at = ?
                 WHERE id = ? AND delivery_cycle = ? AND attempt_count = ?
                   AND status = 'leased' AND lease_owner = ?
                 """).params(status, nextAttempt == null ? null : timestamp(nextAttempt), timestamp(clock.instant()),

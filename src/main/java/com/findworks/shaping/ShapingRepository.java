@@ -127,28 +127,66 @@ public class ShapingRepository {
     @Transactional
     public Work claimNext() {
         tenant.select();
-        var id = jdbc.sql("""
-                SELECT w.id FROM shaping_runtime_work w
+        var candidate = jdbc.sql("""
+                SELECT w.id, w.organisation_id FROM shaping_runtime_work w
                 JOIN discovery_shaping_sessions s ON s.id = w.shaping_session_id
                 JOIN discoveries d ON d.id = s.discovery_id
                 WHERE w.attempts < 3 AND w.available_at <= now() AND d.status = 'active'
                   AND (w.status = 'queued' OR (w.status = 'running' AND w.lease_until < now()))
                 ORDER BY w.created_at
                 FOR UPDATE OF w SKIP LOCKED LIMIT 1
-                """).query(UUID.class).optional();
-        if (id.isEmpty()) {
+                """).query((rs, ignored) -> new Candidate(
+                        rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class))).optional();
+        if (candidate.isEmpty()) {
+            return null;
+        }
+        var leaseOwner = UUID.randomUUID();
+        var slot = jdbc.sql("""
+                UPDATE pi_worker_slots SET organisation_id = ?, shaping_work_id = ?, runtime_run_id = NULL,
+                    lease_owner = ?, lease_expires_at = now() + interval '2 minutes',
+                    heartbeat_at = now(), updated_at = now()
+                WHERE slot_number = (SELECT slot_number FROM pi_worker_slots
+                    WHERE shaping_work_id = ? OR lease_expires_at IS NULL OR lease_expires_at < now()
+                    ORDER BY CASE WHEN shaping_work_id = ? THEN 0 ELSE 1 END, slot_number
+                    FOR UPDATE SKIP LOCKED LIMIT 1)
+                RETURNING slot_number
+                """).params(candidate.get().organisationId(), candidate.get().id(), leaseOwner,
+                        candidate.get().id(), candidate.get().id())
+                .query(Integer.class).optional();
+        if (slot.isEmpty()) {
             return null;
         }
         return jdbc.sql("""
                 UPDATE shaping_runtime_work
                 SET status = 'running', attempts = attempts + 1,
-                    lease_until = now() + interval '2 minutes', updated_at = now(), error_code = NULL
+                    lease_owner = ?, lease_until = now() + interval '2 minutes', heartbeat_at = now(),
+                    updated_at = now(), error_code = NULL
                 WHERE id = ?
-                RETURNING id, organisation_id, shaping_session_id, trigger_message_id, attempts
-                """).param(id.get()).query((rs, row) -> new Work(
+                RETURNING id, organisation_id, shaping_session_id, trigger_message_id, attempts, lease_owner
+                """).params(leaseOwner, candidate.get().id()).query((rs, row) -> new Work(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("shaping_session_id", UUID.class),
-                        rs.getObject("trigger_message_id", UUID.class), rs.getInt("attempts"))).single();
+                        rs.getObject("trigger_message_id", UUID.class), rs.getInt("attempts"),
+                        rs.getObject("lease_owner", UUID.class))).single();
+    }
+
+    @Transactional
+    public boolean heartbeat(Work work) {
+        tenant.select();
+        var slot = jdbc.sql("""
+                UPDATE pi_worker_slots SET heartbeat_at = now(),
+                    lease_expires_at = now() + interval '2 minutes', updated_at = now()
+                WHERE shaping_work_id = ? AND lease_owner = ? AND lease_expires_at >= now()
+                """).params(work.id(), work.leaseOwner()).update();
+        var run = jdbc.sql("""
+                UPDATE shaping_runtime_work SET heartbeat_at = now(),
+                    lease_until = now() + interval '2 minutes', updated_at = now()
+                WHERE id = ? AND status = 'running' AND lease_owner = ? AND lease_until >= now()
+                """).params(work.id(), work.leaseOwner()).update();
+        if (slot != run) {
+            throw new IllegalStateException("Shaping worker lease is inconsistent.");
+        }
+        return run == 1;
     }
 
     @Transactional(readOnly = true)
@@ -160,8 +198,8 @@ public class ShapingRepository {
                 JOIN discovery_shaping_sessions s ON s.id = w.shaping_session_id
                 JOIN discoveries d ON d.id = s.discovery_id
                 WHERE w.id = ? AND w.shaping_session_id = ? AND w.organisation_id = ?
-                  AND d.status = 'active'
-                """).params(work.id(), work.sessionId(), work.organisationId())
+                  AND w.status = 'running' AND w.lease_owner = ? AND d.status = 'active'
+                """).params(work.id(), work.sessionId(), work.organisationId(), work.leaseOwner())
                 .query((rs, row) -> new DiscoveryContext(rs.getString("title"), rs.getString("objective")))
                 .optional().orElseThrow(() -> new IllegalStateException("Shaping runtime scope no longer exists."));
         var messages = jdbc.sql("""
@@ -194,9 +232,11 @@ public class ShapingRepository {
                 question.trim()).update();
         jdbc.sql("""
                 UPDATE shaping_runtime_work
-                SET status = 'succeeded', response_message_id = ?, lease_until = NULL, updated_at = now()
-                WHERE id = ?
-                """).params(messageId, work.id()).update();
+                SET status = 'succeeded', response_message_id = ?, lease_until = NULL,
+                    lease_owner = NULL, heartbeat_at = NULL, updated_at = now()
+                WHERE id = ? AND lease_owner = ?
+                """).params(messageId, work.id(), work.leaseOwner()).update();
+        releaseSlot(work);
         jdbc.sql("UPDATE discovery_shaping_sessions SET updated_at = now() WHERE id = ?")
                 .param(work.sessionId()).update();
         tenant.auditSystem("shaping_follow_up_ready", "discovery_shaping_session", work.sessionId());
@@ -325,9 +365,11 @@ public class ShapingRepository {
 
         jdbc.sql("""
                 UPDATE shaping_runtime_work
-                SET status = 'succeeded', response_message_id = NULL, lease_until = NULL, updated_at = now()
-                WHERE id = ?
-                """).param(work.id()).update();
+                SET status = 'succeeded', response_message_id = NULL, lease_until = NULL,
+                    lease_owner = NULL, heartbeat_at = NULL, updated_at = now()
+                WHERE id = ? AND lease_owner = ?
+                """).params(work.id(), work.leaseOwner()).update();
+        releaseSlot(work);
         jdbc.sql("UPDATE discovery_shaping_sessions SET updated_at = now() WHERE id = ?")
                 .param(work.sessionId()).update();
         tenant.auditSystem("interview_mission_proposal_ready", "interview_mission_proposal", proposalId);
@@ -340,9 +382,11 @@ public class ShapingRepository {
                 UPDATE shaping_runtime_work
                 SET status = CASE WHEN attempts >= 3 THEN 'failed' ELSE 'queued' END,
                     available_at = now() + interval '1 second', lease_until = NULL,
+                    lease_owner = NULL, heartbeat_at = NULL,
                     updated_at = now(), error_code = 'runtime_error'
-                WHERE id = ? AND status = 'running'
-                """).param(work.id()).update();
+                WHERE id = ? AND status = 'running' AND lease_owner = ?
+                """).params(work.id(), work.leaseOwner()).update();
+        releaseSlot(work);
         if (work.attempts() >= 3) {
             tenant.auditSystem("shaping_runtime_failed", "discovery_shaping_session", work.sessionId());
         }
@@ -351,8 +395,10 @@ public class ShapingRepository {
     private boolean settled(Work work) {
         var status = jdbc.sql("""
                 SELECT status FROM shaping_runtime_work
-                WHERE id = ? AND shaping_session_id = ? AND organisation_id = ? FOR UPDATE
-                """).params(work.id(), work.sessionId(), work.organisationId()).query(String.class).optional()
+                WHERE id = ? AND shaping_session_id = ? AND organisation_id = ?
+                  AND (status = 'succeeded' OR lease_owner = ?) FOR UPDATE
+                """).params(work.id(), work.sessionId(), work.organisationId(), work.leaseOwner())
+                .query(String.class).optional()
                 .orElseThrow(() -> new IllegalStateException("Shaping runtime work no longer exists."));
         if ("succeeded".equals(status)) {
             return true;
@@ -361,6 +407,15 @@ public class ShapingRepository {
             throw new IllegalStateException("Shaping runtime work is not running.");
         }
         return false;
+    }
+
+    private void releaseSlot(Work work) {
+        jdbc.sql("""
+                UPDATE pi_worker_slots SET organisation_id = NULL, shaping_work_id = NULL,
+                    runtime_run_id = NULL, lease_owner = NULL, lease_expires_at = NULL,
+                    heartbeat_at = NULL, updated_at = now()
+                WHERE shaping_work_id = ? AND lease_owner = ?
+                """).params(work.id(), work.leaseOwner()).update();
     }
 
     private void validate(MissionProposal proposal, Set<UUID> investigatorMessages) {
@@ -611,11 +666,13 @@ public class ShapingRepository {
         }
     }
 
-    public record Work(UUID id, UUID organisationId, UUID sessionId, UUID triggerMessageId, int attempts) {}
+    public record Work(UUID id, UUID organisationId, UUID sessionId, UUID triggerMessageId,
+            int attempts, UUID leaseOwner) {}
     public record Context(UUID workId, UUID sessionId, String title, String objective, List<StoredMessage> messages) {}
     public record StoredMessage(UUID id, String authorKind, String content, Instant createdAt) {}
     private record DiscoveryContext(String title, String objective) {}
     private record LatestWork(String status, UUID responseMessageId) {}
+    private record Candidate(UUID id, UUID organisationId) {}
     private record ElementKey(String kind, UUID id) {}
     private record ProvenanceRow(String kind, UUID id, String summary) {}
     private record ProposalRow(

@@ -7,6 +7,7 @@ import java.security.Principal;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 @Controller
+@ConditionalOnExpression("'${findworks.process-role:local}' == 'local' || '${findworks.process-role:local}' == 'web'")
 final class InterviewController {
 
     private static final String ACCESS_COOKIE = "findworks_interview";
