@@ -1,0 +1,11 @@
+[Unit]
+Description=FindWorks forward-only database migration
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/findworks-deploy
+EnvironmentFile=%h/.config/findworks/production.env
+ExecStart=/usr/bin/podman compose -f deploy/compose.yaml --profile migrate run --rm migrate
+TimeoutStartSec=180

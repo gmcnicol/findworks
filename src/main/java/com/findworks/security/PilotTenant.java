@@ -5,6 +5,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
@@ -14,15 +15,18 @@ public final class PilotTenant {
     private final JdbcClient jdbc;
     private final PilotProperties properties;
     private final Clock clock;
+    private final String databaseRole;
 
-    public PilotTenant(JdbcClient jdbc, PilotProperties properties, Clock clock) {
+    public PilotTenant(JdbcClient jdbc, PilotProperties properties, Clock clock,
+            @Value("${findworks.process-role:local}") String processRole) {
         this.jdbc = jdbc;
         this.properties = properties;
         this.clock = clock;
+        this.databaseRole = "web".equals(processRole) ? "findworks_application" : "findworks_worker";
     }
 
     public void select() {
-        jdbc.sql("SET LOCAL ROLE findworks_application").update();
+        jdbc.sql("SET LOCAL ROLE " + databaseRole).update();
         jdbc.sql("SELECT set_config('findworks.organisation_id', ?, true)")
                 .param(properties.organisationId().toString()).query(String.class).single();
     }

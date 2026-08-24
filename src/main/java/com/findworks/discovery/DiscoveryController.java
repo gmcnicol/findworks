@@ -4,6 +4,7 @@ import com.findworks.shaping.ShapingRepository;
 import com.findworks.retention.RetentionRepository;
 import java.security.Principal;
 import java.util.UUID;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 @Controller
+@ConditionalOnExpression("'${findworks.process-role:local}' == 'local' || '${findworks.process-role:local}' == 'web'")
 final class DiscoveryController {
 
     private final DiscoveryRepository repository;

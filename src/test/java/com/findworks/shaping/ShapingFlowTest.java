@@ -11,20 +11,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -33,6 +36,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @SpringBootTest(properties = "findworks.shaping.worker-cron=-")
 @AutoConfigureMockMvc
 @Testcontainers
+@Import(ShapingFlowTest.ShapingRuntimeConfiguration.class)
 class ShapingFlowTest {
 
     private static final String EMAIL = "investigator@findworks.local";
@@ -41,11 +45,6 @@ class ShapingFlowTest {
     @Container
     @ServiceConnection
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
-
-    @DynamicPropertySource
-    static void pi(DynamicPropertyRegistry properties) {
-        properties.add("findworks.pi.executable", FAKE_PI::toString);
-    }
 
     @Autowired
     MockMvc mvc;
@@ -463,6 +462,38 @@ class ShapingFlowTest {
             return script;
         } catch (Exception error) {
             throw new ExceptionInInitializerError(error);
+        }
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class ShapingRuntimeConfiguration {
+        @Bean @Primary
+        ShapingTurnRunner shapingTurnRunner(tools.jackson.databind.ObjectMapper json) {
+            return context -> {
+                var process = new ProcessBuilder(FAKE_PI.toString()).start();
+                var prompt = new StringBuilder();
+                for (var message : context.messages()) {
+                    prompt.append('[').append(message.id()).append("] ").append(message.content()).append('\n');
+                }
+                try (var input = process.outputWriter(StandardCharsets.UTF_8)) {
+                    input.write(json.writeValueAsString(java.util.Map.of(
+                            "id", context.workId(), "message", prompt.toString())));
+                    input.newLine();
+                }
+                tools.jackson.databind.JsonNode result = null;
+                try (var output = process.inputReader(StandardCharsets.UTF_8)) {
+                    for (var line = output.readLine(); line != null; line = output.readLine()) {
+                        var event = json.readTree(line);
+                        if ("tool_execution_end".equals(event.path("type").asText())) {
+                            result = event.path("result").path("details");
+                        }
+                    }
+                }
+                if (process.waitFor() != 0 || result == null) {
+                    throw new IllegalStateException("Fake shaping runtime failed.");
+                }
+                return result;
+            };
         }
     }
 
