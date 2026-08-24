@@ -16,8 +16,12 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -101,6 +105,10 @@ class FirstInterviewQuestionFlowTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("No areas covered yet")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Retry decision rules")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Ownership and exceptions")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("I do not know")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("I prefer not to answer")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Someone else knows")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Please clarify")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Pi"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("runtime"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(
@@ -260,6 +268,180 @@ class FirstInterviewQuestionFlowTest {
         assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(1);
     }
 
+    @ParameterizedTest
+    @MethodSource("unknownResponses")
+    void uncertaintyBecomesAnEvidenceLinkedUnknown(String choice, String answer, String reason) throws Exception {
+        var question = beginQuestion();
+        var request = org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post(choice == null ? "/interview/answer" : "/interview/choice")
+                .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                .param("questionId", question.toString()).param("expectedRevision", "2");
+        if (choice == null) {
+            request.param("answer", answer);
+        } else {
+            request.param("choice", choice);
+        }
+        mvc.perform(request).andExpect(status().is3xxRedirection());
+        worker.runNext();
+
+        assertThat(jdbc.sql("SELECT reason FROM unknown_outcomes").query(String.class).single())
+                .isEqualTo(reason);
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_outcome_evidence")
+                .query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT status FROM investigation_results WHERE investigation_item_id = ?")
+                .param(HIGH_ITEM).query(String.class).single()).isEqualTo("explicit_outcome");
+        assertThat(jdbc.sql("SELECT investigation_item_id FROM interview_questions ORDER BY sequence DESC LIMIT 1")
+                .query(UUID.class).single()).isEqualTo(LOW_ITEM);
+        assertThatThrownBy(() -> new TransactionTemplate(transactions).executeWithoutResult(ignored -> {
+            jdbc.sql("SET LOCAL ROLE findworks_application").update();
+            jdbc.sql("SELECT set_config('findworks.organisation_id', ?, true)")
+                    .param(ORGANISATION.toString()).query(String.class).single();
+            jdbc.sql("UPDATE investigation_outcomes SET kind = 'unknown'").update();
+        })).hasRootCauseInstanceOf(java.sql.SQLException.class);
+    }
+
+    static Stream<Arguments> unknownResponses() {
+        return Stream.of(
+                Arguments.of("did_not_know", null, "did_not_know"),
+                Arguments.of("declined", null, "declined"),
+                Arguments.of(null, "Evidence is insufficient.", "evidence_insufficient"),
+                Arguments.of(null, "I do not know who owns this.", "owner_unidentified"));
+    }
+
+    @Test
+    void namedOwnerCreatesTerminalOwnershipGapWithoutInvitationOrPressure() throws Exception {
+        var question = beginQuestion();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/choice")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                        .param("questionId", question.toString()).param("expectedRevision", "2")
+                        .param("choice", "other_owner").param("owner", "Payments Platform team"))
+                .andExpect(status().is3xxRedirection());
+        worker.runNext();
+
+        assertThat(jdbc.sql("""
+                SELECT unresolved_subject || ':' || why_current_participant_cannot_answer || ':' || owner_description
+                FROM ownership_gap_outcomes
+                """).query(String.class).single())
+                .isEqualTo("Retry decision rules:Another owner holds this knowledge.:Payments Platform team");
+        assertThat(jdbc.sql("SELECT participation_signal FROM evidence").query(String.class).single())
+                .isEqualTo("other_owner");
+        assertThat(jdbc.sql("SELECT count(*) FROM invitations").query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT investigation_item_id FROM interview_questions ORDER BY sequence DESC LIMIT 1")
+                .query(UUID.class).single()).isEqualTo(LOW_ITEM);
+    }
+
+    @Test
+    void clarificationRequestCreatesNoEvidenceAndOneLinkedQuestion() throws Exception {
+        var question = beginQuestion();
+        var request = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/clarify")
+                .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                .param("questionId", question.toString()).param("expectedRevision", "2");
+        mvc.perform(request).andExpect(status().is3xxRedirection());
+        mvc.perform(request).andExpect(status().is3xxRedirection());
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("""
+                SELECT trigger || ':' || (source_question_id = ?) FROM interview_runtime_runs
+                ORDER BY created_at DESC LIMIT 1
+                """).param(question).query(String.class).single()).isEqualTo("clarification_request:true");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
+                        .cookie(new Cookie("findworks_interview", GRANT)))
+                .andExpect(status().isOk()).andExpect(content().string(
+                        org.hamcrest.Matchers.containsString("Clarification requested")));
+
+        worker.runNext();
+        assertThat(jdbc.sql("""
+                SELECT question_kind || ':' || (clarifies_question_id = ?)
+                FROM interview_questions ORDER BY sequence DESC LIMIT 1
+                """).param(question).query(String.class).single()).isEqualTo("clarification:true");
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_outcomes").query(Integer.class).single()).isZero();
+    }
+
+    @Test
+    void unsupportedInferenceStaysUnconfirmedAndGetsLinkedParaphrase() throws Exception {
+        var question = beginQuestion();
+        answer(question, "It might be three failures before Support retries.");
+        var evidence = jdbc.sql("SELECT id FROM evidence").query(UUID.class).single();
+        worker.runNext();
+
+        assertThat(jdbc.sql("SELECT knowledge_kind || ':' || confirmation_state FROM candidate_knowledge_claims")
+                .query(String.class).single()).isEqualTo("assumption:unconfirmed");
+        assertThat(jdbc.sql("SELECT status FROM investigation_results").query(String.class).single())
+                .isEqualTo("exploring");
+        assertThat(jdbc.sql("""
+                SELECT question_kind || ':' || paraphrase_reason || ':' || (source_evidence_id = ?)
+                FROM interview_questions ORDER BY sequence DESC LIMIT 1
+                """).param(evidence).query(String.class).single())
+                .isEqualTo("paraphrase_confirmation:inference:true");
+    }
+
+    @Test
+    void contradictionPreservesBothEvidenceClaimsAndNeverChoosesWinner() throws Exception {
+        var first = beginQuestion();
+        answer(first, "Usually Support retries after three failures.");
+        worker.runNext();
+        var second = jdbc.sql("SELECT id FROM interview_questions ORDER BY sequence DESC LIMIT 1")
+                .query(UUID.class).single();
+        answer(second, "That conflicts with my earlier answer: it is five failures.");
+        worker.runNext();
+
+        assertThat(jdbc.sql("SELECT unresolved_explanation FROM conflict_outcomes")
+                .query(String.class).single()).isEqualTo("The retry threshold remains inconsistent.");
+        assertThat(jdbc.sql("SELECT claim FROM conflict_members ORDER BY position")
+                .query(String.class).list()).containsExactly(
+                        "Retry after three failures.", "Retry after five failures.");
+        assertThat(jdbc.sql("SELECT count(DISTINCT evidence_id) FROM conflict_members")
+                .query(Integer.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT status FROM investigation_results WHERE investigation_item_id = ?")
+                .param(HIGH_ITEM).query(String.class).single()).isEqualTo("explicit_outcome");
+    }
+
+    @Test
+    void outOfScopeAnswerRemainsEvidenceButCannotBecomeCandidateOrDriveParaphrase() throws Exception {
+        var question = beginQuestion();
+        var answer = "Salary bands are confidential and unrelated to payment retries.";
+        answer(question, answer);
+        worker.runNext();
+
+        assertThat(jdbc.sql("SELECT answer FROM evidence").query(String.class).single()).isEqualTo(answer);
+        assertThat(jdbc.sql("SELECT assessment FROM evidence_scope_assessments")
+                .query(String.class).single()).isEqualTo("out_of_scope");
+        assertThat(jdbc.sql("SELECT count(*) FROM candidate_knowledge_claims")
+                .query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_outcomes")
+                .query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT question_kind FROM interview_questions ORDER BY sequence DESC LIMIT 1")
+                .query(String.class).single()).isEqualTo("ordinary");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
+                        .cookie(new Cookie("findworks_interview", GRANT)))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(answer))));
+    }
+
+    @Test
+    void foreignEvidenceAndIncompleteConflictRollBackAllSemanticEffects() throws Exception {
+        var question = beginQuestion();
+        answer(question, "A normal answer.");
+        var evidence = jdbc.sql("SELECT id FROM evidence").query(UUID.class).single();
+        var work = runtime.claimNext();
+        var action = new InterviewRuntimeRepository.NextAction("ask_question", HIGH_ITEM,
+                "What exception applies?", null,
+                new InterviewRuntimeRepository.Progress("Exploring", "Retries", "Ownership"));
+        var foreign = new InterviewRuntimeRepository.OutcomeProposal("assumption", HIGH_ITEM,
+                List.of(UUID.randomUUID()), null, null, "assumption", "An invented claim",
+                null, null, null, null, List.of());
+        assertThatThrownBy(() -> runtime.complete(work, new InterviewRuntimeRepository.Submission(
+                work.id(), work.sessionId(), work.expectedRevision(), List.of(foreign), List.of(), action)))
+                .isInstanceOf(IllegalArgumentException.class);
+        var incomplete = new InterviewRuntimeRepository.OutcomeProposal("conflict", HIGH_ITEM,
+                List.of(), null, "Not enough", null, null, null, null, null, null,
+                List.of(new InterviewRuntimeRepository.ConflictMemberProposal("Only one", evidence)));
+        assertThatThrownBy(() -> runtime.complete(work, new InterviewRuntimeRepository.Submission(
+                work.id(), work.sessionId(), work.expectedRevision(), List.of(incomplete), List.of(), action)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_outcomes")
+                .query(Integer.class).single()).isZero();
+        assertThat(state()).isEqualTo("active:3:false");
+    }
+
     @Test
     void repositoryRejectsStaleForeignOrOutcomeBearingFirstTurnsWithoutPartialState() throws Exception {
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/start")
@@ -295,6 +477,25 @@ class FirstInterviewQuestionFlowTest {
                 List.of(), new InterviewRuntimeRepository.NextAction("ask_question", HIGH_ITEM,
                         "How do retry rules work?", null,
                         new InterviewRuntimeRepository.Progress("None", "Retry rules", "Ownership")));
+    }
+
+    private UUID beginQuestion() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/start")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf()))
+                .andExpect(status().is3xxRedirection());
+        worker.runNext();
+        return jdbc.sql("SELECT id FROM interview_questions ORDER BY sequence DESC LIMIT 1")
+                .query(UUID.class).single();
+    }
+
+    private void answer(UUID question, String answer) throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/answer")
+                        .cookie(new Cookie("findworks_interview", GRANT)).with(csrf())
+                        .param("questionId", question.toString())
+                        .param("expectedRevision", jdbc.sql("SELECT revision FROM interview_sessions")
+                                .query(Integer.class).single().toString())
+                        .param("answer", answer))
+                .andExpect(status().is3xxRedirection());
     }
 
     private String state() {
@@ -349,8 +550,21 @@ class FirstInterviewQuestionFlowTest {
                 INSERT INTO mission_allowed_outcomes (
                     id, organisation_id, interview_mission_id, investigation_item_id, position, outcome_kind
                 ) VALUES (gen_random_uuid(), ?, ?, ?, 0, 'supported_knowledge'),
-                         (gen_random_uuid(), ?, ?, ?, 0, 'unknown')
-                """).params(ORGANISATION, MISSION, HIGH_ITEM, ORGANISATION, MISSION, LOW_ITEM).update();
+                         (gen_random_uuid(), ?, ?, ?, 1, 'unknown'),
+                         (gen_random_uuid(), ?, ?, ?, 2, 'conflict'),
+                         (gen_random_uuid(), ?, ?, ?, 3, 'ownership_gap'),
+                         (gen_random_uuid(), ?, ?, ?, 0, 'supported_knowledge'),
+                         (gen_random_uuid(), ?, ?, ?, 1, 'unknown'),
+                         (gen_random_uuid(), ?, ?, ?, 2, 'conflict'),
+                         (gen_random_uuid(), ?, ?, ?, 3, 'ownership_gap')
+                """).params(ORGANISATION, MISSION, HIGH_ITEM,
+                ORGANISATION, MISSION, HIGH_ITEM,
+                ORGANISATION, MISSION, HIGH_ITEM,
+                ORGANISATION, MISSION, HIGH_ITEM,
+                ORGANISATION, MISSION, LOW_ITEM,
+                ORGANISATION, MISSION, LOW_ITEM,
+                ORGANISATION, MISSION, LOW_ITEM,
+                ORGANISATION, MISSION, LOW_ITEM).update();
         jdbc.sql("""
                 INSERT INTO discovery_participants (id, organisation_id, discovery_id, intended_name, email)
                 VALUES (?, ?, ?, 'Billing manager', 'participant-secret@example.com')
@@ -377,18 +591,73 @@ class FirstInterviewQuestionFlowTest {
                     projection = json.loads(request["message"].split("\\n", 1)[1])
                     with open(%s, "a", encoding="utf-8") as capture:
                         capture.write(json.dumps(projection) + "\\n")
-                    follow_up = projection["trigger"] == "accepted_evidence"
+                    trigger = projection["trigger"]
+                    follow_up = trigger == "accepted_evidence"
+                    latest = projection["conversation"][-1] if projection["conversation"] else {}
+                    answer = latest.get("answer") or ""
+                    signal = latest.get("participationSignal")
+                    evidence_id = projection.get("acceptedEvidenceId")
+                    outcomes = []
+                    assessments = []
+                    action_kind = "ask_question"
+                    target = %s
+                    question = ("You mentioned the North Star rule. How do the three failed attempts change escalation?"
+                        if follow_up else
+                        "When a failed card payment occurs, how do you decide whether Support should retry it?")
+                    source_question_id = None
+                    source_evidence_id = None
+                    paraphrase_reason = None
+                    if trigger == "clarification_request":
+                        action_kind = "ask_clarification"
+                        source_question_id = projection["sourceQuestionId"]
+                        question = "Put another way, what happens first when a card payment fails?"
+                    elif signal in ["did_not_know", "declined"] or answer in ["Evidence is insufficient.", "I do not know who owns this."]:
+                        reason = signal or ("evidence_insufficient" if answer == "Evidence is insufficient." else "owner_unidentified")
+                        outcomes = [{"kind": "unknown", "investigationItemId": %s,
+                            "evidenceIds": [evidence_id], "reason": reason,
+                            "explanation": "The interviewee could not establish the retry rule."}]
+                        target = %s
+                        question = "Who handles exceptions when the usual payment retry path does not apply?"
+                    elif signal == "other_owner":
+                        outcomes = [{"kind": "ownership_gap", "investigationItemId": %s,
+                            "evidenceIds": [evidence_id], "unresolvedSubject": "Retry decision rules",
+                            "whyCurrentParticipantCannotAnswer": "Another owner holds this knowledge.",
+                            "ownerDescription": answer.split(":", 1)[1].strip()}]
+                        target = %s
+                        question = "Without naming anyone else, what exceptions do you handle yourself?"
+                    elif "might" in answer.lower():
+                        outcomes = [{"kind": "assumption", "investigationItemId": %s,
+                            "evidenceIds": [evidence_id], "knowledgeKind": "assumption",
+                            "claim": "Support might retry after three failures."}]
+                        action_kind = "ask_paraphrase_confirmation"
+                        source_evidence_id = evidence_id
+                        paraphrase_reason = "inference"
+                        question = "Have I understood correctly that three failures may trigger a Support retry?"
+                    elif "conflicts" in answer.lower():
+                        evidence = [exchange for exchange in projection["conversation"] if exchange.get("evidenceId")]
+                        outcomes = [{"kind": "conflict", "investigationItemId": %s, "evidenceIds": [],
+                            "explanation": "The retry threshold remains inconsistent.",
+                            "conflictMembers": [
+                                {"claim": "Retry after three failures.", "evidenceId": evidence[-2]["evidenceId"]},
+                                {"claim": "Retry after five failures.", "evidenceId": evidence[-1]["evidenceId"]}
+                            ]}]
+                        target = %s
+                        question = "Who decides how payment exceptions are handled?"
+                    elif "salary" in answer.lower():
+                        assessments = [{"evidenceId": evidence_id, "assessment": "out_of_scope",
+                            "missionBoundaryId": projection["boundaries"][1]["id"],
+                            "rationale": "Salary information is prohibited by the Mission."}]
+                        question = "Returning to failed payments, what retry signal does Support use?"
                     submission = {
                         "runId": projection["runId"],
                         "sessionId": projection["sessionId"],
                         "expectedRevision": projection["expectedRevision"],
-                        "outcomes": [],
+                        "outcomes": outcomes,
+                        "scopeAssessments": assessments,
                         "nextAction": {
-                            "kind": "ask_question",
-                            "targetInvestigationItemId": %s,
-                            "question": ("You mentioned the North Star rule. How do the three failed attempts change escalation?"
-                                if follow_up else
-                                "When a failed card payment occurs, how do you decide whether Support should retry it?"),
+                            "kind": action_kind,
+                            "targetInvestigationItemId": target,
+                            "question": question,
                             "humanContext": "Think about the most recent case.",
                             "progress": {
                                 "covered": "Retry decisions explored" if follow_up else "No areas covered yet",
@@ -397,12 +666,21 @@ class FirstInterviewQuestionFlowTest {
                             }
                         }
                     }
+                    if source_question_id:
+                        submission["nextAction"]["sourceQuestionId"] = source_question_id
+                    if source_evidence_id:
+                        submission["nextAction"]["sourceEvidenceId"] = source_evidence_id
+                        submission["nextAction"]["paraphraseReason"] = paraphrase_reason
                     print(json.dumps({"id": request["id"], "type": "response", "command": "prompt", "success": True}))
                     print(json.dumps({"type": "tool_execution_end", "toolCallId": "tool-1",
                         "toolName": "submit_interview_turn", "result": {"content": [],
                         "details": {"submission": submission}}, "isError": False}))
                     print(json.dumps({"type": "agent_settled"}))
-                    """.formatted(pythonString(CAPTURE.toString()), pythonString(HIGH_ITEM.toString())));
+                    """.formatted(pythonString(CAPTURE.toString()),
+                    pythonString(HIGH_ITEM.toString()), pythonString(HIGH_ITEM.toString()),
+                    pythonString(LOW_ITEM.toString()), pythonString(HIGH_ITEM.toString()),
+                    pythonString(LOW_ITEM.toString()), pythonString(HIGH_ITEM.toString()),
+                    pythonString(HIGH_ITEM.toString()), pythonString(LOW_ITEM.toString())));
             Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"));
             return script;
         } catch (Exception error) {
