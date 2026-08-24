@@ -63,6 +63,7 @@ class FirstInterviewQuestionFlowTest {
     @Autowired JdbcClient jdbc;
     @Autowired ShapingWorker worker;
     @Autowired InterviewRuntimeRepository runtime;
+    @Autowired InterviewRepository interviews;
     @Autowired PlatformTransactionManager transactions;
 
     @BeforeEach
@@ -74,7 +75,7 @@ class FirstInterviewQuestionFlowTest {
     }
 
     @Test
-    void beginProducesOneRevisionBoundAdaptiveQuestionAndSafeProgressView() throws Exception {
+    void answerCommitsEvidenceBeforeAnAnswerDependentFollowUp() throws Exception {
         var cookie = new Cookie("findworks_interview", GRANT);
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview").cookie(cookie))
                 .andExpect(status().isOk())
@@ -122,11 +123,141 @@ class FirstInterviewQuestionFlowTest {
             jdbc.sql("UPDATE interview_questions SET question = 'changed'").update();
         })).hasRootCauseInstanceOf(java.sql.SQLException.class);
 
+        var firstQuestion = jdbc.sql("SELECT id FROM interview_questions").query(UUID.class).single();
+        var exactAnswer = "North Star rule applies.\nSupport checks three failed attempts before escalation.";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/answer")
+                        .cookie(cookie).with(csrf())
+                        .param("questionId", firstQuestion.toString()).param("expectedRevision", "2")
+                        .param("answer", "  " + exactAnswer + "  "))
+                .andExpect(status().is3xxRedirection());
+
+        assertThat(state()).isEqualTo("active:3:false");
+        assertThat(jdbc.sql("""
+                SELECT e.answer = ? AND e.source_type = 'interviewee_answer'
+                    AND e.organisation_id = ? AND e.discovery_id = ? AND e.interview_mission_id = ?
+                    AND e.interview_session_id = ? AND e.participant_id = ? AND e.question_id = ?
+                    AND e.investigation_item_id = ? AND e.created_at IS NOT NULL
+                FROM evidence e
+                """).params(exactAnswer, ORGANISATION, DISCOVERY, MISSION, SESSION, PARTICIPANT,
+                firstQuestion, HIGH_ITEM).query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT trigger || ':' || expected_revision || ':' || status FROM interview_runtime_runs ORDER BY created_at")
+                .query(String.class).list()).containsExactly("session_start:1:committed", "accepted_evidence:3:queued");
+        assertThat(jdbc.sql("SELECT status FROM investigation_results").query(String.class).single())
+                .isEqualTo("exploring");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview").cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Answer saved")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Your response is safe")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(exactAnswer))));
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/answer")
+                        .cookie(cookie).with(csrf())
+                        .param("questionId", firstQuestion.toString()).param("expectedRevision", "2")
+                        .param("answer", exactAnswer))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/answer")
+                        .cookie(cookie).with(csrf())
+                        .param("questionId", firstQuestion.toString()).param("expectedRevision", "2")
+                        .param("answer", "Different replay"))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_runtime_runs").query(Integer.class).single()).isEqualTo(2);
+
+        worker.runNext();
+        worker.runNext();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview").cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "You mentioned the North Star rule. How do the three failed attempts change escalation?")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("value=\"1\" max=\"2\"")));
+        assertThat(state()).isEqualTo("active:4:true");
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_application_events").query(Integer.class).single())
+                .isEqualTo(2);
+        assertThat(jdbc.sql("SELECT covered_count FROM interview_application_events ORDER BY created_at DESC LIMIT 1")
+                .query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_records WHERE action = 'interview_answer_accepted'")
+                .query(Integer.class).single()).isEqualTo(1);
+        assertThatThrownBy(() -> new TransactionTemplate(transactions).executeWithoutResult(ignored -> {
+            jdbc.sql("SET LOCAL ROLE findworks_application").update();
+            jdbc.sql("SELECT set_config('findworks.organisation_id', ?, true)")
+                    .param(ORGANISATION.toString()).query(String.class).single();
+            jdbc.sql("UPDATE evidence SET answer = 'changed'").update();
+        })).hasRootCauseInstanceOf(java.sql.SQLException.class);
+        assertThatThrownBy(() -> new TransactionTemplate(transactions).executeWithoutResult(ignored -> {
+            jdbc.sql("SET LOCAL ROLE findworks_application").update();
+            jdbc.sql("SELECT set_config('findworks.organisation_id', ?, true)")
+                    .param(ORGANISATION.toString()).query(String.class).single();
+            jdbc.sql("DELETE FROM evidence").update();
+        })).hasRootCauseInstanceOf(java.sql.SQLException.class);
+
         var projection = Files.readString(CAPTURE);
         assertThat(projection).contains("SHARED-PAYMENT-CONTEXT", "OPENING-GUIDANCE", "Retry definition",
-                        HIGH_ITEM.toString(), LOW_ITEM.toString(), MISSION.toString(), SESSION.toString())
+                        HIGH_ITEM.toString(), LOW_ITEM.toString(), MISSION.toString(), SESSION.toString(),
+                        "North Star rule applies.\\nSupport checks three failed attempts before escalation.",
+                        "accepted_evidence", "exploring")
                 .doesNotContain("PRIVATE-MISSION-CONTEXT", "participant-secret@example.com", GRANT);
-        assertThat(projection.lines()).hasSize(1);
+        assertThat(projection.lines()).hasSize(2);
+    }
+
+    @Test
+    void invalidAnswerOrPostCommitWorkerFailureNeverLosesOrDuplicatesEvidence() throws Exception {
+        var cookie = new Cookie("findworks_interview", GRANT);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/start")
+                        .cookie(cookie).with(csrf())).andExpect(status().is3xxRedirection());
+        worker.runNext();
+        var question = jdbc.sql("SELECT id FROM interview_questions").query(UUID.class).single();
+
+        assertThatThrownBy(() -> interviews.answer(GRANT, question, 1, "stale"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> interviews.answer(GRANT, UUID.randomUUID(), 2, "foreign"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> interviews.answer(GRANT, question, 2, " "))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> interviews.answer(GRANT, question, 2, "x".repeat(10_001)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isZero();
+        assertThat(state()).isEqualTo("active:2:true");
+
+        jdbc.sql("""
+                CREATE FUNCTION fail_accepted_evidence_run() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    IF NEW.trigger = 'accepted_evidence' THEN RAISE EXCEPTION 'synthetic crash'; END IF;
+                    RETURN NEW;
+                END $$
+                """).update();
+        jdbc.sql("""
+                CREATE TRIGGER fail_accepted_evidence_run BEFORE INSERT ON interview_runtime_runs
+                FOR EACH ROW EXECUTE FUNCTION fail_accepted_evidence_run()
+                """).update();
+        try {
+            assertThatThrownBy(() -> interviews.answer(GRANT, question, 2, "Durable answer"))
+                    .hasRootCauseInstanceOf(java.sql.SQLException.class);
+        } finally {
+            jdbc.sql("DROP TRIGGER fail_accepted_evidence_run ON interview_runtime_runs").update();
+            jdbc.sql("DROP FUNCTION fail_accepted_evidence_run()").update();
+        }
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_results").query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT answered_at IS NULL FROM interview_questions").query(Boolean.class).single())
+                .isTrue();
+        assertThat(state()).isEqualTo("active:2:true");
+
+        interviews.answer(GRANT, question, 2, "Durable answer");
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_runtime_runs WHERE status = 'queued'")
+                .query(Integer.class).single()).isEqualTo(1);
+        var failedWork = runtime.claimNext();
+        runtime.fail(failedWork);
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT status FROM interview_runtime_runs ORDER BY created_at DESC LIMIT 1")
+                .query(String.class).single()).isEqualTo("queued");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview").cookie(cookie))
+                .andExpect(status().isOk()).andExpect(content().string(
+                        org.hamcrest.Matchers.containsString("Answer saved")));
+        jdbc.sql("UPDATE interview_runtime_runs SET available_at = now() WHERE status = 'queued'").update();
+        worker.runNext();
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(1);
     }
 
     @Test
@@ -246,6 +377,7 @@ class FirstInterviewQuestionFlowTest {
                     projection = json.loads(request["message"].split("\\n", 1)[1])
                     with open(%s, "a", encoding="utf-8") as capture:
                         capture.write(json.dumps(projection) + "\\n")
+                    follow_up = projection["trigger"] == "accepted_evidence"
                     submission = {
                         "runId": projection["runId"],
                         "sessionId": projection["sessionId"],
@@ -254,10 +386,12 @@ class FirstInterviewQuestionFlowTest {
                         "nextAction": {
                             "kind": "ask_question",
                             "targetInvestigationItemId": %s,
-                            "question": "When a failed card payment occurs, how do you decide whether Support should retry it?",
+                            "question": ("You mentioned the North Star rule. How do the three failed attempts change escalation?"
+                                if follow_up else
+                                "When a failed card payment occurs, how do you decide whether Support should retry it?"),
                             "humanContext": "Think about the most recent case.",
                             "progress": {
-                                "covered": "No areas covered yet",
+                                "covered": "Retry decisions explored" if follow_up else "No areas covered yet",
                                 "current": "Retry decision rules",
                                 "remaining": "Ownership and exceptions"
                             }

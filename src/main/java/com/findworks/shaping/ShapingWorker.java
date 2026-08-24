@@ -22,7 +22,7 @@ public class ShapingWorker {
         var interview = interviews.claimNext();
         if (interview != null) {
             try {
-                interviews.complete(interview, pi.firstQuestion(interviews.context(interview)));
+                interviews.complete(interview, pi.interviewTurn(interviews.context(interview)));
             } catch (Exception error) {
                 interviews.fail(interview);
             }

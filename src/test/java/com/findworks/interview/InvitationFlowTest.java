@@ -190,9 +190,16 @@ class InvitationFlowTest {
         var session = jdbc.sql("SELECT id FROM interview_sessions WHERE interview_mission_id = ?")
                 .param(MISSION).query(UUID.class).single();
         jdbc.sql("""
-                INSERT INTO evidence (id, interview_session_id, investigation_item_id, answer)
-                VALUES (gen_random_uuid(), ?, ?, 'Existing evidence')
-                """).params(session, ITEM).update();
+                INSERT INTO evidence (
+                    id, organisation_id, discovery_id, interview_mission_id,
+                    interview_session_id, participant_id, investigation_item_id,
+                    source_type, answer
+                )
+                SELECT gen_random_uuid(), organisation_id, discovery_id, interview_mission_id,
+                       id, participant_id, ?, 'legacy', 'Existing evidence'
+                FROM interview_sessions
+                WHERE id = ?
+                """).params(ITEM, session).update();
 
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .post("/missions/{missionId}/invitations/{invitationId}/reissue", MISSION, invitation)

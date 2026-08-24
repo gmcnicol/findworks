@@ -61,29 +61,52 @@ class RealPiFirstInterviewQuestionFlowTest {
     @Autowired ShapingWorker worker;
 
     @Test
-    void realPiCommitsOneMissionRelevantFirstQuestion() throws Exception {
+    void realPiUsesAcceptedEvidenceForAnAdaptiveFollowUp() throws Exception {
         seed();
         var cookie = new Cookie("findworks_interview", GRANT);
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/start")
                         .cookie(cookie).with(csrf()))
                 .andExpect(status().is3xxRedirection());
 
-        for (int attempt = 0; attempt < 3 && !"committed".equals(runStatus()); attempt++) {
-            worker.runNext();
-            jdbc.sql("UPDATE interview_runtime_runs SET available_at = now() WHERE status = 'queued'").update();
-        }
+        runCurrentTurn();
 
-        assertThat(runStatus()).isEqualTo("committed");
-        var question = jdbc.sql("SELECT question FROM interview_questions").query(String.class).single();
-        assertThat(question.toLowerCase()).containsAnyOf("payment", "retry", "history", "rule", "support");
+        var question = jdbc.sql("SELECT id, question FROM interview_questions")
+                .query((rs, ignored) -> new Question(rs.getObject("id", UUID.class), rs.getString("question")))
+                .single();
+        assertThat(question.text().toLowerCase()).containsAnyOf("payment", "retry", "history", "rule", "support");
+        var answer = "The North Star retry rule is exactly three failures before manual escalation.";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/answer")
+                        .cookie(cookie).with(csrf()).param("questionId", question.id().toString())
+                        .param("expectedRevision", "2").param("answer", answer))
+                .andExpect(status().is3xxRedirection());
+        assertThat(jdbc.sql("SELECT answer FROM evidence").query(String.class).single()).isEqualTo(answer);
+        assertThat(latestRunStatus()).isEqualTo("queued");
+
+        runCurrentTurn();
+
+        var followUp = jdbc.sql("SELECT question FROM interview_questions ORDER BY sequence DESC LIMIT 1")
+                .query(String.class).single();
+        assertThat(followUp).isNotEqualTo(question.text());
+        assertThat(followUp.toLowerCase()).containsAnyOf("north star", "three", "failure", "escalat");
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_questions").query(Integer.class).single()).isEqualTo(2);
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview").cookie(cookie))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString(question)))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(followUp)))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Mission coverage")));
     }
 
-    private String runStatus() {
-        return jdbc.sql("SELECT status FROM interview_runtime_runs").query(String.class).single();
+    private void runCurrentTurn() {
+        for (int attempt = 0; attempt < 3 && !"committed".equals(latestRunStatus()); attempt++) {
+            worker.runNext();
+            jdbc.sql("UPDATE interview_runtime_runs SET available_at = now() WHERE status = 'queued'").update();
+        }
+        assertThat(latestRunStatus()).isEqualTo("committed");
+    }
+
+    private String latestRunStatus() {
+        return jdbc.sql("SELECT status FROM interview_runtime_runs ORDER BY created_at DESC LIMIT 1")
+                .query(String.class).single();
     }
 
     private void seed() {
@@ -148,4 +171,6 @@ class RealPiFirstInterviewQuestionFlowTest {
             throw new IllegalStateException(impossible);
         }
     }
+
+    private record Question(UUID id, String text) {}
 }

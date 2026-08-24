@@ -39,11 +39,12 @@ public class InterviewRuntimeRepository {
                     lease_until = now() + interval '2 minutes', updated_at = now(), error_code = NULL
                 WHERE id = ?
                 RETURNING id, organisation_id, interview_session_id, interview_mission_id,
-                          expected_revision, attempts
+                          trigger, evidence_id, expected_revision, attempts
                 """).param(id.get()).query((rs, ignored) -> new Work(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("interview_session_id", UUID.class),
                         rs.getObject("interview_mission_id", UUID.class),
+                        rs.getString("trigger"), rs.getObject("evidence_id", UUID.class),
                         rs.getInt("expected_revision"), rs.getInt("attempts"))).single();
     }
 
@@ -63,6 +64,12 @@ public class InterviewRuntimeRepository {
                   AND r.organisation_id = ? AND r.status = 'running'
                   AND s.status = 'active' AND s.revision = r.expected_revision
                   AND s.active_question_id IS NULL AND m.approved_at IS NOT NULL AND d.status = 'active'
+                  AND ((r.trigger = 'session_start' AND r.evidence_id IS NULL)
+                    OR (r.trigger = 'accepted_evidence' AND EXISTS (
+                        SELECT 1 FROM evidence e
+                        WHERE e.id = r.evidence_id AND e.interview_session_id = r.interview_session_id
+                          AND e.organisation_id = r.organisation_id
+                          AND e.source_type = 'interviewee_answer')))
                 """).params(work.id(), work.sessionId(), work.missionId(), work.organisationId())
                 .query((rs, ignored) -> new Mission(
                         rs.getString("objective"), rs.getString("desired_outcome"),
@@ -87,9 +94,13 @@ public class InterviewRuntimeRepository {
                 WHERE interview_mission_id = ? ORDER BY position
                 """).param(work.missionId()).query(String.class).list();
         var items = jdbc.sql("""
-                SELECT id, position, knowledge_gap, importance, priority, relevant_context, required
-                FROM investigation_items WHERE interview_mission_id = ? ORDER BY position
-                """).param(work.missionId()).query((rs, ignored) -> {
+                SELECT i.id, i.position, i.knowledge_gap, i.importance, i.priority,
+                       i.relevant_context, i.required, coalesce(r.status, 'unaddressed') result_status
+                FROM investigation_items i
+                LEFT JOIN investigation_results r ON r.investigation_item_id = i.id
+                    AND r.interview_session_id = ?
+                WHERE i.interview_mission_id = ? ORDER BY i.position
+                """).params(work.sessionId(), work.missionId()).query((rs, ignored) -> {
                     var itemId = rs.getObject("id", UUID.class);
                     var outcomes = jdbc.sql("""
                             SELECT outcome_kind FROM mission_allowed_outcomes
@@ -97,11 +108,25 @@ public class InterviewRuntimeRepository {
                             """).param(itemId).query(String.class).list();
                     return new Item(itemId, rs.getInt("position"), rs.getString("knowledge_gap"),
                             rs.getString("importance"), rs.getString("priority"),
-                            rs.getString("relevant_context"), rs.getBoolean("required"), outcomes);
+                            rs.getString("relevant_context"), rs.getBoolean("required"),
+                            rs.getString("result_status"), outcomes);
                 }).list();
+        var conversation = jdbc.sql("""
+                SELECT q.id question_id, q.investigation_item_id, q.sequence, q.question, q.human_context,
+                       e.id evidence_id, e.answer
+                FROM interview_questions q
+                LEFT JOIN evidence e ON e.question_id = q.id AND e.source_type = 'interviewee_answer'
+                WHERE q.interview_session_id = ? AND q.interview_mission_id = ?
+                ORDER BY q.sequence
+                """).params(work.sessionId(), work.missionId()).query((rs, ignored) -> new Exchange(
+                        rs.getObject("question_id", UUID.class),
+                        rs.getObject("investigation_item_id", UUID.class), rs.getInt("sequence"),
+                        rs.getString("question"), rs.getString("human_context"),
+                        rs.getObject("evidence_id", UUID.class), rs.getString("answer"))).list();
         return new Context(work.id(), work.sessionId(), work.expectedRevision(), work.missionId(),
+                work.trigger(), work.evidenceId(),
                 mission.objective(), mission.desiredOutcome(), sharedContext, boundaries, terminology,
-                mission.completionCriteria(), mission.expectedCommitment(), openingGuidance, items);
+                mission.completionCriteria(), mission.expectedCommitment(), openingGuidance, items, conversation);
     }
 
     @Transactional
@@ -151,6 +176,14 @@ public class InterviewRuntimeRepository {
             throw new IllegalArgumentException("Question target is not in the highest-priority required area.");
         }
         var question = plain(action.question(), 2_000, "question");
+        if (jdbc.sql("""
+                SELECT EXISTS (
+                    SELECT 1 FROM interview_questions
+                    WHERE interview_session_id = ? AND lower(trim(question)) = lower(trim(?))
+                )
+                """).params(work.sessionId(), question).query(Boolean.class).single()) {
+            throw new IllegalArgumentException("Pi repeated an Interview question.");
+        }
         var context = optionalPlain(action.humanContext(), 2_000, "question context");
         var covered = plain(action.progress().covered(), 2_000, "covered progress");
         var current = plain(action.progress().current(), 2_000, "current progress");
@@ -159,6 +192,11 @@ public class InterviewRuntimeRepository {
                 SELECT count(*) FROM investigation_items
                 WHERE interview_mission_id = ? AND required
                 """).param(work.missionId()).query(Integer.class).single();
+        var coveredCount = jdbc.sql("""
+                SELECT count(*) FROM investigation_results r
+                JOIN investigation_items i ON i.id = r.investigation_item_id
+                WHERE r.interview_session_id = ? AND i.required
+                """).param(work.sessionId()).query(Integer.class).single();
         var questionId = UUID.randomUUID();
         var sequence = jdbc.sql("""
                 SELECT coalesce(max(sequence), 0) + 1 FROM interview_questions
@@ -182,9 +220,10 @@ public class InterviewRuntimeRepository {
                     covered_text, current_text, remaining_text
                 )
                 SELECT ?, r.organisation_id, r.discovery_id, r.interview_session_id, r.id,
-                       ?, 'question_ready', 0, ?, ?, ?, ?
+                       ?, 'question_ready', ?, ?, ?, ?, ?
                 FROM interview_runtime_runs r WHERE r.id = ?
-                """).params(eventId, questionId, totalRequired, covered, current, remaining, work.id()).update();
+                """).params(eventId, questionId, coveredCount, totalRequired,
+                covered, current, remaining, work.id()).update();
         var advanced = jdbc.sql("""
                 UPDATE interview_sessions
                 SET active_question_id = ?, revision = revision + 1
@@ -199,7 +238,8 @@ public class InterviewRuntimeRepository {
                 WHERE id = ?
                 """).param(work.id()).update();
         tenant.auditSystem("interview_question_ready", "interview_session", work.sessionId());
-        return new Event(eventId, questionId, question, context, 0, totalRequired, covered, current, remaining);
+        return new Event(eventId, questionId, question, context, coveredCount,
+                totalRequired, covered, current, remaining);
     }
 
     @Transactional
@@ -239,7 +279,7 @@ public class InterviewRuntimeRepository {
                 || submission.outcomes() == null || !submission.outcomes().isEmpty()
                 || submission.nextAction() == null || !"ask_question".equals(submission.nextAction().kind())
                 || submission.nextAction().progress() == null) {
-            throw new IllegalArgumentException("Pi returned an invalid first Interview turn.");
+            throw new IllegalArgumentException("Pi returned an invalid Interview turn.");
         }
     }
 
@@ -256,15 +296,18 @@ public class InterviewRuntimeRepository {
     }
 
     public record Work(UUID id, UUID organisationId, UUID sessionId, UUID missionId,
-            int expectedRevision, int attempts) {}
+            String trigger, UUID evidenceId, int expectedRevision, int attempts) {}
     public record Context(UUID runId, UUID sessionId, int expectedRevision, UUID missionVersionId,
+            String trigger, UUID acceptedEvidenceId,
             String objective, String desiredOutcome, List<String> sharedContext, List<Boundary> boundaries,
             List<Term> terminology, String completionCriteria, String expectedCommitment,
-            List<String> openingGuidance, List<Item> investigationItems) {}
+            List<String> openingGuidance, List<Item> investigationItems, List<Exchange> conversation) {}
     public record Boundary(String kind, String content) {}
     public record Term(String term, String meaning) {}
     public record Item(UUID id, int position, String knowledgeGap, String importance, String priority,
-            String relevantContext, boolean required, List<String> allowedOutcomes) {}
+            String relevantContext, boolean required, String resultStatus, List<String> allowedOutcomes) {}
+    public record Exchange(UUID questionId, UUID investigationItemId, int sequence, String question,
+            String humanContext, UUID evidenceId, String answer) {}
     public record Submission(UUID runId, UUID sessionId, int expectedRevision,
             List<OutcomeProposal> outcomes, NextAction nextAction) {}
     public record OutcomeProposal(String kind, UUID investigationItemId) {}
