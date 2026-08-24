@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Component;
 
 @Component
-public final class OciInterviewTurnRunner implements InterviewTurnRunner {
+public final class OciInterviewTurnRunner implements InterviewTurnRunner, FindingsExtractionRunner {
 
     private final ObjectMapper json;
     private final RuntimeProperties properties;
@@ -28,7 +28,22 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner {
     }
 
     @Override
-    public Result run(Request request) throws RuntimeFailure {
+    public InterviewTurnRunner.Result run(InterviewTurnRunner.Request request) throws RuntimeFailure {
+        return result(jsonEnvelope(request.context().runId(), input(request), Envelope.class));
+    }
+
+    @Override
+    public FindingsExtractionRunner.Result run(FindingsExtractionRunner.Request request) throws RuntimeFailure {
+        var envelope = jsonEnvelope(request.context().runId(), input(request), FindingsEnvelope.class);
+        if ("submitted".equals(envelope.status()) && envelope.submission() != null) {
+            return new FindingsExtractionRunner.Result(envelope.submission(), properties.runtimeVersion(),
+                    envelope.modelAttempts(), envelope.findWorksCredential());
+        }
+        throw failure(envelope.failureClass(), envelope.modelAttempts(), null);
+    }
+
+    private <T> T jsonEnvelope(java.util.UUID runId, Map<String, Object> input, Class<T> type)
+            throws RuntimeFailure {
         try {
             requireRootless();
         } catch (RuntimeFailure failure) {
@@ -36,7 +51,7 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner {
         } catch (Exception error) {
             throw new RuntimeFailure(RuntimeFailure.Kind.UNAVAILABLE, 0);
         }
-        var containerName = "findworks-turn-" + request.context().runId();
+        var containerName = "findworks-turn-" + runId;
         Process process = null;
         var reader = Executors.newSingleThreadExecutor(Thread.ofVirtual().factory());
         try {
@@ -46,9 +61,9 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner {
             process = builder.start();
             var running = process;
             var output = reader.submit(() -> readEnvelope(running.inputReader(StandardCharsets.UTF_8)));
-            try (var input = process.outputWriter(StandardCharsets.UTF_8)) {
-                input.write(json.writeValueAsString(input(request)));
-                input.newLine();
+            try (var writer = process.outputWriter(StandardCharsets.UTF_8)) {
+                writer.write(json.writeValueAsString(input));
+                writer.newLine();
             }
             if (!process.waitFor(properties.timeout().toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly();
@@ -57,7 +72,7 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner {
             if (process.exitValue() != 0) {
                 throw new RuntimeFailure(RuntimeFailure.Kind.PROCESS_DIED, 0);
             }
-            return result(output.get(2, TimeUnit.SECONDS));
+            return json.readValue(output.get(2, TimeUnit.SECONDS), type);
         } catch (RuntimeFailure failure) {
             throw failure;
         } catch (Exception error) {
@@ -71,8 +86,9 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner {
         }
     }
 
-    private Map<String, Object> input(Request request) {
+    private Map<String, Object> input(InterviewTurnRunner.Request request) {
         var input = new LinkedHashMap<String, Object>();
+        input.put("jobKind", "interview_turn");
         input.put("context", request.context());
         input.put("checkpoint", request.checkpoint() == null ? null
                 : Base64.getEncoder().encodeToString(request.checkpoint()));
@@ -85,20 +101,39 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner {
         return input;
     }
 
-    private Result result(Envelope envelope) throws RuntimeFailure {
+    private Map<String, Object> input(FindingsExtractionRunner.Request request) {
+        var input = new LinkedHashMap<String, Object>();
+        input.put("jobKind", "findings_extraction");
+        input.put("context", request.context());
+        input.put("checkpoint", null);
+        input.put("findWorksCredential", request.credential());
+        input.put("credentialExpiresAt", request.credentialExpiresAt());
+        input.put("provider", properties.provider());
+        input.put("model", properties.model());
+        input.put("providerCredential", properties.providerCredential());
+        input.put("egressProxy", properties.proxyOrNull());
+        return input;
+    }
+
+    private InterviewTurnRunner.Result result(Envelope envelope) throws RuntimeFailure {
         var checkpoint = decodeCheckpoint(envelope.checkpoint());
         if ("submitted".equals(envelope.status()) && envelope.submission() != null) {
-            return new Result(envelope.submission(), checkpoint, properties.runtimeVersion(),
+            return new InterviewTurnRunner.Result(envelope.submission(), checkpoint, properties.runtimeVersion(),
                     envelope.modelAttempts(), envelope.findWorksCredential());
         }
-        var kind = switch (envelope.failureClass()) {
+        throw failure(envelope.failureClass(), envelope.modelAttempts(), checkpoint);
+    }
+
+    private RuntimeFailure failure(String failureClass, int modelAttempts, byte[] checkpoint)
+            throws RuntimeFailure {
+        var kind = switch (String.valueOf(failureClass)) {
             case "transient_model_failure" -> RuntimeFailure.Kind.TRANSIENT_MODEL;
             case "process_died" -> RuntimeFailure.Kind.PROCESS_DIED;
             case "runtime_timeout" -> RuntimeFailure.Kind.TIMEOUT;
             case "runtime_unavailable" -> RuntimeFailure.Kind.UNAVAILABLE;
             default -> RuntimeFailure.Kind.INVALID_OUTPUT;
         };
-        throw new RuntimeFailure(kind, boundedAttempts(envelope.modelAttempts()), checkpoint);
+        return new RuntimeFailure(kind, boundedAttempts(modelAttempts), checkpoint);
     }
 
     private static int boundedAttempts(int attempts) throws RuntimeFailure {
@@ -126,12 +161,12 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner {
         }
     }
 
-    private Envelope readEnvelope(BufferedReader output) throws Exception {
+    private String readEnvelope(BufferedReader output) throws Exception {
         var line = output.readLine();
         if (line == null || line.length() > 15_000_000 || output.readLine() != null) {
             throw new IllegalStateException("Runtime returned an invalid envelope.");
         }
-        return json.readValue(line, Envelope.class);
+        return line;
     }
 
     private void requireRootless() throws Exception {
@@ -175,5 +210,7 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner {
     }
 
     private record Envelope(String status, com.findworks.interview.InterviewRuntimeRepository.Submission submission,
+            String checkpoint, int modelAttempts, String failureClass, String findWorksCredential) {}
+    private record FindingsEnvelope(String status, com.findworks.interview.FindingsRepository.Submission submission,
             String checkpoint, int modelAttempts, String failureClass, String findWorksCredential) {}
 }

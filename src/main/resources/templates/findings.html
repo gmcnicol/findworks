@@ -8,13 +8,38 @@
 <header class="shell header"><a class="brand" href="/"><span class="brand-mark">F</span><span>FindWorks</span></a><span class="pilot-label">Findings</span></header>
 <main class="shell narrow page">
     <p class="eyebrow">Interview findings</p><h1 class="page-title" th:text="${mission.title}">Mission</h1>
-    <p class="lede">Each finding stays linked to the interviewee's original answer.</p>
-    <section class="findings-list">
-        <article th:each="finding : ${findings}">
-            <p class="eyebrow">Investigation item</p><h2 th:text="${finding.knowledgeGap}">Gap</h2>
-            <blockquote th:if="${finding.answer != null}" th:text="${finding.answer}">Answer</blockquote>
-            <p class="unanswered" th:unless="${finding.answer != null}">Not answered</p>
-            <small th:if="${finding.answeredAt != null}" th:text="${'Evidence from ' + mission.intervieweeName}">Evidence</small>
+    <p class="lede">Candidate findings stay grouped by Mission area and linked to exact interview Evidence.</p>
+    <section class="panel" th:if="${findings.status == 'pending'}">
+        <h2>Preparing findings</h2><p>The interview is complete. Extraction is running separately.</p>
+    </section>
+    <section class="panel" th:if="${findings.status == 'failed'}">
+        <h2>Extraction needs another try</h2>
+        <p>The completed interview and every accepted answer remain safe.</p>
+        <form th:action="@{/missions/{id}/findings/retry(id=${mission.id})}" method="post">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <button class="button primary" type="submit">Retry extraction</button>
+        </form>
+    </section>
+    <section class="findings-list" th:if="${findings.status == 'ready'}">
+        <article th:each="group : ${findings.groups}">
+            <p class="eyebrow" th:text="${group.required ? 'Required investigation item' : 'Optional investigation item'}">Investigation item</p>
+            <h2 th:text="${group.knowledgeGap}">Gap</h2>
+            <div th:each="item : ${group.knowledgeItems}">
+                <p><span class="badge" th:text="${item.category}">Fact</span>
+                    <span class="badge" th:if="${item.confirmationState == 'unconfirmed'}">Unconfirmed assumption</span></p>
+                <p th:text="${item.claim}">Claim</p>
+                <figure th:each="citation : ${item.citations}">
+                    <blockquote th:text="${citation.quotation}">Exact quotation</blockquote>
+                    <figcaption th:text="${citation.participantName + ' · ' + citation.sourceType}">Source</figcaption>
+                    <details><summary>Open surrounding answer context</summary>
+                        <p th:text="${citation.answerContext}">Answer context</p></details>
+                </figure>
+            </div>
+            <div th:each="outcome : ${group.unresolvedOutcomes}">
+                <p class="badge" th:text="${outcome.kind}">Unknown</p>
+                <p th:text="${outcome.summary}">Unresolved detail</p>
+            </div>
+            <p class="unanswered" th:if="${group.knowledgeItems.empty and group.unresolvedOutcomes.empty}">No finding was extracted for this optional area.</p>
         </article>
     </section>
 </main>

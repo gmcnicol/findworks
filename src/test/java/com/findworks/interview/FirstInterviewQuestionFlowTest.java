@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.findworks.shaping.ShapingWorker;
 import com.findworks.runtime.InterviewTurnRunner;
+import com.findworks.runtime.FindingsExtractionRunner;
 import com.findworks.runtime.RuntimeFailure;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
@@ -83,6 +84,8 @@ class FirstInterviewQuestionFlowTest {
     @Autowired InterviewRuntimeRepository runtime;
     @Autowired InterviewTurnRunner interviewRunner;
     @Autowired InterviewRepository interviews;
+    @Autowired FindingsRepository findings;
+    @Autowired FindingsExtractionRunner findingsRunner;
     @Autowired PlatformTransactionManager transactions;
 
     @BeforeEach
@@ -878,7 +881,7 @@ class FirstInterviewQuestionFlowTest {
     }
 
     @Test
-    void finishRequiresExactCurrentRecapAndCompletesWithoutExtraction() throws Exception {
+    void finishRequiresExactCurrentRecapAndQueuesExtractionWithoutReopening() throws Exception {
         var pending = eligibleProposal();
         var evidenceCount = jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single();
         var outcomeCount = jdbc.sql("SELECT count(*) FROM investigation_outcomes").query(Integer.class).single();
@@ -902,8 +905,8 @@ class FirstInterviewQuestionFlowTest {
         assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(evidenceCount);
         assertThat(jdbc.sql("SELECT count(*) FROM investigation_outcomes")
                 .query(Integer.class).single()).isEqualTo(outcomeCount);
-        assertThat(jdbc.sql("SELECT to_regclass('findings_packages') IS NULL")
-                .query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT trigger || ':' || status FROM interview_runtime_runs ORDER BY created_at DESC LIMIT 1")
+                .query(String.class).single()).isEqualTo("findings_extraction:queued");
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
                         .cookie(new Cookie("findworks_interview", GRANT)))
                 .andExpect(status().isOk())
@@ -917,6 +920,130 @@ class FirstInterviewQuestionFlowTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Ownership and exceptions")));
         assertThat(jdbc.sql("SELECT count(*) FROM audit_records WHERE action = 'interview_session_completed'")
                 .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void isolatedExtractionCommitsOneImmutableGroupedPackageWithExactProvenance() throws Exception {
+        var pending = eligibleProposal();
+        interviews.finish(GRANT, pending.proposalId(), 4);
+
+        worker.runNext();
+        worker.runNext();
+
+        assertThat(state()).isEqualTo("completed:5:false");
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_packages").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_package_versions").query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_package_results").query(Integer.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT category || ':' || confirmation_state FROM knowledge_item_versions")
+                .query(String.class).single()).isEqualTo("rule:unreviewed");
+        assertThat(jdbc.sql("""
+                SELECT c.quotation = substring(e.answer FROM c.start_offset + 1 FOR c.end_offset - c.start_offset)
+                    AND e.participant_id = ? AND e.source_type = 'interviewee_answer'
+                FROM knowledge_item_evidence_citations c
+                JOIN evidence e ON e.id = c.evidence_id
+                """).param(PARTICIPANT).query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_package_unresolved_outcomes")
+                .query(Integer.class).single()).isEqualTo(1);
+
+        worker.runNext();
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_package_versions").query(Integer.class).single()).isEqualTo(1);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/missions/{id}/findings", MISSION)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Support retries after three failures.")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Billing manager")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("The exception owner remains unknown.")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("PRIVATE-MISSION-CONTEXT"))));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/missions/{id}/findings", MISSION)
+                        .with(user("outsider@example.com").roles("INVESTIGATOR")))
+                .andExpect(status().isForbidden());
+        assertThatThrownBy(() -> new TransactionTemplate(transactions).executeWithoutResult(ignored -> {
+            jdbc.sql("SET LOCAL ROLE findworks_application").update();
+            jdbc.sql("SELECT set_config('findworks.organisation_id', ?, true)")
+                    .param(ORGANISATION.toString()).query(String.class).single();
+            jdbc.sql("UPDATE knowledge_item_versions SET claim = 'changed'").update();
+        })).hasRootCauseInstanceOf(java.sql.SQLException.class);
+    }
+
+    @Test
+    void invalidProvenanceRollsBackWholePackageAndFailedExtractionRetriesIndependently() throws Exception {
+        var pending = eligibleProposal();
+        interviews.finish(GRANT, pending.proposalId(), 4);
+        var work = runtime.claimNext();
+        var prepared = findings.prepare(work, "test-runtime");
+        var evidence = prepared.context().evidence().stream()
+                .filter(value -> value.investigationItemId().equals(HIGH_ITEM)).findFirst().orElseThrow();
+        var item = new FindingsRepository.KnowledgeItemProposal(UUID.randomUUID(), "rule",
+                "Support retries after three failures.", List.of(new FindingsRepository.CitationProposal(
+                        evidence.id(), 0, 7, "Not the source")), List.of());
+        var submission = new FindingsRepository.Submission(work.id(), work.sessionId(), work.expectedRevision(),
+                List.of(new FindingsRepository.GroupProposal(HIGH_ITEM, List.of(item), List.of()),
+                        new FindingsRepository.GroupProposal(LOW_ITEM, List.of(),
+                                prepared.context().outcomes().stream().filter(FindingsRepository.Outcome::unresolved)
+                                        .map(FindingsRepository.Outcome::id).toList())));
+
+        assertThatThrownBy(() -> findings.complete(work, new FindingsExtractionRunner.Result(submission,
+                "test-runtime", 1, prepared.credential())))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("quotation");
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_packages").query(Integer.class).single()).isZero();
+        runtime.fail(work, "test-runtime", new RuntimeFailure(RuntimeFailure.Kind.INVALID_OUTPUT, 0));
+        assertThat(state()).isEqualTo("completed:5:false");
+        assertThat(findings.view(MISSION, "investigator@findworks.local").status()).isEqualTo("failed");
+
+        findings.retry(MISSION, "investigator@findworks.local");
+        assertThat(jdbc.sql("SELECT generation || ':' || status FROM interview_runtime_runs WHERE trigger = 'findings_extraction' ORDER BY generation")
+                .query(String.class).list()).containsExactly("1:failed", "2:queued");
+        worker.runNext();
+        assertThat(jdbc.sql("SELECT version FROM findings_package_versions").query(Integer.class).single()).isEqualTo(1);
+        assertThat(state()).isEqualTo("completed:5:false");
+    }
+
+    @Test
+    void quotationOffsetsUseUnicodeCodePointsAndDisambiguateRepeatedText() throws Exception {
+        var pending = eligibleProposal();
+        var original = jdbc.sql("SELECT id FROM evidence WHERE investigation_item_id = ? ORDER BY created_at LIMIT 1")
+                .param(HIGH_ITEM).query(UUID.class).single();
+        var revision = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO evidence (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    participant_id, question_id, investigation_item_id, source_type, answer,
+                    revises_evidence_id
+                ) SELECT ?, organisation_id, discovery_id, interview_session_id,
+                         interview_mission_id, participant_id, question_id, investigation_item_id,
+                         'interviewee_answer_revision', '😀 repeat repeat', id
+                  FROM evidence WHERE id = ?
+                """).params(revision, original).update();
+        jdbc.sql("""
+                INSERT INTO investigation_outcome_evidence (
+                    organisation_id, interview_session_id, interview_mission_id,
+                    investigation_item_id, outcome_id, evidence_id
+                ) SELECT organisation_id, interview_session_id, interview_mission_id,
+                         investigation_item_id, outcome_id, ?
+                  FROM investigation_outcome_evidence WHERE evidence_id = ?
+                """).params(revision, original).update();
+        interviews.finish(GRANT, pending.proposalId(), 4);
+        var work = runtime.claimNext();
+        var prepared = findings.prepare(work, "test-runtime");
+        var current = prepared.context().evidence().stream()
+                .filter(value -> value.investigationItemId().equals(HIGH_ITEM) && value.current())
+                .findFirst().orElseThrow();
+        var knowledge = new FindingsRepository.KnowledgeItemProposal(UUID.randomUUID(), "term",
+                "The repeated term is used.", List.of(new FindingsRepository.CitationProposal(
+                        current.id(), 9, 15, "repeat")), List.of());
+        var groups = prepared.context().investigationItems().stream().map(item ->
+                new FindingsRepository.GroupProposal(item.id(), item.id().equals(HIGH_ITEM)
+                        ? List.of(knowledge) : List.of(), prepared.context().outcomes().stream()
+                        .filter(FindingsRepository.Outcome::unresolved)
+                        .filter(outcome -> outcome.investigationItemId().equals(item.id()))
+                        .map(FindingsRepository.Outcome::id).toList())).toList();
+
+        findings.complete(work, new FindingsExtractionRunner.Result(new FindingsRepository.Submission(
+                work.id(), work.sessionId(), work.expectedRevision(), groups), "test-runtime", 1,
+                prepared.credential()));
+
+        assertThat(jdbc.sql("SELECT start_offset || ':' || end_offset || ':' || quotation FROM knowledge_item_evidence_citations")
+                .query(String.class).single()).isEqualTo("9:15:repeat");
     }
 
     @Test
@@ -1233,6 +1360,30 @@ class FirstInterviewQuestionFlowTest {
                     with open(%s, "a", encoding="utf-8") as capture:
                         capture.write(json.dumps({"projection": projection, "argv": sys.argv,
                             "environment": dict(os.environ)}) + "\\n")
+                    if request.get("jobKind") == "findings_extraction":
+                        evidence = next(value for value in projection["evidence"]
+                            if value["investigationItemId"] == %s and value["current"] and value["scope"] == "in_scope")
+                        groups = []
+                        for item in projection["investigationItems"]:
+                            knowledge = []
+                            if item["id"] == %s:
+                                knowledge = [{
+                                    "id": "a0000000-0000-0000-0000-000000000029",
+                                    "category": "rule",
+                                    "claim": "Support retries after three failures.",
+                                    "citations": [{"evidenceId": evidence["id"], "startOffset": 0,
+                                        "endOffset": len(evidence["content"]), "quotation": evidence["content"]}],
+                                    "links": []
+                                }]
+                            groups.append({"investigationItemId": item["id"], "knowledgeItems": knowledge,
+                                "unresolvedOutcomeIds": [value["id"] for value in projection["outcomes"]
+                                    if value["investigationItemId"] == item["id"] and value["unresolved"]]})
+                        print(json.dumps({"status": "submitted", "submission": {
+                            "runId": projection["runId"], "sessionId": projection["sessionId"],
+                            "expectedRevision": projection["expectedRevision"], "groups": groups},
+                            "checkpoint": None, "modelAttempts": 1,
+                            "findWorksCredential": request["findWorksCredential"]}))
+                        raise SystemExit(0)
                     trigger = projection["trigger"]
                     follow_up = trigger == "accepted_evidence"
                     latest = projection["conversation"][-1] if projection["conversation"] else {}
@@ -1333,6 +1484,7 @@ class FirstInterviewQuestionFlowTest {
                         "checkpoint": checkpoint, "modelAttempts": 1,
                         "findWorksCredential": request["findWorksCredential"]}))
                     """.formatted(pythonString(CAPTURE.toString()),
+                    pythonString(HIGH_ITEM.toString()), pythonString(HIGH_ITEM.toString()),
                     pythonString(HIGH_ITEM.toString()), pythonString(HIGH_ITEM.toString()),
                     pythonString(LOW_ITEM.toString()), pythonString(HIGH_ITEM.toString()),
                     pythonString(LOW_ITEM.toString()), pythonString(HIGH_ITEM.toString()),

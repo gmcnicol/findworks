@@ -75,16 +75,17 @@ public class InterviewRuntimeRepository {
                     updated_at = now(), error_code = NULL
                 WHERE id = ?
                 RETURNING id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
-                          trigger, evidence_id, source_question_id, expected_revision, attempts, model_attempts,
+                          work_kind, trigger, evidence_id, source_question_id, expected_revision, generation,
+                          attempts, model_attempts,
                           process_restarts, lease_owner
                 """).params(leaseOwner, row.get().id()).query((rs, ignored) -> new Work(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("discovery_id", UUID.class),
                         rs.getObject("interview_session_id", UUID.class),
                         rs.getObject("interview_mission_id", UUID.class),
-                        rs.getString("trigger"), rs.getObject("evidence_id", UUID.class),
+                        rs.getString("work_kind"), rs.getString("trigger"), rs.getObject("evidence_id", UUID.class),
                         rs.getObject("source_question_id", UUID.class),
-                        rs.getInt("expected_revision"), rs.getInt("attempts"),
+                        rs.getInt("expected_revision"), rs.getInt("generation"), rs.getInt("attempts"),
                         rs.getInt("model_attempts"), rs.getInt("process_restarts"),
                         rs.getObject("lease_owner", UUID.class))).single();
         jdbc.sql("""
@@ -100,20 +101,8 @@ public class InterviewRuntimeRepository {
     public Prepared prepare(Work work, String runtimeVersion) throws RuntimeFailure {
         var context = context(work);
         var checkpoint = checkpoint(work, runtimeVersion);
-        jdbc.sql("""
-                UPDATE runtime_credentials SET revoked_at = COALESCE(revoked_at, ?)
-                WHERE runtime_run_id = ? AND revoked_at IS NULL AND used_at IS NULL
-                """).params(timestamp(clock.instant()), work.id()).update();
-        var raw = randomToken();
-        var expiresAt = clock.instant().plus(properties.timeout());
-        jdbc.sql("""
-                INSERT INTO runtime_credentials (
-                    id, organisation_id, discovery_id, runtime_run_id, interview_session_id,
-                    interview_mission_id, expected_revision, token_hash, operation, expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'submit_interview_turn', ?)
-                """).params(UUID.randomUUID(), work.organisationId(), work.discoveryId(), work.id(),
-                work.sessionId(), work.missionId(), work.expectedRevision(), hash(raw), timestamp(expiresAt)).update();
-        return new Prepared(context, checkpoint, raw, expiresAt);
+        var credential = issueCredential(work, "submit_interview_turn");
+        return new Prepared(context, checkpoint, credential.value(), credential.expiresAt());
     }
 
     @Transactional(readOnly = true)
@@ -235,7 +224,7 @@ public class InterviewRuntimeRepository {
             return event(work.id());
         }
         requireLease(work, state);
-        requireCredential(work, execution == null ? null : execution.credential());
+        requireCredential(work, execution == null ? null : execution.credential(), "submit_interview_turn");
         if (execution == null || execution.submission() == null
                 || execution.runtimeVersion() == null || execution.runtimeVersion().isBlank()
                 || execution.modelAttempts() < 1 || execution.modelAttempts() > 3
@@ -419,18 +408,49 @@ public class InterviewRuntimeRepository {
 
     private void settle(Work work, InterviewTurnRunner.Result execution) {
         saveCheckpoint(work, execution.runtimeVersion(), execution.checkpoint());
+        settleExternal(work, execution.runtimeVersion(), execution.modelAttempts(), execution.credential());
+    }
+
+    Credential issueCredential(Work work, String operation) {
+        jdbc.sql("""
+                UPDATE runtime_credentials SET revoked_at = COALESCE(revoked_at, ?)
+                WHERE runtime_run_id = ? AND revoked_at IS NULL AND used_at IS NULL
+                """).params(timestamp(clock.instant()), work.id()).update();
+        var raw = randomToken();
+        var expiresAt = clock.instant().plus(properties.timeout());
+        jdbc.sql("""
+                INSERT INTO runtime_credentials (
+                    id, organisation_id, discovery_id, runtime_run_id, interview_session_id,
+                    interview_mission_id, expected_revision, token_hash, operation, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """).params(UUID.randomUUID(), work.organisationId(), work.discoveryId(), work.id(),
+                work.sessionId(), work.missionId(), work.expectedRevision(), hash(raw), operation,
+                timestamp(expiresAt)).update();
+        return new Credential(raw, expiresAt);
+    }
+
+    void requireExternalCommit(Work work, String credential, String operation) {
+        var state = lock(work.id());
+        if ("committed".equals(state.status())) {
+            return;
+        }
+        requireLease(work, state);
+        requireCredential(work, credential, operation);
+    }
+
+    void settleExternal(Work work, String runtimeVersion, int modelAttempts, String credential) {
         var settled = jdbc.sql("""
                 UPDATE interview_runtime_runs
                 SET status = 'committed', model_attempts = model_attempts + ?, runtime_version = ?,
                     lease_until = NULL, lease_owner = NULL, updated_at = now()
                 WHERE id = ? AND lease_owner = ?
-                """).params(execution.modelAttempts(), execution.runtimeVersion(), work.id(), work.leaseOwner())
+                """).params(modelAttempts, runtimeVersion, work.id(), work.leaseOwner())
                 .update();
         if (settled != 1) {
             throw new IllegalStateException("Interview runtime lease changed before commit.");
         }
-        finishAttempt(work, "committed", execution.modelAttempts(), null);
-        useCredential(execution.credential());
+        finishAttempt(work, "committed", modelAttempts, null);
+        useCredential(credential);
     }
 
     @Transactional
@@ -477,14 +497,14 @@ public class InterviewRuntimeRepository {
 
     private void exhaustDeadRestarts() {
         var exhausted = jdbc.sql("""
-                SELECT id, organisation_id, discovery_id, interview_session_id
+                SELECT id, organisation_id, discovery_id, interview_session_id, work_kind
                 FROM interview_runtime_runs
                 WHERE status = 'running' AND lease_until < now() AND process_restarts >= 1
                 FOR UPDATE SKIP LOCKED
                 """).query((rs, ignored) -> new FailedRun(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("discovery_id", UUID.class),
-                        rs.getObject("interview_session_id", UUID.class))).list();
+                        rs.getObject("interview_session_id", UUID.class), rs.getString("work_kind"))).list();
         for (var run : exhausted) {
             jdbc.sql("""
                     UPDATE interview_runtime_attempts
@@ -506,7 +526,9 @@ public class InterviewRuntimeRepository {
                     WHERE id = ?
                     """).param(run.id()).update();
             revokeCredentials(run.id());
-            tenant.auditSystem("interview_runtime_failed", "interview_session", run.sessionId());
+            tenant.auditSystem("findings_extraction".equals(run.workKind())
+                    ? "findings_extraction_failed" : "interview_runtime_failed",
+                    "interview_session", run.sessionId());
         }
     }
 
@@ -524,7 +546,9 @@ public class InterviewRuntimeRepository {
                     lease_until = NULL, lease_owner = NULL, updated_at = now(), error_code = ?
                 WHERE id = ? AND lease_owner = ?
                 """).params(modelAttempts, runtimeVersion, errorCode, work.id(), work.leaseOwner()).update();
-        tenant.auditSystem("interview_runtime_failed", "interview_session", work.sessionId());
+        tenant.auditSystem("findings_extraction".equals(work.workKind())
+                ? "findings_extraction_failed" : "interview_runtime_failed",
+                "interview_session", work.sessionId());
         return event(work.id());
     }
 
@@ -544,7 +568,7 @@ public class InterviewRuntimeRepository {
         }
     }
 
-    private void requireCredential(Work work, String raw) {
+    private void requireCredential(Work work, String raw, String operation) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("Runtime credential is invalid.");
         }
@@ -552,10 +576,10 @@ public class InterviewRuntimeRepository {
                 SELECT count(*) FROM runtime_credentials
                 WHERE token_hash = ? AND runtime_run_id = ? AND interview_session_id = ?
                   AND interview_mission_id = ? AND expected_revision = ?
-                  AND operation = 'submit_interview_turn' AND expires_at > ?
+                  AND operation = ? AND expires_at > ?
                   AND revoked_at IS NULL AND used_at IS NULL
                 """).params(hash(raw), work.id(), work.sessionId(), work.missionId(), work.expectedRevision(),
-                timestamp(clock.instant())).query(Integer.class).single();
+                operation, timestamp(clock.instant())).query(Integer.class).single();
         if (valid != 1) {
             throw new IllegalArgumentException("Runtime credential scope is invalid.");
         }
@@ -1028,8 +1052,10 @@ public class InterviewRuntimeRepository {
     }
 
     public record Work(UUID id, UUID organisationId, UUID discoveryId, UUID sessionId, UUID missionId,
-            String trigger, UUID evidenceId, UUID sourceQuestionId, int expectedRevision, int executionAttempt,
+            String workKind, String trigger, UUID evidenceId, UUID sourceQuestionId,
+            int expectedRevision, int generation, int executionAttempt,
             int modelAttempts, int processRestarts, UUID leaseOwner) {}
+    record Credential(String value, Instant expiresAt) {}
     public record Prepared(Context context, byte[] checkpoint, String credential, Instant credentialExpiresAt) {
         public Prepared {
             checkpoint = checkpoint == null ? null : checkpoint.clone();
@@ -1121,5 +1147,6 @@ public class InterviewRuntimeRepository {
     private record RunState(String status, UUID leaseOwner, int modelAttempts, int processRestarts) {}
     private record StoredCheckpoint(UUID id, UUID sessionId, UUID missionId, int expectedRevision,
             String runtimeVersion, String keyId, byte[] nonce, byte[] ciphertext) {}
-    private record FailedRun(UUID id, UUID organisationId, UUID discoveryId, UUID sessionId) {}
+    private record FailedRun(UUID id, UUID organisationId, UUID discoveryId, UUID sessionId,
+            String workKind) {}
 }
