@@ -114,7 +114,8 @@ class InterviewRepository {
                        latest_run.status runtime_status,
                        EXISTS (SELECT 1 FROM evidence accepted
                                WHERE accepted.interview_session_id = s.id
-                                 AND accepted.source_type = 'interviewee_answer') answer_saved
+                                 AND accepted.source_type = 'interviewee_answer') answer_saved,
+                       coalesce(latest_run.trigger = 'clarification_request', false) clarification_requested
                 FROM interview_access_grants g
                 JOIN interview_sessions s ON s.id = g.interview_session_id
                     AND s.participant_id = g.participant_id AND s.organisation_id = g.organisation_id
@@ -132,7 +133,7 @@ class InterviewRepository {
                 LEFT JOIN interview_application_events e ON e.question_id = q.id
                     AND e.interview_session_id = s.id AND e.organisation_id = s.organisation_id
                 LEFT JOIN LATERAL (
-                    SELECT r.status FROM interview_runtime_runs r
+                    SELECT r.status, r.trigger FROM interview_runtime_runs r
                     WHERE r.interview_session_id = s.id ORDER BY r.created_at DESC LIMIT 1
                 ) latest_run ON true
                 WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
@@ -151,6 +152,7 @@ class InterviewRepository {
                             rs.getInt("retention_days"), properties.contactOr(investigatorEmail),
                             runtimeState, rs.getInt("revision"), rs.getObject("question_id", UUID.class),
                             question, rs.getString("human_context"), rs.getBoolean("answer_saved"),
+                            rs.getBoolean("clarification_requested"),
                             rs.getObject("covered_count", Integer.class),
                             rs.getObject("total_required", Integer.class),
                             rs.getString("covered_text"), rs.getString("current_text"),
@@ -201,9 +203,89 @@ class InterviewRepository {
 
     @Transactional
     void answer(String accessToken, UUID questionId, int expectedRevision, String submittedAnswer) {
+        acceptAnswer(accessToken, questionId, expectedRevision, submittedAnswer, null);
+    }
+
+    @Transactional
+    void answerChoice(String accessToken, UUID questionId, int expectedRevision, String choice, String owner) {
+        switch (choice == null ? "" : choice) {
+            case "did_not_know" -> acceptAnswer(
+                    accessToken, questionId, expectedRevision, "I do not know.", "did_not_know");
+            case "declined" -> acceptAnswer(
+                    accessToken, questionId, expectedRevision, "I prefer not to answer.", "declined");
+            case "other_owner" -> acceptAnswer(accessToken, questionId, expectedRevision,
+                    "Someone else may know: " + ownerText(owner), "other_owner");
+            default -> throw new IllegalArgumentException("Choose a valid response.");
+        }
+    }
+
+    @Transactional
+    void clarify(String accessToken, UUID questionId, int expectedRevision) {
+        requireToken(accessToken);
+        tenant.select();
+        var session = answerSession(accessToken);
+        if (!"active".equals(session.status()) || session.revision() != expectedRevision
+                || !questionId.equals(session.activeQuestionId())) {
+            var queued = jdbc.sql("""
+                    SELECT EXISTS (SELECT 1 FROM interview_runtime_runs
+                        WHERE interview_session_id = ? AND trigger = 'clarification_request'
+                          AND source_question_id = ? AND expected_revision = ?)
+                    """).params(session.id(), questionId, expectedRevision + 1).query(Boolean.class).single();
+            if (queued) {
+                return;
+            }
+            throw new IllegalArgumentException("This Interview question is no longer active.");
+        }
+        var questionExists = jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM interview_questions
+                    WHERE id = ? AND interview_session_id = ? AND interview_mission_id = ?
+                      AND organisation_id = ? AND answered_at IS NULL)
+                """).params(questionId, session.id(), session.missionId(), session.organisationId())
+                .query(Boolean.class).single();
+        if (!questionExists) {
+            throw new IllegalArgumentException("This Interview question is no longer active.");
+        }
+        var nextRevision = expectedRevision + 1;
+        var advanced = jdbc.sql("""
+                UPDATE interview_sessions SET active_question_id = NULL, revision = revision + 1
+                WHERE id = ? AND revision = ? AND active_question_id = ? AND status = 'active'
+                """).params(session.id(), expectedRevision, questionId).update();
+        if (advanced != 1) {
+            throw new IllegalArgumentException("Interview Session changed before clarification committed.");
+        }
+        jdbc.sql("""
+                INSERT INTO interview_runtime_runs (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    trigger, source_question_id, expected_revision
+                ) VALUES (?, ?, ?, ?, ?, 'clarification_request', ?, ?)
+                """).params(UUID.randomUUID(), session.organisationId(), session.discoveryId(), session.id(),
+                session.missionId(), questionId, nextRevision).update();
+        tenant.auditSystem("interview_clarification_requested", "interview_session", session.id());
+    }
+
+    private void acceptAnswer(String accessToken, UUID questionId, int expectedRevision,
+            String submittedAnswer, String participationSignal) {
         requireToken(accessToken);
         var answer = answerText(submittedAnswer);
         tenant.select();
+        var session = answerSession(accessToken);
+        if (!"active".equals(session.status()) || session.revision() != expectedRevision
+                || !questionId.equals(session.activeQuestionId())) {
+            var accepted = jdbc.sql("""
+                    SELECT answer, participation_signal FROM evidence
+                    WHERE interview_session_id = ? AND question_id = ? AND source_type = 'interviewee_answer'
+                    """).params(session.id(), questionId).query((rs, ignored) -> new AcceptedAnswer(
+                            rs.getString("answer"), rs.getString("participation_signal"))).optional();
+            if (accepted.isPresent() && accepted.get().answer().equals(answer)
+                    && java.util.Objects.equals(accepted.get().participationSignal(), participationSignal)) {
+                return;
+            }
+            throw new IllegalArgumentException("This Interview question is no longer active.");
+        }
+        acceptAnswer(session, questionId, expectedRevision, answer, participationSignal);
+    }
+
+    private AnswerState answerSession(String accessToken) {
         var session = jdbc.sql("""
                 SELECT s.id, s.status, s.revision, s.organisation_id, s.discovery_id,
                        s.interview_mission_id, s.participant_id, s.active_question_id
@@ -223,17 +305,11 @@ class InterviewRepository {
                         rs.getObject("participant_id", UUID.class),
                         rs.getObject("active_question_id", UUID.class))).optional()
                 .orElseThrow(InterviewAccessDeniedException::new);
-        if (!"active".equals(session.status()) || session.revision() != expectedRevision
-                || !questionId.equals(session.activeQuestionId())) {
-            var accepted = jdbc.sql("""
-                    SELECT answer FROM evidence
-                    WHERE interview_session_id = ? AND question_id = ? AND source_type = 'interviewee_answer'
-                    """).params(session.id(), questionId).query(String.class).optional();
-            if (accepted.isPresent() && accepted.get().equals(answer)) {
-                return;
-            }
-            throw new IllegalArgumentException("This Interview question is no longer active.");
-        }
+        return session;
+    }
+
+    private void acceptAnswer(AnswerState session, UUID questionId, int expectedRevision,
+            String answer, String participationSignal) {
         var itemId = jdbc.sql("""
                 SELECT investigation_item_id FROM interview_questions
                 WHERE id = ? AND interview_session_id = ? AND interview_mission_id = ?
@@ -245,10 +321,12 @@ class InterviewRepository {
         jdbc.sql("""
                 INSERT INTO evidence (
                     id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
-                    participant_id, question_id, investigation_item_id, source_type, answer
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'interviewee_answer', ?)
+                    participant_id, question_id, investigation_item_id, source_type,
+                    participation_signal, answer
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'interviewee_answer', ?, ?)
                 """).params(evidenceId, session.organisationId(), session.discoveryId(), session.id(),
-                session.missionId(), session.participantId(), questionId, itemId, answer).update();
+                session.missionId(), session.participantId(), questionId, itemId,
+                participationSignal, answer).update();
         var answered = jdbc.sql("""
                 UPDATE interview_questions SET answered_at = ?
                 WHERE id = ? AND interview_session_id = ? AND answered_at IS NULL
@@ -324,6 +402,14 @@ class InterviewRepository {
         return answer;
     }
 
+    private static String ownerText(String value) {
+        var owner = answerText(value);
+        if (owner.length() > 300) {
+            throw new IllegalArgumentException("Owner name or description must be 300 characters or fewer.");
+        }
+        return owner;
+    }
+
     private static String randomToken() {
         var bytes = new byte[32];
         RANDOM.nextBytes(bytes);
@@ -348,7 +434,8 @@ class InterviewRepository {
     record AccessView(String status, String participantName, String organisationName, String investigatorEmail,
             String purpose, String expectedCommitment, String dataUseSummary, int retentionDays, String contact,
             String runtimeState, int revision, UUID questionId, String question, String humanContext,
-            boolean answerSaved, Integer coveredCount, Integer totalRequired, String coveredText,
+            boolean answerSaved, boolean clarificationRequested,
+            Integer coveredCount, Integer totalRequired, String coveredText,
             String currentText, String remainingText) {}
     record Finding(String knowledgeGap, String answer, Instant answeredAt) {}
     private record Invitation(UUID id, UUID organisationId, UUID discoveryId, UUID missionId, UUID participantId) {}
@@ -357,4 +444,5 @@ class InterviewRepository {
             UUID discoveryId, UUID missionId) {}
     private record AnswerState(UUID id, String status, int revision, UUID organisationId,
             UUID discoveryId, UUID missionId, UUID participantId, UUID activeQuestionId) {}
+    private record AcceptedAnswer(String answer, String participationSignal) {}
 }

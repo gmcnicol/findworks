@@ -128,6 +128,25 @@ final class InterviewController {
         return "redirect:/interview";
     }
 
+    @PostMapping("/interview/choice")
+    String answerChoice(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam UUID questionId, @RequestParam int expectedRevision,
+            @RequestParam String choice, @RequestParam(required = false) String owner,
+            HttpServletResponse response) {
+        interviews.answerChoice(accessToken, questionId, expectedRevision, choice, owner);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
+    @PostMapping("/interview/clarify")
+    String clarify(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam UUID questionId, @RequestParam int expectedRevision,
+            HttpServletResponse response) {
+        interviews.clarify(accessToken, questionId, expectedRevision);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
     @GetMapping("/missions/{id}/findings")
     String findings(Principal principal, @PathVariable UUID id, Model model) {
         model.addAttribute("mission", missions.mission(id, principal.getName()));
