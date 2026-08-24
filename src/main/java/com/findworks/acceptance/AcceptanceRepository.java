@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 import java.util.HexFormat;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,6 +28,8 @@ public class AcceptanceRepository {
             "B07-INVITATION", "B08-OUT-OF-SCOPE", "F01-INTERRUPTION", "F02-MODEL",
             "F03-PI-DEATH", "F04-EXTRACTION", "I01-SCOPE", "I02-COMPLETION",
             "O01-OPERATIONS", "R01-RESTORE");
+    public static final Set<String> LIVE_CHECKS = Set.of(
+            "LIVE-01", "LIVE-INTERVIEW-RUBRIC", "LIVE-FINDINGS-RUBRIC");
     private static final List<String> CRITERIA = List.of(
             "AC35-1", "AC35-2", "AC35-3", "AC35-4",
             "AC35-5", "AC35-6", "AC35-7", "AC35-8");
@@ -55,12 +58,13 @@ public class AcceptanceRepository {
 
     @Transactional
     public ScriptedRecord recordScripted(ReleaseManifest release, UUID restoreDrillId,
-            Map<String, String> checks, String resultsDigest) {
+            Map<String, CheckEvidence> checks, List<StoryEvidence> stories, String resultsDigest) {
         tenant.select();
         validateReleaseShape(release);
         digest(resultsDigest);
+        var traceabilityFailure = traceabilityFailure(checks, stories);
         var failure = releaseMatches(release)
-                ? scriptedFailure(release, restoreDrillId, checks) : "release_mismatch";
+                ? scriptedFailure(release, restoreDrillId, checks, traceabilityFailure) : "release_mismatch";
         var id = UUID.randomUUID();
         jdbc.sql("""
                 INSERT INTO m0_scripted_acceptance_runs (
@@ -74,6 +78,9 @@ public class AcceptanceRepository {
                 release.extensionDigest(), safe(release.providerAlias()), safe(release.modelAlias()),
                 release.traceabilityDigest(), resultsDigest, failure == null ? "passed" : "failed", failure,
                 Timestamp.from(clock.instant())).update();
+        if (traceabilityFailure == null) {
+            recordTraceability(id, checks, stories);
+        }
         tenant.auditOperator(operations.requiredOperatorId(), "m0_scripted_acceptance_recorded",
                 "m0_scripted_acceptance", id);
         return new ScriptedRecord(id, failure == null);
@@ -129,6 +136,7 @@ public class AcceptanceRepository {
         var record = retainedRecordComplete(binding);
         var automatic = automaticFailures(binding) == 0;
         var scripted = scriptedStillCurrent(binding.runId());
+        var traceability = recordLiveEvidence(binding) && traceabilityComplete(binding.runId());
         var outcomes = List.of(
                 journey,
                 journey && binding.shapingAdaptive() && binding.noFabrication(),
@@ -137,7 +145,7 @@ public class AcceptanceRepository {
                 scripted,
                 automatic && binding.noFabrication(),
                 binding.accessibilityPassed(),
-                scripted);
+                traceability);
         var failures = List.of("journey_incomplete", "adaptation_failed", "adaptation_failed",
                 "record_incomplete", "scripted_failure", "automatic_failure",
                 "accessibility_blocker", "traceability_gap");
@@ -282,11 +290,95 @@ public class AcceptanceRepository {
                 binding.interviewSessionId(), binding.interviewSessionId());
     }
 
-    private String scriptedFailure(ReleaseManifest release, UUID restoreDrillId, Map<String, String> checks) {
-        if (!checks.keySet().equals(SCRIPTED_CHECKS)) return "missing_check";
-        if (checks.values().stream().anyMatch(value -> !"passed".equals(value))) return "failed_check";
+    private String scriptedFailure(ReleaseManifest release, UUID restoreDrillId,
+            Map<String, CheckEvidence> checks, String traceabilityFailure) {
+        if (traceabilityFailure != null) return traceabilityFailure;
         if (!restoreReady(release.releaseDigest(), restoreDrillId)) return "restore_unverified";
         return null;
+    }
+
+    private String traceabilityFailure(Map<String, CheckEvidence> checks, List<StoryEvidence> stories) {
+        if (checks == null || !checks.keySet().equals(SCRIPTED_CHECKS)) return "missing_check";
+        if (checks.values().stream().anyMatch(value -> value == null || !"passed".equals(value.outcome())
+                || !validEvidenceLocator(value.evidenceLocator()))) return "failed_check";
+        if (stories == null || stories.size() != 90) return "missing_check";
+        var byId = stories.stream().collect(Collectors.toMap(StoryEvidence::storyId, story -> story,
+                (first, duplicate) -> first));
+        if (byId.size() != 90 || !byId.keySet().equals(java.util.stream.IntStream.rangeClosed(1, 90)
+                .boxed().collect(Collectors.toSet()))) return "missing_check";
+        if (!stories.stream().map(StoryEvidence::acceptanceCriterion).collect(Collectors.toSet())
+                .containsAll(CRITERIA)) return "missing_check";
+        for (var story : stories) {
+            if (!CRITERIA.contains(story.acceptanceCriterion())
+                    || !(SCRIPTED_CHECKS.contains(story.checkId()) || LIVE_CHECKS.contains(story.checkId()))
+                    || !validEvidenceLocator(story.evidenceLocator())) return "missing_check";
+            if (SCRIPTED_CHECKS.contains(story.checkId())
+                    && !story.evidenceLocator().equals(checks.get(story.checkId()).evidenceLocator())) {
+                return "failed_check";
+            }
+        }
+        return null;
+    }
+
+    private void recordTraceability(UUID scriptedRunId, Map<String, CheckEvidence> checks,
+            List<StoryEvidence> stories) {
+        var recordedAt = Timestamp.from(clock.instant());
+        checks.forEach((checkId, evidence) -> jdbc.sql("""
+                INSERT INTO m0_scripted_check_evidence (
+                    organisation_id, scripted_run_id, check_id, outcome, evidence_locator, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """).params(pilot.organisationId(), scriptedRunId, checkId, evidence.outcome(),
+                evidence.evidenceLocator(), recordedAt).update());
+        stories.forEach(story -> jdbc.sql("""
+                INSERT INTO m0_story_traceability (
+                    organisation_id, scripted_run_id, story_id, acceptance_criterion,
+                    check_id, evidence_locator, evidence_kind, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """).params(pilot.organisationId(), scriptedRunId, story.storyId(),
+                story.acceptanceCriterion(), story.checkId(), story.evidenceLocator(),
+                SCRIPTED_CHECKS.contains(story.checkId()) ? "scripted" : "live", recordedAt).update());
+    }
+
+    private boolean recordLiveEvidence(LiveBinding binding) {
+        var expectedEvidence = jdbc.sql("""
+                SELECT trace.story_id, trace.evidence_locator
+                FROM m0_acceptance_runs live
+                JOIN m0_story_traceability trace ON trace.scripted_run_id = live.scripted_run_id
+                WHERE live.id = ? AND trace.evidence_kind = 'live'
+                ORDER BY trace.story_id
+                """).param(binding.runId()).query((rs, ignored) -> Map.entry(
+                        rs.getInt("story_id"), rs.getString("evidence_locator"))).list().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        if (binding.liveEvidence() == null || expectedEvidence.isEmpty()
+                || !expectedEvidence.equals(binding.liveEvidence())) {
+            return false;
+        }
+        var recordedAt = Timestamp.from(clock.instant());
+        binding.liveEvidence().forEach((storyId, locator) -> jdbc.sql("""
+                INSERT INTO m0_live_story_evidence (
+                    organisation_id, run_id, story_id, evidence_locator, recorded_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """).params(pilot.organisationId(), binding.runId(), storyId, locator, recordedAt).update());
+        return true;
+    }
+
+    private boolean traceabilityComplete(UUID runId) {
+        return exists("""
+                SELECT count(*) = 90 AND bool_and(CASE trace.evidence_kind
+                    WHEN 'scripted' THEN EXISTS (
+                        SELECT 1 FROM m0_scripted_check_evidence evidence
+                        WHERE evidence.scripted_run_id = trace.scripted_run_id
+                          AND evidence.check_id = trace.check_id
+                          AND evidence.evidence_locator = trace.evidence_locator)
+                    WHEN 'live' THEN EXISTS (
+                        SELECT 1 FROM m0_live_story_evidence evidence
+                        WHERE evidence.run_id = live.id AND evidence.story_id = trace.story_id
+                          AND evidence.evidence_locator = trace.evidence_locator)
+                    ELSE false END)
+                FROM m0_acceptance_runs live
+                JOIN m0_story_traceability trace ON trace.scripted_run_id = live.scripted_run_id
+                WHERE live.id = ?
+                """, runId);
     }
 
     private boolean scriptedStillCurrent(UUID runId) {
@@ -383,6 +475,12 @@ public class AcceptanceRepository {
         return value;
     }
 
+    private static boolean validEvidenceLocator(String value) {
+        return value != null && !value.isBlank() && value.length() <= 500
+                && !value.equalsIgnoreCase("pass") && !value.equalsIgnoreCase("passed")
+                && value.chars().noneMatch(Character::isISOControl);
+    }
+
     private static String sha256(String value) {
         try {
             return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -400,9 +498,15 @@ public class AcceptanceRepository {
 
     public record ScriptedRecord(UUID id, boolean passed) {}
 
+    public record StoryEvidence(int storyId, String acceptanceCriterion,
+            String checkId, String evidenceLocator) {}
+
+    public record CheckEvidence(String outcome, String evidenceLocator) {}
+
     public record LiveBinding(UUID runId, UUID discoveryId, UUID interviewMissionId,
             UUID interviewSessionId, UUID findingsPackageVersionId,
             UUID investigatorMembershipId, UUID participantId, UUID observerId,
             boolean shapingAdaptive, boolean interviewAdaptive,
-            boolean noFabrication, boolean accessibilityPassed) {}
+            boolean noFabrication, boolean accessibilityPassed,
+            Map<Integer, String> liveEvidence) {}
 }

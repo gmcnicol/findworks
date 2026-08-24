@@ -2,9 +2,7 @@ package com.findworks.interview;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -35,11 +33,6 @@ final class InvitationToken {
     }
 
     String hash(String token) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(token.getBytes(StandardCharsets.UTF_8)));
-        } catch (GeneralSecurityException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return SecureTokenHash.sha256(token);
     }
 }

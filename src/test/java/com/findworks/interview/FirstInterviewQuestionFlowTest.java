@@ -178,7 +178,7 @@ class FirstInterviewQuestionFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Answer saved")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Your response is safe")))
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(exactAnswer))));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(exactAnswer)));
 
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/answer")
                         .cookie(cookie).with(csrf())
@@ -437,7 +437,7 @@ class FirstInterviewQuestionFlowTest {
                 .query(String.class).single()).isEqualTo("ordinary");
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
                         .cookie(new Cookie("findworks_interview", GRANT)))
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(answer))));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(answer)));
     }
 
     @Test
@@ -646,6 +646,107 @@ class FirstInterviewQuestionFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "We could not prepare the next question")));
+    }
+
+    @Test
+    void participantRetriesExhaustedAnswerWorkOnceWithoutRepeatingTheAnswer() throws Exception {
+        start();
+        var initial = runtime.claimNext();
+        var initialPrepared = runtime.prepare(initial, "test-runtime");
+        var question = complete(initial, initialPrepared, submission(initial)).questionId();
+        interviews.answer(GRANT, question, 2, "One durable answer");
+        var evidence = jdbc.sql("SELECT id FROM evidence").query(UUID.class).single();
+
+        var first = runtime.claimNext();
+        assertThat(runtime.fail(first, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.TRANSIENT_MODEL, 2))).isNull();
+        jdbc.sql("UPDATE interview_runtime_runs SET available_at = now() WHERE id = ?")
+                .param(first.id()).update();
+        var exhausted = runtime.claimNext();
+        assertThat(runtime.fail(exhausted, "test-runtime",
+                new RuntimeFailure(RuntimeFailure.Kind.TRANSIENT_MODEL, 1)).type())
+                .isEqualTo("runtime_failed");
+
+        var cookie = new Cookie("findworks_interview", GRANT);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Retry")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Pause and leave")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("End interview early")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("One durable answer")));
+        for (var attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/interview/retry")
+                            .cookie(cookie).with(csrf()).param("expectedRevision", "3"))
+                    .andExpect(status().is3xxRedirection());
+        }
+
+        assertThat(jdbc.sql("""
+                SELECT generation || ':' || status FROM interview_runtime_runs
+                WHERE trigger = 'accepted_evidence' ORDER BY generation
+                """).query(String.class).list()).containsExactly("1:failed", "2:queued");
+        assertThat(jdbc.sql("""
+                SELECT count(*) FROM interview_runtime_runs
+                WHERE trigger = 'accepted_evidence' AND evidence_id = ? AND expected_revision = 3
+                """).param(evidence).query(Integer.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence").query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void participantSeesAndRevisesAnyCurrentAnswerInOwnSession() throws Exception {
+        start();
+        var firstWork = runtime.claimNext();
+        var firstQuestion = complete(firstWork, runtime.prepare(firstWork, "test-runtime"),
+                submission(firstWork)).questionId();
+        interviews.answer(GRANT, firstQuestion, 2, "Earlier answer");
+        var earlierEvidence = jdbc.sql("SELECT id FROM evidence WHERE answer = 'Earlier answer'")
+                .query(UUID.class).single();
+
+        var secondWork = runtime.claimNext();
+        var secondQuestion = complete(secondWork, runtime.prepare(secondWork, "test-runtime"),
+                new InterviewRuntimeRepository.Submission(secondWork.id(), secondWork.sessionId(),
+                        secondWork.expectedRevision(), List.of(),
+                        new InterviewRuntimeRepository.NextAction("ask_question", HIGH_ITEM,
+                                "Who owns retry exceptions?", null,
+                                new InterviewRuntimeRepository.Progress(
+                                        "Retry rules", "Ownership", "Exceptions")))).questionId();
+        interviews.answer(GRANT, secondQuestion, 4, "Later answer");
+
+        var cookie = new Cookie("findworks_interview", GRANT);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Your previous responses")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Earlier answer")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Later answer")));
+
+        interviews.revise(GRANT, earlierEvidence, 5, "Revised earlier answer");
+        assertThat(interviews.interview(GRANT).previousAnswers())
+                .extracting(InterviewRepository.PreviousAnswer::answer)
+                .containsExactly("Revised earlier answer", "Later answer");
+        assertThat(jdbc.sql("SELECT answer FROM evidence WHERE id = ?")
+                .param(earlierEvidence).query(String.class).single()).isEqualTo("Earlier answer");
+        assertThat(jdbc.sql("""
+                SELECT revises_evidence_id FROM evidence
+                WHERE answer = 'Revised earlier answer'
+                """).query(UUID.class).single()).isEqualTo(earlierEvidence);
+        assertThatThrownBy(() -> interviews.revise(GRANT, earlierEvidence, 6, "Third answer"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void recentInterviewActivityDefersInactiveDiscoveryDeletion() {
+        jdbc.sql("""
+                UPDATE discoveries SET last_activity_at = now() - interval '181 days',
+                    retention_due_at = now() - interval '1 day' WHERE id = ?
+                """).param(DISCOVERY).update();
+
+        retention.schedule();
+
+        assertThat(jdbc.sql("SELECT status FROM discoveries WHERE id = ?")
+                .param(DISCOVERY).query(String.class).single()).isEqualTo("active");
+        assertThat(jdbc.sql("SELECT retention_due_at > now() + interval '179 days' FROM discoveries WHERE id = ?")
+                .param(DISCOVERY).query(Boolean.class).single()).isTrue();
     }
 
     @Test

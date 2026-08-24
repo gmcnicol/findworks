@@ -57,7 +57,7 @@ final class AcceptanceCommand implements ApplicationRunner {
     private void recordScripted() throws Exception {
         var request = read(ScriptedInput.class);
         var recorded = acceptance.recordScripted(request.release(), request.restoreDrillId(),
-                request.checks(), request.resultsDigest());
+                request.checks(), request.stories(), request.resultsDigest());
         System.out.println("m0_scripted run_id=" + recorded.id() + " outcome="
                 + (recorded.passed() ? "passed" : "failed"));
         if (!recorded.passed()) throw new IllegalStateException("Scripted acceptance failed.");
@@ -93,7 +93,9 @@ final class AcceptanceCommand implements ApplicationRunner {
     }
 
     record ScriptedInput(ReleaseManifest release, UUID restoreDrillId,
-            Map<String, String> checks, String resultsDigest) {}
+            Map<String, AcceptanceRepository.CheckEvidence> checks,
+            java.util.List<AcceptanceRepository.StoryEvidence> stories,
+            String resultsDigest) {}
     record OpenInput(UUID scriptedRunId, UUID restoreDrillId) {}
     record RunInput(UUID runId) {}
 }

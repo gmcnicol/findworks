@@ -1,16 +1,12 @@
 package com.findworks.interview;
 
 import com.findworks.security.PilotTenant;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -111,6 +107,29 @@ class InterviewRepository {
     AccessView interview(String accessToken) {
         requireToken(accessToken);
         tenant.select();
+        var now = clock.instant();
+        var previousAnswers = jdbc.sql("""
+                SELECT current.id, q.question, current.answer
+                FROM interview_access_grants g
+                JOIN interview_sessions s ON s.id = g.interview_session_id
+                    AND s.participant_id = g.participant_id AND s.organisation_id = g.organisation_id
+                JOIN interview_missions m ON m.id = s.interview_mission_id
+                    AND m.discovery_id = s.discovery_id AND m.organisation_id = s.organisation_id
+                JOIN discoveries d ON d.id = s.discovery_id AND d.organisation_id = s.organisation_id
+                JOIN evidence current ON current.interview_session_id = s.id
+                    AND current.participant_id = s.participant_id
+                    AND current.organisation_id = s.organisation_id
+                JOIN interview_questions q ON q.id = current.question_id
+                    AND q.interview_session_id = s.id AND q.organisation_id = s.organisation_id
+                LEFT JOIN evidence successor ON successor.revises_evidence_id = current.id
+                WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
+                  AND d.status = 'active' AND s.access_blocked_at IS NULL AND m.approved_at IS NOT NULL
+                  AND current.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
+                  AND successor.id IS NULL
+                ORDER BY q.sequence, current.created_at, current.id
+                """).params(hash(accessToken), timestamp(now)).query((rs, ignored) -> new PreviousAnswer(
+                        rs.getObject("id", UUID.class), rs.getString("question"), rs.getString("answer")))
+                .list();
         return jdbc.sql("""
                 SELECT s.status, p.intended_name, o.name organisation_name, o.retention_days,
                        u.email investigator_email,
@@ -119,7 +138,6 @@ class InterviewRepository {
                        s.commitment_acknowledged_at, q.id question_id, q.question, q.human_context,
                        proposal.id completion_proposal_id, proposal.recap completion_recap,
                        e.covered_count, e.total_required, e.covered_text, e.current_text, e.remaining_text,
-                       latest_evidence.id latest_evidence_id,
                        latest_run.status runtime_status,
                        EXISTS (SELECT 1 FROM evidence accepted
                                WHERE accepted.interview_session_id = s.id
@@ -151,19 +169,10 @@ class InterviewRepository {
                     SELECT r.status, r.trigger FROM interview_runtime_runs r
                     WHERE r.interview_session_id = s.id ORDER BY r.created_at DESC LIMIT 1
                 ) latest_run ON true
-                LEFT JOIN LATERAL (
-                    SELECT accepted.id
-                    FROM evidence accepted
-                    LEFT JOIN evidence revision ON revision.revises_evidence_id = accepted.id
-                    WHERE accepted.interview_session_id = s.id
-                      AND accepted.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
-                      AND revision.id IS NULL
-                    ORDER BY accepted.created_at DESC, accepted.id DESC LIMIT 1
-                ) latest_evidence ON true
                 WHERE g.token_hash = ? AND g.revoked_at IS NULL AND g.expires_at > ?
                   AND d.status = 'active' AND s.access_blocked_at IS NULL AND m.approved_at IS NOT NULL
                   AND (s.status <> 'not_started' OR m.status = 'approved')
-                """).params(hash(accessToken), timestamp(clock.instant())).query((rs, ignored) -> {
+                """).params(hash(accessToken), timestamp(now)).query((rs, ignored) -> {
                     var investigatorEmail = rs.getString("investigator_email");
                     var question = rs.getString("question");
                     var runtimeStatus = rs.getString("runtime_status");
@@ -188,7 +197,7 @@ class InterviewRepository {
                             rs.getObject("covered_count", Integer.class),
                             rs.getObject("total_required", Integer.class),
                             rs.getString("covered_text"), rs.getString("current_text"),
-                            rs.getString("remaining_text"), rs.getObject("latest_evidence_id", UUID.class),
+                            rs.getString("remaining_text"), previousAnswers,
                             offerEndChoice, proposalId, rs.getString("completion_recap"));
                 }).optional().orElseThrow(InterviewAccessDeniedException::new);
     }
@@ -428,6 +437,42 @@ class InterviewRepository {
     }
 
     @Transactional
+    void retryRuntime(String accessToken, int expectedRevision) {
+        var session = participantState(accessToken);
+        var latest = jdbc.sql("""
+                SELECT status, trigger, evidence_id, source_question_id, expected_revision, generation
+                FROM interview_runtime_runs
+                WHERE interview_session_id = ? AND work_kind = 'interview_turn'
+                ORDER BY created_at DESC, generation DESC LIMIT 1
+                FOR UPDATE
+                """).param(session.id()).query((rs, ignored) -> new RuntimeRetry(
+                        rs.getString("status"), rs.getString("trigger"),
+                        rs.getObject("evidence_id", UUID.class),
+                        rs.getObject("source_question_id", UUID.class),
+                        rs.getInt("expected_revision"), rs.getInt("generation")))
+                .optional().orElseThrow(() -> new IllegalArgumentException("There is no Interview work to retry."));
+        if (latest.generation() > 1 && latest.expectedRevision() == expectedRevision
+                && ("queued".equals(latest.status()) || "running".equals(latest.status())
+                    || "committed".equals(latest.status()))) {
+            return;
+        }
+        requireState(session, expectedRevision, "active");
+        if (!"failed".equals(latest.status()) || latest.expectedRevision() != expectedRevision
+                || session.activeQuestionId() != null) {
+            throw new IllegalArgumentException("The failed Interview work is no longer current.");
+        }
+        jdbc.sql("""
+                INSERT INTO interview_runtime_runs (
+                    id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
+                    trigger, evidence_id, source_question_id, expected_revision, generation
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """).params(UUID.randomUUID(), session.organisationId(), session.discoveryId(), session.id(),
+                session.missionId(), latest.trigger(), latest.evidenceId(), latest.sourceQuestionId(),
+                latest.expectedRevision(), latest.generation() + 1).update();
+        tenant.auditSystem("interview_runtime_retried", "interview_session", session.id());
+    }
+
+    @Transactional
     void revise(String accessToken, UUID evidenceId, int expectedRevision, String submittedAnswer) {
         var answer = answerText(submittedAnswer);
         var session = participantState(accessToken);
@@ -440,19 +485,11 @@ class InterviewRepository {
                   AND e.organisation_id = ?
                   AND e.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
                   AND successor.id IS NULL
-                  AND NOT EXISTS (
-                      SELECT 1 FROM evidence later
-                      LEFT JOIN evidence later_successor ON later_successor.revises_evidence_id = later.id
-                      WHERE later.interview_session_id = e.interview_session_id
-                        AND later.source_type IN ('interviewee_answer', 'interviewee_answer_revision')
-                        AND later_successor.id IS NULL
-                        AND (later.created_at, later.id) > (e.created_at, e.id)
-                  )
                 """).params(evidenceId, session.id(), session.participantId(), session.organisationId())
                 .query((rs, ignored) -> new EvidenceState(
                         rs.getObject("question_id", UUID.class),
                         rs.getObject("investigation_item_id", UUID.class), rs.getString("answer")))
-                .optional().orElseThrow(() -> new IllegalArgumentException("Only the latest response can be revised."));
+                .optional().orElseThrow(() -> new IllegalArgumentException("This response cannot be revised."));
         if (evidence.answer().equals(answer)) {
             throw new IllegalArgumentException("The revised response must be different.");
         }
@@ -825,12 +862,7 @@ class InterviewRepository {
 
     private static String hash(String token) {
         requireToken(token);
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(token.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return SecureTokenHash.sha256(token);
     }
 
     private static Timestamp timestamp(Instant instant) {
@@ -843,8 +875,9 @@ class InterviewRepository {
             String runtimeState, int revision, UUID questionId, String question, String humanContext,
             boolean answerSaved, boolean clarificationRequested,
             Integer coveredCount, Integer totalRequired, String coveredText,
-            String currentText, String remainingText, UUID latestEvidenceId, boolean offerEndChoice,
+            String currentText, String remainingText, List<PreviousAnswer> previousAnswers, boolean offerEndChoice,
             UUID completionProposalId, String completionRecap) {}
+    record PreviousAnswer(UUID evidenceId, String question, String answer) {}
     record MissionSession(UUID id, String status, int revision, String participantName,
             List<String> remainingItems, List<String> followUpItems) {}
     private record Invitation(UUID id, UUID organisationId, UUID discoveryId, UUID missionId, UUID participantId) {}
@@ -858,6 +891,8 @@ class InterviewRepository {
             UUID discoveryId, UUID missionId, UUID participantId, UUID activeQuestionId,
             UUID currentCompletionProposalId) {}
     private record EvidenceState(UUID questionId, UUID itemId, String answer) {}
+    private record RuntimeRetry(String status, String trigger, UUID evidenceId,
+            UUID sourceQuestionId, int expectedRevision, int generation) {}
     private record OwnerSession(UUID id, String status, int revision, UUID organisationId,
             UUID currentCompletionProposalId) {}
 }

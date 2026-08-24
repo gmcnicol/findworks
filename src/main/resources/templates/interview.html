@@ -99,7 +99,11 @@
         <div th:if="${(interview.status == 'active' || interview.status == 'in_progress') && interview.runtimeState == 'runtime_failed'}" class="completion">
             <p class="eyebrow">Interview paused</p>
             <h1>We could not prepare the next question</h1>
-            <p>Your place is saved. Please return later or contact the Investigator.</p>
+            <p>Your answer and place are saved. Retry without entering your answer again, pause, or finish now.</p>
+            <form method="post" th:action="@{/interview/retry}">
+                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                <button class="button" type="submit">Retry</button>
+            </form>
         </div>
         <div th:if="${interview.status == 'active' && interview.runtimeState == 'completion_confirmation_ready'}" class="completion">
             <p class="eyebrow">Ready to finish</p>
@@ -144,16 +148,21 @@
                 <button class="button secondary" type="submit">End interview early</button>
             </form>
         </div>
-        <section th:if="${(interview.status == 'active' || interview.status == 'in_progress') && interview.latestEvidenceId != null && interview.runtimeState != 'completion_confirmation_ready'}" class="editor-section">
-            <h2>Revise your latest response</h2>
-            <p>This adds a linked revision. Your original response remains preserved.</p>
-            <form method="post" th:action="@{/interview/revise}">
-                <input type="hidden" name="evidenceId" th:value="${interview.latestEvidenceId}">
-                <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
-                <label for="revised-answer">Revised response</label>
-                <textarea id="revised-answer" name="answer" rows="7" maxlength="10000" required></textarea>
-                <button class="button secondary" type="submit">Save linked revision</button>
-            </form>
+        <section th:if="${(interview.status == 'active' || interview.status == 'in_progress') && !interview.previousAnswers.empty && interview.runtimeState != 'completion_confirmation_ready'}" class="editor-section">
+            <h2>Your previous responses</h2>
+            <p>You may revise any response below. Each change is linked and the original remains preserved.</p>
+            <article th:each="previous : ${interview.previousAnswers}">
+                <h3 th:text="${previous.question}">Previous question</h3>
+                <p th:text="${previous.answer}">Previous response</p>
+                <form method="post" th:action="@{/interview/revise}">
+                    <input type="hidden" name="evidenceId" th:value="${previous.evidenceId}">
+                    <input type="hidden" name="expectedRevision" th:value="${interview.revision}">
+                    <label>Revised response
+                        <textarea name="answer" rows="7" maxlength="10000" required></textarea>
+                    </label>
+                    <button class="button secondary" type="submit">Save linked revision</button>
+                </form>
+            </article>
         </section>
     </section>
 </main>

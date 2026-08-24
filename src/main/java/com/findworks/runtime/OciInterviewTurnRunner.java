@@ -99,37 +99,29 @@ public final class OciInterviewTurnRunner implements InterviewTurnRunner, Findin
     }
 
     private Map<String, Object> input(InterviewTurnRunner.Request request) {
-        var input = new LinkedHashMap<String, Object>();
-        input.put("jobKind", "interview_turn");
-        input.put("context", request.context());
+        var input = input("interview_turn", request.context());
         input.put("checkpoint", request.checkpoint() == null ? null
                 : Base64.getEncoder().encodeToString(request.checkpoint()));
         input.put("findWorksCredential", request.credential());
         input.put("credentialExpiresAt", request.credentialExpiresAt());
-        input.put("provider", properties.provider());
-        input.put("model", properties.model());
-        input.put("providerCredential", properties.providerCredential());
-        input.put("egressProxy", properties.proxyOrNull());
         return input;
     }
 
     private Map<String, Object> input(FindingsExtractionRunner.Request request) {
-        var input = new LinkedHashMap<String, Object>();
-        input.put("jobKind", "findings_extraction");
-        input.put("context", request.context());
+        var input = input("findings_extraction", request.context());
         input.put("checkpoint", null);
         input.put("findWorksCredential", request.credential());
         input.put("credentialExpiresAt", request.credentialExpiresAt());
-        input.put("provider", properties.provider());
-        input.put("model", properties.model());
-        input.put("providerCredential", properties.providerCredential());
-        input.put("egressProxy", properties.proxyOrNull());
         return input;
     }
 
     private Map<String, Object> input(ShapingRepository.Context context) {
+        return input("discovery_shaping", context);
+    }
+
+    private Map<String, Object> input(String jobKind, Object context) {
         var input = new LinkedHashMap<String, Object>();
-        input.put("jobKind", "discovery_shaping");
+        input.put("jobKind", jobKind);
         input.put("context", context);
         input.put("provider", properties.provider());
         input.put("model", properties.model());

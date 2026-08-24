@@ -53,7 +53,59 @@ public class RetentionRepository {
         jdbc.sql("""
                 UPDATE discoveries d
                 SET retention_due_at = greatest(
-                    d.last_activity_at + interval '180 days',
+                    greatest(d.last_activity_at, coalesce((
+                        SELECT max(activity_at) FROM (
+                            SELECT max(m.created_at) activity_at
+                            FROM interview_missions m WHERE m.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(greatest(i.created_at, coalesce(i.send_confirmed_at, i.created_at),
+                                coalesce(i.redeemed_at, i.created_at), coalesce(i.revoked_at, i.created_at))) activity_at
+                            FROM invitations i
+                            JOIN interview_missions m ON m.id = i.interview_mission_id
+                            WHERE m.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(j.updated_at) FROM invitation_delivery_jobs j
+                            JOIN invitations i ON i.id = j.invitation_id
+                            JOIN interview_missions m ON m.id = i.interview_mission_id
+                            WHERE m.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(a.created_at) FROM invitation_delivery_attempts a
+                            JOIN invitations i ON i.id = a.invitation_id
+                            JOIN interview_missions m ON m.id = i.interview_mission_id
+                            WHERE m.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(greatest(s.created_at, coalesce(s.started_at, s.created_at),
+                                coalesce(s.completed_at, s.created_at),
+                                coalesce(s.active_started_at, s.created_at),
+                                coalesce(s.commitment_acknowledged_at, s.created_at),
+                                coalesce(s.ended_at, s.created_at), coalesce(s.terminated_at, s.created_at)))
+                            FROM interview_sessions s WHERE s.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(g.created_at) FROM interview_access_grants g
+                            JOIN interview_sessions s ON s.id = g.interview_session_id
+                            WHERE s.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(q.created_at) FROM interview_questions q WHERE q.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(e.created_at) FROM evidence e WHERE e.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(r.updated_at) FROM interview_runtime_runs r WHERE r.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(v.created_at) FROM findings_package_versions v WHERE v.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(r.created_at) FROM findings_package_reviews r
+                            JOIN findings_package_versions v ON v.id = r.findings_package_version_id
+                            WHERE v.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(r.created_at) FROM knowledge_item_reviews r
+                            JOIN findings_package_versions v ON v.id = r.findings_package_version_id
+                            WHERE v.discovery_id = d.id
+                            UNION ALL
+                            SELECT max(r.created_at) FROM findings_unresolved_outcome_reviews r
+                            JOIN findings_package_versions v ON v.id = r.findings_package_version_id
+                            WHERE v.discovery_id = d.id
+                        ) product_activity
+                    ), d.last_activity_at)) + interval '180 days',
                     coalesce((SELECT max(e.extended_until) FROM retention_extensions e
                               WHERE e.discovery_id = d.id), d.last_activity_at + interval '180 days'))
                 WHERE d.status = 'active'

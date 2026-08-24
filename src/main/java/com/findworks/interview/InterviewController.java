@@ -163,6 +163,14 @@ final class InterviewController {
         return "redirect:/interview";
     }
 
+    @PostMapping("/interview/retry")
+    String retryRuntime(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam int expectedRevision, HttpServletResponse response) {
+        interviews.retryRuntime(accessToken, expectedRevision);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
     @PostMapping("/interview/clarify")
     String clarify(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
             @RequestParam UUID questionId, @RequestParam int expectedRevision,

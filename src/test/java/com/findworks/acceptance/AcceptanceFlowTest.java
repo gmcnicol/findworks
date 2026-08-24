@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.findworks.acceptance.AcceptanceRepository.LiveBinding;
 import com.findworks.acceptance.AcceptanceRepository.ReleaseManifest;
+import com.findworks.acceptance.AcceptanceRepository.StoryEvidence;
+import com.findworks.acceptance.AcceptanceRepository.CheckEvidence;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -73,18 +77,28 @@ class AcceptanceFlowTest {
                 DIGEST, DIGEST, DIGEST,
                 "provider-alias", "model-alias", DIGEST);
         var checks = AcceptanceRepository.SCRIPTED_CHECKS.stream()
-                .collect(Collectors.toMap(value -> value, ignored -> "passed"));
+                .collect(Collectors.toMap(value -> value,
+                        value -> new CheckEvidence("passed", "test/" + value)));
+        var stories = stories(checks);
 
         var failedScripted = acceptance.recordScripted(release, RESTORE,
-                Map.of("S01-SHAPING", "passed"), DIGEST);
+                Map.of("S01-SHAPING", new CheckEvidence("passed", "pass")), stories, DIGEST);
         assertThat(failedScripted.passed()).isFalse();
         assertThatThrownBy(() -> acceptance.openLive(failedScripted.id(), RESTORE))
                 .hasMessageContaining("Passing scripted evidence");
 
-        var scripted = acceptance.recordScripted(release, RESTORE, checks, DIGEST);
+        var incomplete = acceptance.recordScripted(release, RESTORE, checks,
+                stories.subList(0, 89), DIGEST);
+        assertThat(incomplete.passed()).isFalse();
+
+        var scripted = acceptance.recordScripted(release, RESTORE, checks, stories, DIGEST);
         assertThat(scripted.passed()).isTrue();
+        assertThat(jdbc.sql("SELECT count(*) FROM m0_story_traceability WHERE scripted_run_id = ?")
+                .param(scripted.id()).query(Integer.class).single()).isEqualTo(90);
+        assertThat(jdbc.sql("SELECT count(*) FROM m0_scripted_check_evidence WHERE scripted_run_id = ?")
+                .param(scripted.id()).query(Integer.class).single()).isEqualTo(18);
         var live = acceptance.openLive(scripted.id(), RESTORE);
-        assertThat(acceptance.verifyLive(binding(live))).isTrue();
+        assertThat(acceptance.verifyLive(binding(live, liveEvidence(stories)))).isTrue();
         assertThat(acceptance.finalise(live)).isTrue();
         assertThat(jdbc.sql("SELECT count(*) FROM m0_acceptance_results WHERE run_id = ?")
                 .param(live).query(Integer.class).single()).isEqualTo(9);
@@ -98,19 +112,49 @@ class AcceptanceFlowTest {
                     mission_boundary_id, rationale)
                 VALUES (gen_random_uuid(), ?, ?, ?, ?, ?, ?, 'out_of_scope', ?, 'Synthetic denial')
                 """).params(ORGANISATION, SESSION, MISSION, ITEM, EVIDENCE, TURN, BOUNDARY).update();
-        var secondScripted = acceptance.recordScripted(release, RESTORE, checks, DIGEST);
+        var secondScripted = acceptance.recordScripted(release, RESTORE, checks, stories, DIGEST);
         var secondLive = acceptance.openLive(secondScripted.id(), RESTORE);
-        assertThat(acceptance.verifyLive(binding(secondLive))).isFalse();
+        assertThat(acceptance.verifyLive(binding(secondLive, liveEvidence(stories)))).isFalse();
         assertThat(jdbc.sql("""
                 SELECT outcome || ':' || safe_failure_class FROM m0_acceptance_results
                 WHERE run_id = ? AND criterion = 'AC35-6'
                 """).param(secondLive).query(String.class).single())
                 .isEqualTo("failed:automatic_failure");
+
+        var noLiveEvidenceScripted = acceptance.recordScripted(release, RESTORE, checks, stories, DIGEST);
+        var noLiveEvidence = acceptance.openLive(noLiveEvidenceScripted.id(), RESTORE);
+        assertThat(acceptance.verifyLive(binding(noLiveEvidence, Map.of()))).isFalse();
+        assertThat(jdbc.sql("""
+                SELECT outcome || ':' || safe_failure_class FROM m0_acceptance_results
+                WHERE run_id = ? AND criterion = 'AC35-8'
+                """).param(noLiveEvidence).query(String.class).single())
+                .isEqualTo("failed:traceability_gap");
     }
 
-    private LiveBinding binding(UUID run) {
+    private LiveBinding binding(UUID run, Map<Integer, String> liveEvidence) {
         return new LiveBinding(run, DISCOVERY, MISSION, SESSION, PACKAGE_VERSION,
-                OWNER, PARTICIPANT, OWNER, true, true, true, true);
+                OWNER, PARTICIPANT, OWNER, true, true, true, true, liveEvidence);
+    }
+
+    private List<StoryEvidence> stories(Map<String, CheckEvidence> checks) {
+        var scripted = checks.keySet().stream().sorted().toList();
+        var live = AcceptanceRepository.LIVE_CHECKS.stream().sorted().toList();
+        var stories = new ArrayList<StoryEvidence>();
+        for (var id = 1; id <= 90; id++) {
+            var criterion = "AC35-" + (((id - 1) % 8) + 1);
+            if (id <= live.size()) {
+                stories.add(new StoryEvidence(id, criterion, live.get(id - 1), "live/story-" + id));
+            } else {
+                var check = scripted.get((id - live.size() - 1) % scripted.size());
+                stories.add(new StoryEvidence(id, criterion, check, checks.get(check).evidenceLocator()));
+            }
+        }
+        return stories;
+    }
+
+    private Map<Integer, String> liveEvidence(List<StoryEvidence> stories) {
+        return stories.stream().filter(story -> AcceptanceRepository.LIVE_CHECKS.contains(story.checkId()))
+                .collect(Collectors.toMap(StoryEvidence::storyId, StoryEvidence::evidenceLocator));
     }
 
     private void seedJourney() {
@@ -257,7 +301,7 @@ class AcceptanceFlowTest {
                     access_denial_verified, retention_verified, deletion_verified,
                     duration_seconds, outcome, completed_at)
                 VALUES (?, ?, ?, 'provider', 'backup-35', 'candidate-35', 'ledger-35',
-                    now(), now(), 'timeline-35', now(), ?, 22, true, true, 60, 24, 30,
+                    now(), now(), 'timeline-35', now(), ?, 23, true, true, 60, 24, 30,
                     0, 0, 1, 1, true, true, true, true, 60, 'ready', now())
                 """).params(RESTORE, ORGANISATION,
                 UUID.fromString("70000000-0000-0000-0000-000000000035"),
