@@ -71,6 +71,7 @@ public class InterviewRuntimeRepository {
                     """).param(row.get().id()).update();
         }
         var leaseOwner = UUID.randomUUID();
+        var executionCorrelation = UUID.randomUUID();
         var slot = jdbc.sql("""
                 UPDATE pi_worker_slots SET organisation_id = ?, runtime_run_id = ?, shaping_work_id = NULL,
                     lease_owner = ?, lease_expires_at = now() + interval '2 minutes',
@@ -91,13 +92,13 @@ public class InterviewRuntimeRepository {
                 SET status = 'running', attempts = attempts + 1,
                     process_restarts = process_restarts + CASE WHEN status = 'running' THEN 1 ELSE 0 END,
                     lease_owner = ?, lease_until = now() + interval '2 minutes', heartbeat_at = now(),
-                    updated_at = now(), error_code = NULL
+                    execution_correlation_id = ?, updated_at = now(), error_code = NULL
                 WHERE id = ?
                 RETURNING id, organisation_id, discovery_id, interview_session_id, interview_mission_id,
                           work_kind, trigger, evidence_id, source_question_id, expected_revision, generation,
                           attempts, model_attempts,
-                          process_restarts, lease_owner
-                """).params(leaseOwner, row.get().id()).query((rs, ignored) -> new Work(
+                          process_restarts, lease_owner, origin_correlation_id, execution_correlation_id
+                """).params(leaseOwner, executionCorrelation, row.get().id()).query((rs, ignored) -> new Work(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("discovery_id", UUID.class),
                         rs.getObject("interview_session_id", UUID.class),
@@ -106,7 +107,9 @@ public class InterviewRuntimeRepository {
                         rs.getObject("source_question_id", UUID.class),
                         rs.getInt("expected_revision"), rs.getInt("generation"), rs.getInt("attempts"),
                         rs.getInt("model_attempts"), rs.getInt("process_restarts"),
-                        rs.getObject("lease_owner", UUID.class))).single();
+                        rs.getObject("lease_owner", UUID.class),
+                        rs.getObject("origin_correlation_id", UUID.class),
+                        rs.getObject("execution_correlation_id", UUID.class))).single();
         jdbc.sql("""
                 INSERT INTO interview_runtime_attempts (
                     id, organisation_id, runtime_run_id, interview_session_id, execution_attempt, outcome
@@ -1113,7 +1116,8 @@ public class InterviewRuntimeRepository {
     public record Work(UUID id, UUID organisationId, UUID discoveryId, UUID sessionId, UUID missionId,
             String workKind, String trigger, UUID evidenceId, UUID sourceQuestionId,
             int expectedRevision, int generation, int executionAttempt,
-            int modelAttempts, int processRestarts, UUID leaseOwner) {}
+            int modelAttempts, int processRestarts, UUID leaseOwner,
+            UUID originCorrelationId, UUID executionCorrelationId) {}
     record Credential(String value, Instant expiresAt) {}
     public record Prepared(Context context, byte[] checkpoint, String credential, Instant credentialExpiresAt) {
         public Prepared {

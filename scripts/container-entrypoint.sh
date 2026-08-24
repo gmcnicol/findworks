@@ -9,12 +9,16 @@ case "$role" in
   web|worker)
     exec java -jar /app/app.jar --findworks.process-role="$role" --spring.flyway.enabled=false
     ;;
+  support)
+    exec java -jar /app/app.jar --findworks.process-role=support \
+      --spring.main.web-application-type=none --spring.flyway.enabled=false
+    ;;
   migrate)
     exec java -jar /app/app.jar --findworks.process-role=migrate \
       --spring.main.web-application-type=none --spring.flyway.enabled=true
     ;;
   *)
-    echo "usage: entrypoint local|web|worker|migrate" >&2
+    echo "usage: entrypoint local|web|worker|migrate|support" >&2
     exit 64
     ;;
 esac

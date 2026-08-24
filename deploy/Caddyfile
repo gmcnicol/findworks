@@ -10,5 +10,7 @@
     X-Content-Type-Options nosniff
     Referrer-Policy no-referrer
   }
+  @management path /actuator/*
+  respond @management 404
   reverse_proxy web:8080
 }

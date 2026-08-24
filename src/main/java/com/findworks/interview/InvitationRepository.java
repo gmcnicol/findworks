@@ -144,8 +144,10 @@ class InvitationRepository {
         tenant.select();
         var now = clock.instant();
         var leaseOwner = UUID.randomUUID();
+        var executionCorrelation = UUID.randomUUID();
         var row = jdbc.sql("""
                 SELECT j.id, j.organisation_id, j.invitation_id, j.delivery_cycle, j.attempt_count,
+                       j.origin_correlation_id,
                        i.recipient_email, i.token_key_id, m.interviewee_name
                 FROM invitation_delivery_jobs j
                 JOIN invitations i ON i.id = j.invitation_id
@@ -162,16 +164,18 @@ class InvitationRepository {
                         rs.getObject("invitation_id", UUID.class), rs.getInt("delivery_cycle"),
                         rs.getInt("attempt_count") + 1, rs.getString("recipient_email"),
                         rs.getString("token_key_id"), rs.getString("interviewee_name"),
-                        leaseOwner)).optional().orElse(null);
+                        leaseOwner, rs.getObject("origin_correlation_id", UUID.class),
+                        executionCorrelation)).optional().orElse(null);
         if (row == null) {
             return null;
         }
         jdbc.sql("""
                 UPDATE invitation_delivery_jobs
                 SET status = 'leased', attempt_count = ?, lease_owner = ?,
-                    lease_expires_at = now() + interval '5 minutes', heartbeat_at = now(), updated_at = now()
+                    lease_expires_at = now() + interval '5 minutes', heartbeat_at = now(),
+                    execution_correlation_id = ?, updated_at = now()
                 WHERE id = ?
-                """).params(row.attemptNumber(), leaseOwner, row.jobId()).update();
+                """).params(row.attemptNumber(), leaseOwner, executionCorrelation, row.jobId()).update();
         return row;
     }
 
@@ -373,7 +377,8 @@ class InvitationRepository {
 
     record Work(UUID jobId, UUID organisationId, UUID invitationId, int deliveryCycle,
             int attemptNumber, String recipientEmail, String tokenKeyId,
-            String intervieweeName, UUID leaseOwner) {}
+            String intervieweeName, UUID leaseOwner, UUID originCorrelationId,
+            UUID executionCorrelationId) {}
     private record Mission(UUID id, UUID organisationId, UUID discoveryId, String intervieweeName) {}
     private record Current(UUID id, UUID participantId, String status) {}
     private record Recipient(UUID participantId, String email) {}

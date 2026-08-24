@@ -43,6 +43,9 @@ services:
       INVITATION_TOKEN_KEY_ID: ${INVITATION_TOKEN_KEY_ID:?Set invitation key ID}
       INTERVIEW_CONTACT: ${INTERVIEW_CONTACT:?Set contact route}
       SECRETS_DIRECTORY: /run/secrets
+      MANAGEMENT_SERVER_PORT: "8082"
+      STRUCTURED_LOG_FORMAT: ecs
+      BREAK_GLASS_KEY_ID: ${BREAK_GLASS_KEY_ID:?Set break-glass key ID}
     secrets:
       - source: web_database_password
         target: spring.datasource.password
@@ -52,10 +55,12 @@ services:
         target: findworks.invitation.active-secret
       - source: invitation_previous_secret
         target: findworks.invitation.previous-secret
-    expose: ["8080"]
-    networks: [ingress_private, database_egress]
+      - source: break_glass_key
+        target: findworks.operations.break-glass-key
+    expose: ["8080", "8082"]
+    networks: [ingress_private, database_egress, monitor_private]
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health/readiness"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/actuator/health/readiness"]
       interval: 10s
       timeout: 3s
       retries: 6
@@ -95,10 +100,10 @@ services:
       - type: bind
         source: ${ROOTLESS_OCI_SOCKET:?Set dedicated worker OCI socket}
         target: /run/podman/podman.sock
-    expose: ["8081"]
-    networks: [worker_private, database_egress]
+    expose: ["8081", "8082"]
+    networks: [worker_private, database_egress, monitor_private]
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/actuator/health/readiness"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/actuator/health/readiness"]
       interval: 10s
       timeout: 3s
       retries: 6
@@ -119,6 +124,32 @@ services:
     secrets:
       - source: migrator_database_password
         target: spring.datasource.password
+    networks: [database_egress]
+
+  support:
+    profiles: ["support"]
+    image: ${FINDWORKS_IMAGE:?Set the immutable application image digest}
+    command: ["support"]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=32m"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *application_environment
+      DATABASE_USERNAME: ${SUPPORT_DATABASE_USERNAME:?Set support database role}
+      SUPPORT_OPERATOR_ID: ${SUPPORT_OPERATOR_ID:?Set authorised operator ID}
+      FINDWORKS_OPERATIONS_COMMAND: ${SUPPORT_COMMAND:-}
+      FINDWORKS_OPERATIONS_KIND: ${SUPPORT_KIND:-}
+      FINDWORKS_OPERATIONS_ID: ${SUPPORT_ID:-}
+      FINDWORKS_OPERATIONS_REASON_CODE: ${SUPPORT_REASON_CODE:-}
+      FINDWORKS_OPERATIONS_UNTIL: ${SUPPORT_UNTIL:-}
+    secrets:
+      - source: support_database_password
+        target: spring.datasource.password
+      - source: break_glass_key
+        target: findworks.operations.break-glass-key
+      - source: break_glass_reason
+        target: findworks.operations.reason
     networks: [database_egress]
 
   egress:
@@ -168,11 +199,18 @@ secrets:
     file: ${MODEL_PROVIDER_CREDENTIAL_FILE:?Set model credential file}
   runtime_checkpoint_key:
     file: ${RUNTIME_CHECKPOINT_KEY_FILE:?Set checkpoint key file}
+  support_database_password:
+    file: ${SUPPORT_DATABASE_PASSWORD_FILE:?Set support database password file}
+  break_glass_key:
+    file: ${BREAK_GLASS_KEY_FILE:?Set break-glass key file}
+  break_glass_reason:
+    file: ${BREAK_GLASS_REASON_FILE:?Set protected break-glass reason file}
 
 networks:
   public: {}
   ingress_private: {internal: true}
   worker_private: {internal: true}
+  monitor_private: {internal: true}
   pi_private:
     name: ${PI_RUNTIME_NETWORK:?Set private Pi network}
     internal: true

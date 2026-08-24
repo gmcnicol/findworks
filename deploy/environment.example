@@ -2,6 +2,8 @@
 FINDWORKS_ENVIRONMENT=staging
 FINDWORKS_DATABASE_ID=findworks-staging-eu
 FINDWORKS_PROVIDER_ACCOUNT_ID=findworks-staging-synthetic
+SUPPORT_OPERATOR_ID=70000000-0000-0000-0000-000000000001
+BREAK_GLASS_KEY_ID=staging-break-glass-1
 PUBLIC_ORIGIN=https://staging.example.invalid
 DATABASE_URL=jdbc:postgresql://database.example.invalid/findworks_staging?sslmode=verify-full
 FINDWORKS_IMAGE=registry.example.invalid/findworks@sha256:REPLACE_WITH_64_HEX
