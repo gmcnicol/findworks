@@ -21,26 +21,63 @@
         </form>
     </section>
     <section class="findings-list" th:if="${findings.status == 'ready'}">
+        <section class="panel">
+            <p class="eyebrow">Mission coverage</p>
+            <h2 th:text="${findings.requiredReviewed + ' of ' + findings.requiredTotal + ' required areas reviewed'}">Coverage</h2>
+            <p>Accepting a claim means it is useful for this Discovery, not that it is objectively true.</p>
+            <p th:if="${findings.decision != null}" th:text="${'Package ' + findings.decision}">Decision</p>
+            <p th:if="${findings.decisionNotes != null}" th:text="${findings.decisionNotes}">Notes</p>
+        </section>
         <article th:each="group : ${findings.groups}">
             <p class="eyebrow" th:text="${group.required ? 'Required investigation item' : 'Optional investigation item'}">Investigation item</p>
             <h2 th:text="${group.knowledgeGap}">Gap</h2>
             <div th:each="item : ${group.knowledgeItems}">
                 <p><span class="badge" th:text="${item.category}">Fact</span>
-                    <span class="badge" th:if="${item.confirmationState == 'unconfirmed'}">Unconfirmed assumption</span></p>
+                    <span class="badge" th:text="${item.reviewState}">Unreviewed</span></p>
                 <p th:text="${item.claim}">Claim</p>
                 <figure th:each="citation : ${item.citations}">
                     <blockquote th:text="${citation.quotation}">Exact quotation</blockquote>
                     <figcaption th:text="${citation.participantName + ' · ' + citation.sourceType}">Source</figcaption>
-                    <details><summary>Open surrounding answer context</summary>
-                        <p th:text="${citation.answerContext}">Answer context</p></details>
+                    <a th:href="@{/missions/{missionId}/findings/{versionId}/knowledge/{knowledgeVersionId}/evidence/{evidenceId}(missionId=${mission.id},versionId=${findings.packageVersionId},knowledgeVersionId=${item.versionId},evidenceId=${citation.evidenceId})}">Open surrounding answer context</a>
                 </figure>
+                <div th:if="${findings.decision == null and item.reviewState == 'unreviewed'}">
+                    <form th:action="@{/missions/{missionId}/findings/{versionId}/knowledge/{knowledgeVersionId}/review(missionId=${mission.id},versionId=${findings.packageVersionId},knowledgeVersionId=${item.versionId})}" method="post">
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                        <input type="hidden" name="expectedRevision" th:value="${findings.reviewRevision}">
+                        <button class="button primary" name="state" value="accepted" type="submit">Accept as useful</button>
+                        <button class="button" name="state" value="rejected" type="submit">Reject claim</button>
+                    </form>
+                    <form th:action="@{/missions/{missionId}/findings/{versionId}/knowledge/{knowledgeVersionId}/correct(missionId=${mission.id},versionId=${findings.packageVersionId},knowledgeVersionId=${item.versionId})}" method="post">
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                        <input type="hidden" name="expectedRevision" th:value="${findings.reviewRevision}">
+                        <label>Correct this claim<textarea name="correction" maxlength="4000" required></textarea></label>
+                        <button class="button" type="submit">Save correction and accept</button>
+                    </form>
+                </div>
             </div>
             <div th:each="outcome : ${group.unresolvedOutcomes}">
                 <p class="badge" th:text="${outcome.kind}">Unknown</p>
                 <p th:text="${outcome.summary}">Unresolved detail</p>
+                <p>Still unresolved. Follow-up is needed.</p>
+                <form th:if="${findings.decision == null and outcome.reviewed == false}" th:action="@{/missions/{missionId}/findings/{versionId}/outcomes/{outcomeId}/acknowledge(missionId=${mission.id},versionId=${findings.packageVersionId},outcomeId=${outcome.outcomeId})}" method="post">
+                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                    <input type="hidden" name="expectedRevision" th:value="${findings.reviewRevision}">
+                    <button class="button" type="submit">Acknowledge for follow-up</button>
+                </form>
+                <p th:if="${outcome.reviewed}">Reviewed, remains unresolved</p>
             </div>
             <p class="unanswered" th:if="${group.knowledgeItems.empty and group.unresolvedOutcomes.empty}">No finding was extracted for this optional area.</p>
         </article>
+        <section class="panel" th:if="${findings.decision == null}">
+            <h2>Decide this exact Findings Package version</h2>
+            <form th:action="@{/missions/{missionId}/findings/{versionId}/decision(missionId=${mission.id},versionId=${findings.packageVersionId})}" method="post">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                <input type="hidden" name="expectedRevision" th:value="${findings.reviewRevision}">
+                <label>Decision notes<textarea name="notes" maxlength="4000" required></textarea></label>
+                <button class="button primary" name="decision" value="accepted" type="submit">Accept package</button>
+                <button class="button" name="decision" value="rejected" type="submit">Reject and require follow-up</button>
+            </form>
+        </section>
     </section>
 </main>
 </body>

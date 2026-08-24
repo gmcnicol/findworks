@@ -222,8 +222,20 @@ final class InterviewController {
     }
     @GetMapping("/missions/{id}/findings")
     String findings(Principal principal, @PathVariable UUID id, Model model) {
+        var view = findings.view(id, principal.getName());
+        if ("ready".equals(view.status())) {
+            return "redirect:/missions/" + id + "/findings/" + view.packageVersionId();
+        }
         model.addAttribute("mission", missions.mission(id, principal.getName()));
-        model.addAttribute("findings", findings.view(id, principal.getName()));
+        model.addAttribute("findings", view);
+        return "findings";
+    }
+
+    @GetMapping("/missions/{missionId}/findings/{versionId}")
+    String findingsVersion(Principal principal, @PathVariable UUID missionId,
+            @PathVariable UUID versionId, Model model) {
+        model.addAttribute("mission", missions.mission(missionId, principal.getName()));
+        model.addAttribute("findings", findings.view(missionId, versionId, principal.getName()));
         return "findings";
     }
 
@@ -231,6 +243,52 @@ final class InterviewController {
     String retryFindings(Principal principal, @PathVariable UUID id) {
         findings.retry(id, principal.getName());
         return "redirect:/missions/" + id + "/findings";
+    }
+
+    @PostMapping("/missions/{missionId}/findings/{versionId}/knowledge/{knowledgeVersionId}/review")
+    String reviewKnowledge(Principal principal, @PathVariable UUID missionId,
+            @PathVariable UUID versionId, @PathVariable UUID knowledgeVersionId,
+            @RequestParam int expectedRevision, @RequestParam String state) {
+        findings.reviewKnowledge(missionId, versionId, knowledgeVersionId,
+                expectedRevision, state, principal.getName());
+        return findingsRedirect(missionId, versionId);
+    }
+
+    @PostMapping("/missions/{missionId}/findings/{versionId}/knowledge/{knowledgeVersionId}/correct")
+    String correctKnowledge(Principal principal, @PathVariable UUID missionId,
+            @PathVariable UUID versionId, @PathVariable UUID knowledgeVersionId,
+            @RequestParam int expectedRevision, @RequestParam String correction) {
+        findings.correctKnowledge(missionId, versionId, knowledgeVersionId,
+                expectedRevision, correction, principal.getName());
+        return findingsRedirect(missionId, versionId);
+    }
+
+    @PostMapping("/missions/{missionId}/findings/{versionId}/outcomes/{outcomeId}/acknowledge")
+    String acknowledgeOutcome(Principal principal, @PathVariable UUID missionId,
+            @PathVariable UUID versionId, @PathVariable UUID outcomeId,
+            @RequestParam int expectedRevision) {
+        findings.acknowledgeOutcome(missionId, versionId, outcomeId,
+                expectedRevision, principal.getName());
+        return findingsRedirect(missionId, versionId);
+    }
+
+    @PostMapping("/missions/{missionId}/findings/{versionId}/decision")
+    String decideFindings(Principal principal, @PathVariable UUID missionId,
+            @PathVariable UUID versionId, @RequestParam int expectedRevision,
+            @RequestParam String decision, @RequestParam String notes) {
+        findings.decide(missionId, versionId, expectedRevision, decision, notes, principal.getName());
+        return findingsRedirect(missionId, versionId);
+    }
+
+    @GetMapping("/missions/{missionId}/findings/{versionId}/knowledge/{knowledgeVersionId}/evidence/{evidenceId}")
+    String findingsSource(Principal principal, @PathVariable UUID missionId,
+            @PathVariable UUID versionId, @PathVariable UUID knowledgeVersionId,
+            @PathVariable UUID evidenceId, Model model) {
+        model.addAttribute("missionId", missionId);
+        model.addAttribute("versionId", versionId);
+        model.addAttribute("source", findings.sourceContext(missionId, versionId,
+                knowledgeVersionId, evidenceId, principal.getName()));
+        return "finding-source";
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -253,5 +311,9 @@ final class InterviewController {
     private static void privateResponse(HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
+    }
+
+    private static String findingsRedirect(UUID missionId, UUID versionId) {
+        return "redirect:/missions/" + missionId + "/findings/" + versionId;
     }
 }

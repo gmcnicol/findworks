@@ -944,19 +944,29 @@ class FirstInterviewQuestionFlowTest {
                 """).param(PARTICIPANT).query(Boolean.class).single()).isTrue();
         assertThat(jdbc.sql("SELECT count(*) FROM findings_package_unresolved_outcomes")
                 .query(Integer.class).single()).isEqualTo(1);
+        var packageVersion = jdbc.sql("SELECT id FROM findings_package_versions")
+                .query(UUID.class).single();
 
         worker.runNext();
         assertThat(jdbc.sql("SELECT count(*) FROM findings_package_versions").query(Integer.class).single()).isEqualTo(1);
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/missions/{id}/findings", MISSION)
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/missions/{id}/findings/{version}", MISSION, packageVersion)
                         .with(user("investigator@findworks.local").roles("INVESTIGATOR")))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Support retries after three failures.")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Billing manager")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("The exception owner remains unknown.")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("PRIVATE-MISSION-CONTEXT"))));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/missions/{id}/findings", MISSION)
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/missions/{id}/findings/{version}", MISSION, packageVersion)
                         .with(user("outsider@example.com").roles("INVESTIGATOR")))
                 .andExpect(status().isForbidden());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/missions/{id}/findings/{version}", MISSION, packageVersion)
+                        .cookie(new Cookie("findworks_interview", GRANT)))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(
+                        "Support retries after three failures."))));
         assertThatThrownBy(() -> new TransactionTemplate(transactions).executeWithoutResult(ignored -> {
             jdbc.sql("SET LOCAL ROLE findworks_application").update();
             jdbc.sql("SELECT set_config('findworks.organisation_id', ?, true)")
@@ -1047,6 +1057,161 @@ class FirstInterviewQuestionFlowTest {
     }
 
     @Test
+    void investigatorCorrectionAppendsEvidenceAndAnAcceptedKnowledgeVersion() throws Exception {
+        var packageVersion = readyFindings();
+        var originalVersion = jdbc.sql("SELECT id FROM knowledge_item_versions")
+                .query(UUID.class).single();
+        var originalEvidence = jdbc.sql("SELECT evidence_id FROM knowledge_item_evidence_citations")
+                .query(UUID.class).single();
+        var originalClaim = jdbc.sql("SELECT claim FROM knowledge_item_versions WHERE id = ?")
+                .param(originalVersion).query(String.class).single();
+        var originalAnswer = jdbc.sql("SELECT answer FROM evidence WHERE id = ?")
+                .param(originalEvidence).query(String.class).single();
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/missions/{mission}/findings/{version}/knowledge/{knowledge}/evidence/{evidence}",
+                        MISSION, packageVersion, originalVersion, originalEvidence)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(originalAnswer)))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("When a failed card payment occurs")));
+
+        var correction = "Support retries a failed card payment after three attempts.";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                        "/missions/{mission}/findings/{version}/knowledge/{knowledge}/correct",
+                        MISSION, packageVersion, originalVersion)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "0").param("correction", correction))
+                .andExpect(status().is3xxRedirection());
+
+        assertThat(jdbc.sql("SELECT confirmation_state || ':' || claim FROM knowledge_item_versions WHERE id = ?")
+                .param(originalVersion).query(String.class).single()).isEqualTo("corrected:" + originalClaim);
+        assertThat(jdbc.sql("SELECT answer FROM evidence WHERE id = ?")
+                .param(originalEvidence).query(String.class).single()).isEqualTo(originalAnswer);
+        assertThat(jdbc.sql("""
+                SELECT v.version || ':' || v.confirmation_state || ':' || v.claim
+                FROM knowledge_items k JOIN knowledge_item_versions v
+                  ON v.knowledge_item_id = k.id AND v.version = k.current_version
+                """).query(String.class).single()).isEqualTo("2:accepted:" + correction);
+        assertThat(jdbc.sql("""
+                SELECT e.source_type || ':' || (e.participant_id IS NULL) || ':' ||
+                       (e.actor_membership_id = ?) || ':' || (e.corrects_evidence_id = ?) || ':' ||
+                       (c.start_offset = 0) || ':' || (c.end_offset = char_length(e.answer)) || ':' ||
+                       (c.quotation = e.answer)
+                FROM evidence e JOIN knowledge_item_evidence_citations c ON c.evidence_id = e.id
+                WHERE e.source_type = 'investigator_correction'
+                """).params(OWNER, originalEvidence).query(String.class).single())
+                .isEqualTo("investigator_correction:true:true:true:true:true:true");
+        assertThat(jdbc.sql("SELECT review_revision FROM findings_package_reviews")
+                .query(Integer.class).single()).isEqualTo(1);
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                        "/missions/{mission}/findings/{version}/knowledge/{knowledge}/review",
+                        MISSION, packageVersion, originalVersion)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "0").param("state", "accepted"))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence WHERE source_type = 'investigator_correction'")
+                .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void requiredReviewGateKeepsUnresolvedOutcomeAndRejectsStaleDecisions() throws Exception {
+        var packageVersion = readyFindings();
+        var knowledgeVersion = jdbc.sql("SELECT id FROM knowledge_item_versions")
+                .query(UUID.class).single();
+        var unresolved = jdbc.sql("SELECT outcome_id FROM findings_package_unresolved_outcomes")
+                .query(UUID.class).single();
+        var decisionPath = "/missions/{mission}/findings/{version}/decision";
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(decisionPath,
+                        MISSION, packageVersion)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "0").param("decision", "accepted")
+                        .param("notes", "Ready for use."))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_package_decisions")
+                .query(Integer.class).single()).isZero();
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                        "/missions/{mission}/findings/{version}/knowledge/{knowledge}/review",
+                        MISSION, packageVersion, knowledgeVersion)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "0").param("state", "accepted"))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                        "/missions/{mission}/findings/{version}/outcomes/{outcome}/acknowledge",
+                        MISSION, packageVersion, unresolved)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "0"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                        "/missions/{mission}/findings/{version}/outcomes/{outcome}/acknowledge",
+                        MISSION, packageVersion, unresolved)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "1"))
+                .andExpect(status().is3xxRedirection());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(decisionPath,
+                        MISSION, packageVersion)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "2").param("decision", "accepted")
+                        .param("notes", "Reviewed, with follow-up still required."))
+                .andExpect(status().is3xxRedirection());
+
+        assertThat(jdbc.sql("SELECT decision || ':' || review_revision || ':' || notes FROM findings_package_decisions")
+                .query(String.class).single())
+                .isEqualTo("accepted:2:Reviewed, with follow-up still required.");
+        assertThat(jdbc.sql("SELECT kind FROM findings_package_unresolved_outcomes")
+                .query(String.class).single()).isEqualTo("unknown");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(decisionPath,
+                        MISSION, packageVersion)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "2").param("decision", "rejected")
+                        .param("notes", "Stale tab."))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_package_decisions")
+                .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void exactPackageCanBeRejectedWithoutAcceptingItsFindings() throws Exception {
+        var packageVersion = readyFindings();
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                        "/missions/{mission}/findings/{version}/decision", MISSION, packageVersion)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")).with(csrf())
+                        .param("expectedRevision", "0").param("decision", "rejected")
+                        .param("notes", "Needs another interview."))
+                .andExpect(status().is3xxRedirection());
+
+        assertThat(jdbc.sql("SELECT decision || ':' || notes FROM findings_package_decisions")
+                .query(String.class).single()).isEqualTo("rejected:Needs another interview.");
+        assertThat(jdbc.sql("SELECT confirmation_state FROM knowledge_item_versions")
+                .query(String.class).single()).isEqualTo("unreviewed");
+    }
+
+    @Test
+    void optionalUnreviewedFindingDoesNotBlockExactPackageAcceptance() throws Exception {
+        var packageVersion = readyFindings();
+        jdbc.sql("UPDATE findings_package_results SET required = false "
+                + "WHERE findings_package_version_id = ? AND investigation_item_id = ?")
+                .params(packageVersion, LOW_ITEM).update();
+        var knowledgeVersion = jdbc.sql("SELECT id FROM knowledge_item_versions")
+                .query(UUID.class).single();
+
+        findings.reviewKnowledge(MISSION, packageVersion, knowledgeVersion, 0,
+                "accepted", "investigator@findworks.local");
+        findings.decide(MISSION, packageVersion, 1, "accepted",
+                "Required findings reviewed.", "investigator@findworks.local");
+
+        assertThat(jdbc.sql("SELECT decision FROM findings_package_decisions")
+                .query(String.class).single()).isEqualTo("accepted");
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_package_unresolved_outcomes o "
+                + "LEFT JOIN findings_unresolved_outcome_reviews r ON r.outcome_id = o.outcome_id "
+                + "WHERE r.id IS NULL").query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
     void isolatedFakePiCanCommitTheCompletionSemanticAction() throws Exception {
         var question = beginQuestion();
         answer(question, "Support retries after three failures.");
@@ -1091,6 +1256,13 @@ class FirstInterviewQuestionFlowTest {
                 work.id(), work.sessionId(), work.expectedRevision(), List.of(), List.of(), action)))
                 .isEqualTo(event);
         return new PendingCompletion(work, event, event.completionProposalId());
+    }
+
+    private UUID readyFindings() throws Exception {
+        var pending = eligibleProposal();
+        interviews.finish(GRANT, pending.proposalId(), 4);
+        worker.runNext();
+        return jdbc.sql("SELECT id FROM findings_package_versions").query(UUID.class).single();
     }
 
     private void seedEligibleOutcomes(UUID runtimeRunId) {
