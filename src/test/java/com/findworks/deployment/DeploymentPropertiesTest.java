@@ -24,12 +24,18 @@ class DeploymentPropertiesTest {
         assertThatCode(() -> deployment.validate(
                 "migrate", TLS_DATABASE, "https://findworks.example", true, false, ""))
                 .doesNotThrowAnyException();
+        assertThatCode(() -> deployment.validate(
+                "recovery", TLS_DATABASE, "https://findworks.example", false, false, ""))
+                .doesNotThrowAnyException();
 
         assertThatThrownBy(() -> deployment.validate(
                 "local", TLS_DATABASE, "https://findworks.example", false, true, DIGEST))
                 .hasMessageContaining("explicit process role");
         assertThatThrownBy(() -> deployment.validate(
                 "worker", TLS_DATABASE, "https://findworks.example", true, true, DIGEST))
+                .hasMessageContaining("Flyway disabled");
+        assertThatThrownBy(() -> deployment.validate(
+                "recovery", TLS_DATABASE, "https://findworks.example", true, false, ""))
                 .hasMessageContaining("Flyway disabled");
         assertThatThrownBy(() -> deployment.validate(
                 "worker", TLS_DATABASE, "https://findworks.example", false, false, "findworks/pi:latest"))

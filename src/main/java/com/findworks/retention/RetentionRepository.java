@@ -6,6 +6,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
@@ -282,6 +283,64 @@ public class RetentionRepository {
     }
 
     @Transactional
+    public void replayDeletion(RecoveryDeletion deletion) {
+        tenant.select();
+        if (!pilot.organisationId().equals(deletion.organisationId())
+                || !Set.of("discovery", "interview_session").contains(deletion.targetKind())
+                || deletion.requestedAt() == null || deletion.accessBlockedAt() == null
+                || deletion.purgeDeadline() == null || deletion.availableAt() == null
+                || deletion.attempts() < 0 || deletion.attempts() > 20) {
+            throw new IllegalArgumentException("Recovery deletion scope is invalid.");
+        }
+        var stage = "completed".equals(deletion.stage()) ? "completed" : "blocked";
+        var completed = "completed".equals(stage) ? deletion.completedAt() : null;
+        var backupExpiry = "completed".equals(stage) ? deletion.backupExpiryDueAt() : null;
+        if (("completed".equals(stage) && (completed == null || backupExpiry == null))
+                || (!"completed".equals(stage) && (completed != null || backupExpiry != null))) {
+            throw new IllegalArgumentException("Recovery deletion state is invalid.");
+        }
+        jdbc.sql("""
+                INSERT INTO deletion_ledger (
+                    id, organisation_id, target_kind, target_id, requested_by_kind,
+                    requested_by_id, stage, attempts, requested_at, access_blocked_at,
+                    purge_deadline, available_at, completed_at, backup_expiry_due_at,
+                    safe_error_class
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (target_kind, target_id) DO UPDATE SET
+                    requested_by_kind = excluded.requested_by_kind,
+                    requested_by_id = excluded.requested_by_id,
+                    stage = excluded.stage, attempts = excluded.attempts,
+                    requested_at = excluded.requested_at,
+                    access_blocked_at = excluded.access_blocked_at,
+                    purge_deadline = excluded.purge_deadline,
+                    available_at = excluded.available_at,
+                    lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = NULL,
+                    completed_at = excluded.completed_at,
+                    backup_expiry_due_at = excluded.backup_expiry_due_at,
+                    safe_error_class = excluded.safe_error_class
+                """).params(deletion.id(), deletion.organisationId(), deletion.targetKind(), deletion.targetId(),
+                deletion.requestedByKind(), deletion.requestedById(), stage, deletion.attempts(),
+                timestamp(deletion.requestedAt()), timestamp(deletion.accessBlockedAt()),
+                timestamp(deletion.purgeDeadline()), timestamp(deletion.availableAt()),
+                completed == null ? null : timestamp(completed),
+                backupExpiry == null ? null : timestamp(backupExpiry), deletion.safeErrorClass()).update();
+
+        blockRestoredTarget(deletion);
+        if ("completed".equals(stage) || !deletion.purgeDeadline().isAfter(clock.instant())) {
+            purgeRestoredTarget(deletion);
+            var finished = completed == null ? clock.instant() : completed;
+            jdbc.sql("""
+                    UPDATE deletion_ledger SET stage = 'completed', completed_at = ?,
+                        backup_expiry_due_at = ?, safe_error_class = NULL,
+                        lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = NULL
+                    WHERE target_kind = ? AND target_id = ?
+                    """).params(timestamp(finished), timestamp(backupExpiry == null
+                            ? finished.plus(Duration.ofDays(30)) : backupExpiry),
+                    deletion.targetKind(), deletion.targetId()).update();
+        }
+    }
+
+    @Transactional
     public int pruneAudit() {
         tenant.select();
         return jdbc.sql("DELETE FROM audit_records WHERE expires_at <= ?")
@@ -352,6 +411,73 @@ public class RetentionRepository {
                 timestamp(now), timestamp(now), timestamp(deadline), timestamp(now)).update();
     }
 
+    private void blockRestoredTarget(RecoveryDeletion deletion) {
+        var blocked = timestamp(deletion.accessBlockedAt());
+        var deadline = timestamp(deletion.purgeDeadline());
+        if ("discovery".equals(deletion.targetKind())) {
+            jdbc.sql("""
+                    UPDATE discoveries SET status = 'deletion_pending',
+                        access_blocked_at = coalesce(access_blocked_at, ?),
+                        purge_due_at = coalesce(purge_due_at, ?)
+                    WHERE id = ? AND organisation_id = ?
+                    """).params(blocked, deadline, deletion.targetId(), deletion.organisationId()).update();
+            jdbc.sql("""
+                    UPDATE invitations SET revoked_at = coalesce(revoked_at, ?),
+                        delivery_status = CASE WHEN delivery_status = 'legacy_inert'
+                            THEN delivery_status ELSE 'revoked' END
+                    WHERE discovery_id = ?
+                    """).params(blocked, deletion.targetId()).update();
+            jdbc.sql("""
+                    UPDATE interview_access_grants SET revoked_at = coalesce(revoked_at, ?)
+                    WHERE interview_session_id IN (
+                        SELECT id FROM interview_sessions WHERE discovery_id = ?)
+                    """).params(blocked, deletion.targetId()).update();
+            jdbc.sql("UPDATE runtime_credentials SET revoked_at = coalesce(revoked_at, ?) WHERE discovery_id = ?")
+                    .params(blocked, deletion.targetId()).update();
+            jdbc.sql("""
+                    UPDATE interview_runtime_runs SET status = 'cancelled', cancelled_at = ?,
+                        lease_until = NULL, lease_owner = NULL, heartbeat_at = NULL, updated_at = ?
+                    WHERE discovery_id = ? AND status IN ('queued', 'running')
+                    """).params(blocked, blocked, deletion.targetId()).update();
+            jdbc.sql("UPDATE findings_package_versions SET invalidated_at = coalesce(invalidated_at, ?) WHERE discovery_id = ?")
+                    .params(blocked, deletion.targetId()).update();
+        } else {
+            jdbc.sql("""
+                    UPDATE interview_sessions SET access_blocked_at = coalesce(access_blocked_at, ?),
+                        purge_due_at = coalesce(purge_due_at, ?)
+                    WHERE id = ? AND organisation_id = ?
+                    """).params(blocked, deadline, deletion.targetId(), deletion.organisationId()).update();
+            blockSession(deletion.targetId(), deletion.organisationId(), "system", null,
+                    deletion.accessBlockedAt());
+        }
+    }
+
+    private void purgeRestoredTarget(RecoveryDeletion deletion) {
+        if ("discovery".equals(deletion.targetKind())) {
+            jdbc.sql("DELETE FROM discoveries WHERE id = ? AND organisation_id = ? AND status = 'deletion_pending'")
+                    .params(deletion.targetId(), deletion.organisationId()).update();
+            return;
+        }
+        var participant = jdbc.sql("""
+                SELECT participant_id FROM interview_sessions
+                WHERE id = ? AND organisation_id = ? AND access_blocked_at IS NOT NULL
+                """).params(deletion.targetId(), deletion.organisationId()).query(UUID.class).optional();
+        jdbc.sql("""
+                DELETE FROM invitations i USING interview_sessions s
+                WHERE s.id = ? AND s.organisation_id = ?
+                  AND i.interview_mission_id = s.interview_mission_id
+                  AND i.participant_id = s.participant_id
+                """).params(deletion.targetId(), deletion.organisationId()).update();
+        jdbc.sql("DELETE FROM interview_sessions WHERE id = ? AND organisation_id = ? AND access_blocked_at IS NOT NULL")
+                .params(deletion.targetId(), deletion.organisationId()).update();
+        participant.ifPresent(id -> jdbc.sql("""
+                DELETE FROM discovery_participants p WHERE p.id = ? AND p.organisation_id = ?
+                  AND NOT EXISTS (SELECT 1 FROM invitations i WHERE i.participant_id = p.id)
+                  AND NOT EXISTS (SELECT 1 FROM interview_sessions s WHERE s.participant_id = p.id)
+                  AND NOT EXISTS (SELECT 1 FROM evidence e WHERE e.participant_id = p.id)
+                """).params(id, deletion.organisationId()).update());
+    }
+
     private void settleWarning(Warning warning, String status, String errorClass) {
         var sent = "sent".equals(status) ? timestamp(clock.instant()) : null;
         jdbc.sql("""
@@ -378,4 +504,8 @@ public class RetentionRepository {
     public record Purge(UUID id, UUID organisationId, String targetKind,
             UUID targetId, int attempt, UUID leaseOwner,
             UUID originCorrelationId, UUID executionCorrelationId) {}
+    public record RecoveryDeletion(UUID id, UUID organisationId, String targetKind, UUID targetId,
+            String requestedByKind, UUID requestedById, String stage, int attempts,
+            Instant requestedAt, Instant accessBlockedAt, Instant purgeDeadline, Instant availableAt,
+            Instant completedAt, Instant backupExpiryDueAt, String safeErrorClass) {}
 }

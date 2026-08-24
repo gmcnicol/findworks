@@ -46,6 +46,9 @@ services:
       MANAGEMENT_SERVER_PORT: "8082"
       STRUCTURED_LOG_FORMAT: ecs
       BREAK_GLASS_KEY_ID: ${BREAK_GLASS_KEY_ID:?Set break-glass key ID}
+      RECOVERY_GATE_REQUIRED: "true"
+      BACKUP_REQUIRED: "true"
+      RECOVERY_APPLICATION_IMAGE: ${FINDWORKS_IMAGE:?Set immutable application image digest}
     secrets:
       - source: web_database_password
         target: spring.datasource.password
@@ -152,6 +155,48 @@ services:
         target: findworks.operations.reason
     networks: [database_egress]
 
+  recovery:
+    profiles: ["recovery"]
+    image: ${FINDWORKS_IMAGE:?Set immutable application image digest}
+    command: ["recovery"]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=32m"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *application_environment
+      DATABASE_URL: ${RECOVERY_DATABASE_URL:?Set isolated restore database URL}
+      DATABASE_USERNAME: ${RECOVERY_DATABASE_USERNAME:?Set short-lived recovery role}
+      RECOVERY_OPERATOR_ID: ${RECOVERY_OPERATOR_ID:?Set authorised recovery operator ID}
+      RECOVERY_BUNDLE_KEY_ID: ${RECOVERY_BUNDLE_KEY_ID:?Set recovery bundle key ID}
+      FINDWORKS_RECOVERY_COMMAND: ${RECOVERY_COMMAND_NAME:-}
+      FINDWORKS_RECOVERY_OUTPUT: ${RECOVERY_OUTPUT:-}
+      FINDWORKS_RECOVERY_BUNDLE: ${RECOVERY_BUNDLE:-}
+      FINDWORKS_RECOVERY_MANIFEST: ${RECOVERY_MANIFEST:-}
+      FINDWORKS_RECOVERY_SOURCE_KIND: ${RECOVERY_SOURCE_KIND:-synthetic}
+      FINDWORKS_RECOVERY_BACKUP_ID: ${RECOVERY_BACKUP_ID:-}
+      FINDWORKS_RECOVERY_CANDIDATE_RESTORE_ID: ${RECOVERY_CANDIDATE_RESTORE_ID:-}
+      FINDWORKS_RECOVERY_LEDGER_RESTORE_ID: ${RECOVERY_LEDGER_RESTORE_ID:-}
+      FINDWORKS_RECOVERY_SOURCE_TIMELINE: ${RECOVERY_SOURCE_TIMELINE:-}
+      FINDWORKS_RECOVERY_INCIDENT_AUTHORISED_AT: ${RECOVERY_INCIDENT_AUTHORISED_AT:-}
+      FINDWORKS_RECOVERY_REQUESTED_RESTORE_AT: ${RECOVERY_REQUESTED_RESTORE_AT:-}
+      FINDWORKS_RECOVERY_ACHIEVED_RESTORE_AT: ${RECOVERY_ACHIEVED_RESTORE_AT:-}
+      FINDWORKS_RECOVERY_ENCRYPTED_AT_REST: ${RECOVERY_ENCRYPTED_AT_REST:-}
+      FINDWORKS_RECOVERY_ENCRYPTED_IN_TRANSIT: ${RECOVERY_ENCRYPTED_IN_TRANSIT:-}
+      FINDWORKS_RECOVERY_RECOVERY_POINT_GAP_SECONDS: ${RECOVERY_POINT_GAP_SECONDS:-}
+      FINDWORKS_RECOVERY_SNAPSHOT_INTERVAL_HOURS: ${RECOVERY_SNAPSHOT_INTERVAL_HOURS:-}
+      FINDWORKS_RECOVERY_BACKUP_RETENTION_DAYS: ${RECOVERY_BACKUP_RETENTION_DAYS:-}
+    secrets:
+      - source: recovery_database_password
+        target: spring.datasource.password
+      - source: recovery_bundle_key
+        target: findworks.recovery.bundle-key
+    volumes:
+      - type: bind
+        source: ${RECOVERY_WORK_DIRECTORY:?Set private recovery work directory}
+        target: /run/recovery
+    networks: [database_egress]
+
   egress:
     image: ${EGRESS_PROXY_IMAGE:?Set a reviewed digest-pinned HTTPS allow-list proxy image}
     read_only: true
@@ -205,6 +250,10 @@ secrets:
     file: ${BREAK_GLASS_KEY_FILE:?Set break-glass key file}
   break_glass_reason:
     file: ${BREAK_GLASS_REASON_FILE:?Set protected break-glass reason file}
+  recovery_database_password:
+    file: ${RECOVERY_DATABASE_PASSWORD_FILE:?Set short-lived recovery password file}
+  recovery_bundle_key:
+    file: ${RECOVERY_BUNDLE_KEY_FILE:?Set recovery bundle signing key file}
 
 networks:
   public: {}

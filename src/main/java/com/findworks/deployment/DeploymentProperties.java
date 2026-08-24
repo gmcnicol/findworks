@@ -14,8 +14,8 @@ public record DeploymentProperties(
 
     public void validate(String role, String databaseUrl, String publicOrigin,
             boolean flywayEnabled, boolean runtimeEnabled, String runtimeImage) {
-        if (!Set.of("local", "web", "worker", "migrate", "support").contains(role)) {
-            throw new IllegalStateException("findworks.process-role must be local, web, worker, migrate, or support.");
+        if (!Set.of("local", "web", "worker", "migrate", "support", "recovery").contains(role)) {
+            throw new IllegalStateException("findworks.process-role must be local, web, worker, migrate, support, or recovery.");
         }
         if (!ENVIRONMENTS.contains(environment)) {
             throw new IllegalStateException("Deployment environment must be local, staging, or production.");
@@ -28,8 +28,9 @@ public record DeploymentProperties(
         if ("local".equals(role)) {
             throw new IllegalStateException("A non-local deployment requires an explicit process role.");
         }
-        if (("web".equals(role) || "worker".equals(role) || "support".equals(role)) && flywayEnabled) {
-            throw new IllegalStateException("Web, worker, and support processes must start with Flyway disabled.");
+        if (("web".equals(role) || "worker".equals(role) || "support".equals(role)
+                || "recovery".equals(role)) && flywayEnabled) {
+            throw new IllegalStateException("Web, worker, support, and recovery processes must start with Flyway disabled.");
         }
         if ("migrate".equals(role) && !flywayEnabled) {
             throw new IllegalStateException("The migrate process must run Flyway.");
