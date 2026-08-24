@@ -141,6 +141,7 @@ public class ShapingRepository {
             return null;
         }
         var leaseOwner = UUID.randomUUID();
+        var executionCorrelation = UUID.randomUUID();
         var slot = jdbc.sql("""
                 UPDATE pi_worker_slots SET organisation_id = ?, shaping_work_id = ?, runtime_run_id = NULL,
                     lease_owner = ?, lease_expires_at = now() + interval '2 minutes',
@@ -160,14 +161,17 @@ public class ShapingRepository {
                 UPDATE shaping_runtime_work
                 SET status = 'running', attempts = attempts + 1,
                     lease_owner = ?, lease_until = now() + interval '2 minutes', heartbeat_at = now(),
-                    updated_at = now(), error_code = NULL
+                    execution_correlation_id = ?, updated_at = now(), error_code = NULL
                 WHERE id = ?
-                RETURNING id, organisation_id, shaping_session_id, trigger_message_id, attempts, lease_owner
-                """).params(leaseOwner, candidate.get().id()).query((rs, row) -> new Work(
+                RETURNING id, organisation_id, shaping_session_id, trigger_message_id, attempts, lease_owner,
+                          origin_correlation_id, execution_correlation_id
+                """).params(leaseOwner, executionCorrelation, candidate.get().id()).query((rs, row) -> new Work(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("shaping_session_id", UUID.class),
                         rs.getObject("trigger_message_id", UUID.class), rs.getInt("attempts"),
-                        rs.getObject("lease_owner", UUID.class))).single();
+                        rs.getObject("lease_owner", UUID.class),
+                        rs.getObject("origin_correlation_id", UUID.class),
+                        rs.getObject("execution_correlation_id", UUID.class))).single();
     }
 
     @Transactional
@@ -667,7 +671,7 @@ public class ShapingRepository {
     }
 
     public record Work(UUID id, UUID organisationId, UUID sessionId, UUID triggerMessageId,
-            int attempts, UUID leaseOwner) {}
+            int attempts, UUID leaseOwner, UUID originCorrelationId, UUID executionCorrelationId) {}
     public record Context(UUID workId, UUID sessionId, String title, String objective, List<StoredMessage> messages) {}
     public record StoredMessage(UUID id, String authorKind, String content, Instant createdAt) {}
     private record DiscoveryContext(String title, String objective) {}

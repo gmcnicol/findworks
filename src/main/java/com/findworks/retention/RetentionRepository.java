@@ -146,10 +146,11 @@ public class RetentionRepository {
         tenant.select();
         var now = clock.instant();
         var leaseOwner = UUID.randomUUID();
+        var executionCorrelation = UUID.randomUUID();
         return jdbc.sql("""
                 UPDATE retention_warnings w SET status = 'leased', attempt_count = attempt_count + 1,
                     lease_owner = ?, lease_expires_at = now() + interval '5 minutes',
-                    heartbeat_at = now(), updated_at = now()
+                    heartbeat_at = now(), execution_correlation_id = ?, updated_at = now()
                 FROM discoveries d, memberships m, users u, organisations o
                 WHERE w.id = (SELECT candidate.id FROM retention_warnings candidate
                     JOIN discoveries active ON active.id = candidate.discovery_id
@@ -162,12 +163,15 @@ public class RetentionRepository {
                   AND d.id = w.discovery_id AND m.id = d.owner_membership_id
                   AND u.id = m.user_id AND o.id = d.organisation_id
                 RETURNING w.id, w.organisation_id, w.discovery_id, w.due_at_snapshot,
-                          w.attempt_count, u.email, d.title, o.name
-                """).params(leaseOwner, timestamp(now)).query((rs, ignored) -> new Warning(
+                          w.attempt_count, u.email, d.title, o.name,
+                          w.origin_correlation_id, w.execution_correlation_id
+                """).params(leaseOwner, executionCorrelation, timestamp(now)).query((rs, ignored) -> new Warning(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getObject("discovery_id", UUID.class), rs.getTimestamp("due_at_snapshot").toInstant(),
                         rs.getInt("attempt_count"), rs.getString("email"), rs.getString("title"),
-                        rs.getString("name"), leaseOwner)).optional().orElse(null);
+                        rs.getString("name"), leaseOwner,
+                        rs.getObject("origin_correlation_id", UUID.class),
+                        rs.getObject("execution_correlation_id", UUID.class))).optional().orElse(null);
     }
 
     @Transactional
@@ -200,19 +204,23 @@ public class RetentionRepository {
         scopeOwner();
         var now = clock.instant();
         var leaseOwner = UUID.randomUUID();
+        var executionCorrelation = UUID.randomUUID();
         return jdbc.sql("""
                 UPDATE deletion_ledger d SET stage = 'purging', attempts = attempts + 1,
                     lease_owner = ?, lease_expires_at = now() + interval '5 minutes',
-                    heartbeat_at = now(), safe_error_class = NULL
+                    heartbeat_at = now(), execution_correlation_id = ?, safe_error_class = NULL
                 WHERE d.id = (SELECT id FROM deletion_ledger
                     WHERE available_at <= ? AND attempts < 20
                       AND (stage = 'blocked' OR (stage = 'purging' AND lease_expires_at <= now()))
                     ORDER BY available_at, requested_at FOR UPDATE SKIP LOCKED LIMIT 1)
-                RETURNING id, organisation_id, target_kind, target_id, attempts, lease_owner
-                """).params(leaseOwner, timestamp(now)).query((rs, ignored) -> new Purge(
+                RETURNING id, organisation_id, target_kind, target_id, attempts, lease_owner,
+                          origin_correlation_id, execution_correlation_id
+                """).params(leaseOwner, executionCorrelation, timestamp(now)).query((rs, ignored) -> new Purge(
                         rs.getObject("id", UUID.class), rs.getObject("organisation_id", UUID.class),
                         rs.getString("target_kind"), rs.getObject("target_id", UUID.class),
-                        rs.getInt("attempts"), rs.getObject("lease_owner", UUID.class)))
+                        rs.getInt("attempts"), rs.getObject("lease_owner", UUID.class),
+                        rs.getObject("origin_correlation_id", UUID.class),
+                        rs.getObject("execution_correlation_id", UUID.class)))
                 .optional().orElse(null);
     }
 
@@ -365,7 +373,9 @@ public class RetentionRepository {
     }
 
     public record Warning(UUID id, UUID organisationId, UUID discoveryId, Instant dueAt,
-            int attempt, String recipient, String discoveryTitle, String organisationName, UUID leaseOwner) {}
+            int attempt, String recipient, String discoveryTitle, String organisationName, UUID leaseOwner,
+            UUID originCorrelationId, UUID executionCorrelationId) {}
     public record Purge(UUID id, UUID organisationId, String targetKind,
-            UUID targetId, int attempt, UUID leaseOwner) {}
+            UUID targetId, int attempt, UUID leaseOwner,
+            UUID originCorrelationId, UUID executionCorrelationId) {}
 }
