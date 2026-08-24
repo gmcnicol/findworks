@@ -119,6 +119,15 @@ final class InterviewController {
         return "redirect:/interview";
     }
 
+    @PostMapping("/interview/answer")
+    String answer(@CookieValue(value = ACCESS_COOKIE, required = false) String accessToken,
+            @RequestParam UUID questionId, @RequestParam int expectedRevision, @RequestParam String answer,
+            HttpServletResponse response) {
+        interviews.answer(accessToken, questionId, expectedRevision, answer);
+        privateResponse(response);
+        return "redirect:/interview";
+    }
+
     @GetMapping("/missions/{id}/findings")
     String findings(Principal principal, @PathVariable UUID id, Model model) {
         model.addAttribute("mission", missions.mission(id, principal.getName()));
@@ -128,8 +137,9 @@ final class InterviewController {
 
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    String invalid(IllegalArgumentException error, Model model) {
+    String invalid(IllegalArgumentException error, Model model, HttpServletResponse response) {
         model.addAttribute("message", error.getMessage());
+        privateResponse(response);
         return "error";
     }
 

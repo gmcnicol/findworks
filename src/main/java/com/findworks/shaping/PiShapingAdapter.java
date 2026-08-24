@@ -145,7 +145,7 @@ class PiShapingAdapter {
         }
     }
 
-    InterviewRuntimeRepository.Submission firstQuestion(InterviewRuntimeRepository.Context context) throws Exception {
+    InterviewRuntimeRepository.Submission interviewTurn(InterviewRuntimeRepository.Context context) throws Exception {
         var runDirectory = sessionDirectory.resolve(context.sessionId().toString());
         Files.createDirectories(runDirectory);
         var extension = runDirectory.resolve("interview-extension.ts");
@@ -188,7 +188,7 @@ class PiShapingAdapter {
             input.write(json.writeValueAsString(Map.of(
                     "id", requestId,
                     "type", "prompt",
-                    "message", "Create the first adaptive question from this authoritative FindWorks projection:\n"
+                    "message", "Create the next adaptive question from this authoritative FindWorks projection:\n"
                             + json.writeValueAsString(context))));
             input.newLine();
             input.flush();
