@@ -198,7 +198,9 @@ public class RecoveryRepository implements BackupVerifier, OperationalSignalSour
         var ready = jdbc.sql("""
                 SELECT EXISTS (SELECT 1 FROM recovery_drill_results
                     WHERE source_kind = 'provider' AND outcome = 'ready'
-                      AND application_image_digest = ? AND schema_version = 21)
+                      AND application_image_digest = ?
+                      AND schema_version = (SELECT max(version::integer)
+                        FROM flyway_schema_history WHERE success))
                 """).param(properties.requiredImageDigest()).query(Boolean.class).single();
         if (!ready) throw new IllegalStateException("Verified provider recovery drill is required before traffic.");
     }

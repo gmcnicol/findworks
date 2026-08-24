@@ -197,6 +197,38 @@ services:
         target: /run/recovery
     networks: [database_egress]
 
+  acceptance:
+    profiles: ["acceptance"]
+    image: ${FINDWORKS_IMAGE:?Set immutable application image digest}
+    command: ["acceptance"]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=32m"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *application_environment
+      DATABASE_USERNAME: ${SUPPORT_DATABASE_USERNAME:?Set support database role}
+      SUPPORT_OPERATOR_ID: ${SUPPORT_OPERATOR_ID:?Set authorised operator ID}
+      FINDWORKS_ACCEPTANCE_COMMAND: ${M0_ACCEPTANCE_COMMAND_NAME:-}
+      FINDWORKS_ACCEPTANCE_INPUT: /run/acceptance/input.json
+      M0_RELEASE_DIGEST: ${M0_RELEASE_DIGEST:?Set frozen release digest}
+      M0_GIT_COMMIT: ${M0_GIT_COMMIT:?Set frozen Git commit}
+      M0_SKILL_DIGEST: ${M0_SKILL_DIGEST:?Set frozen skill digest}
+      M0_EXTENSION_DIGEST: ${M0_EXTENSION_DIGEST:?Set frozen extension digest}
+      M0_TRACEABILITY_DIGEST: ${M0_TRACEABILITY_DIGEST:?Set traceability matrix digest}
+      PI_RUNTIME_IMAGE: ${PI_RUNTIME_IMAGE:?Set immutable Pi image digest}
+      PI_PROVIDER: ${PI_PROVIDER:?Set frozen provider alias}
+      PI_MODEL: ${PI_MODEL:?Set frozen model alias}
+    secrets:
+      - source: support_database_password
+        target: spring.datasource.password
+    volumes:
+      - type: bind
+        source: ${M0_ACCEPTANCE_INPUT_FILE:?Set protected content-free acceptance input}
+        target: /run/acceptance/input.json
+        read_only: true
+    networks: [database_egress]
+
   egress:
     image: ${EGRESS_PROXY_IMAGE:?Set a reviewed digest-pinned HTTPS allow-list proxy image}
     read_only: true

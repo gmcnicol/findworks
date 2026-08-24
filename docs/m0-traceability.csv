@@ -1,0 +1,91 @@
+story_id,owning_issue,acceptance_criterion,check_id,evidence_locator,release_applicability,required_result
+1,#17,AC35-1,LIVE-01,live-run/domain-record,exact-frozen-release,pass
+2,#17,AC35-1,LIVE-01,live-run/domain-record,exact-frozen-release,pass
+3,#18,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+4,#18,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+5,#18,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+6,#19,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+7,#19,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+8,#19,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+9,#19,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+10,#19,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+11,#19,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+12,#19,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+13,#19,AC35-2,S01-SHAPING,ShapingFlowTest,exact-frozen-release,pass
+14,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+15,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+16,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+17,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+18,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+19,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+20,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+21,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+22,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+23,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+24,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+25,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+26,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+27,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+28,#20,AC35-1,LIVE-01,Mission review record,exact-frozen-release,pass
+29,#21,AC35-5,B07-INVITATION,InvitationFlowTest,exact-frozen-release,pass
+30,#21,AC35-5,B07-INVITATION,InvitationFlowTest,exact-frozen-release,pass
+31,#21,AC35-5,B07-INVITATION,InvitationFlowTest,exact-frozen-release,pass
+32,#21,AC35-5,B07-INVITATION,InvitationFlowTest,exact-frozen-release,pass
+33,#21,AC35-5,B07-INVITATION,InvitationFlowTest,exact-frozen-release,pass
+34,#22,AC35-6,B07-INVITATION,InvitationRedemptionFlowTest,exact-frozen-release,pass
+35,#22,AC35-6,B07-INVITATION,InvitationRedemptionFlowTest,exact-frozen-release,pass
+36,#22,AC35-6,B07-INVITATION,InvitationRedemptionFlowTest,exact-frozen-release,pass
+37,#22,AC35-6,B07-INVITATION,InvitationRedemptionFlowTest,exact-frozen-release,pass
+38,#22,AC35-6,B07-INVITATION,InvitationRedemptionFlowTest,exact-frozen-release,pass
+39,#23/#24,AC35-3,S02-ADAPTIVE-INTERVIEW,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+40,#23/#24,AC35-3,S02-ADAPTIVE-INTERVIEW,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+41,#24,AC35-3,S02-ADAPTIVE-INTERVIEW,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+42,#24,AC35-3,S02-ADAPTIVE-INTERVIEW,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+43,#25,AC35-3,B01-UNKNOWN,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+44,#25,AC35-3,B02-DECLINE,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+45,#25,AC35-3,B03-OWNER,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+46,#25,AC35-6,B04-CONTRADICTION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+47,#24/#27,AC35-6,F01-INTERRUPTION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+48,#26,AC35-4,B05-REVISION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+49,#25,AC35-3,S02-ADAPTIVE-INTERVIEW,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+50,#23,AC35-7,LIVE-INTERVIEW-RUBRIC,human-checklist,exact-frozen-release,pass
+51,#24/#26,AC35-3,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+52,#25/#26,AC35-3,B08-OUT-OF-SCOPE,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+53,#25/#26,AC35-3,B08-OUT-OF-SCOPE,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+54,#25/#26,AC35-3,B08-OUT-OF-SCOPE,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+55,#26/#28,AC35-3,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+56,#26/#28,AC35-3,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+57,#26/#28,AC35-3,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+58,#27,AC35-5,F02-MODEL,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+59,#27,AC35-5,F03-PI-DEATH,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+60,#22/#23,AC35-6,I01-SCOPE,InvitationRedemptionFlowTest,exact-frozen-release,pass
+61,#22/#23,AC35-6,I01-SCOPE,InvitationRedemptionFlowTest,exact-frozen-release,pass
+62,#25/#28/#29,AC35-4,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+63,#25/#28/#29,AC35-4,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+64,#25/#28/#29,AC35-4,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+65,#25/#28/#29,AC35-4,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+66,#25/#28/#29,AC35-4,I02-COMPLETION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+67,#29,AC35-6,F04-EXTRACTION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+68,#29/#30,AC35-4,LIVE-FINDINGS-RUBRIC,human-checklist,exact-frozen-release,pass
+69,#29/#30,AC35-4,LIVE-FINDINGS-RUBRIC,human-checklist,exact-frozen-release,pass
+70,#29/#30,AC35-4,LIVE-FINDINGS-RUBRIC,human-checklist,exact-frozen-release,pass
+71,#29/#30,AC35-4,LIVE-FINDINGS-RUBRIC,human-checklist,exact-frozen-release,pass
+72,#30,AC35-4,LIVE-FINDINGS-RUBRIC,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+73,#30,AC35-4,LIVE-FINDINGS-RUBRIC,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+74,#30,AC35-4,LIVE-FINDINGS-RUBRIC,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+75,#30,AC35-4,LIVE-FINDINGS-RUBRIC,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+76,#30,AC35-4,LIVE-FINDINGS-RUBRIC,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+77,#28/#29,AC35-5,F04-EXTRACTION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+78,#28/#29,AC35-5,F04-EXTRACTION,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+79,#26/#33,AC35-5,O01-OPERATIONS,OperationsFlowTest,exact-frozen-release,pass
+80,#31,AC35-5,O01-OPERATIONS,RetentionFlowTest,exact-frozen-release,pass
+81,#31,AC35-5,O01-OPERATIONS,RetentionFlowTest,exact-frozen-release,pass
+82,#31,AC35-5,O01-OPERATIONS,RetentionFlowTest,exact-frozen-release,pass
+83,#31,AC35-5,O01-OPERATIONS,RetentionFlowTest,exact-frozen-release,pass
+84,#33,AC35-6,O01-OPERATIONS,OperationsFlowTest,exact-frozen-release,pass
+85,#32,AC35-6,F01-INTERRUPTION,PiConcurrencyLeaseTest,exact-frozen-release,pass
+86,#27/#32,AC35-6,I01-SCOPE,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+87,#27/#32,AC35-6,I01-SCOPE,FirstInterviewQuestionFlowTest,exact-frozen-release,pass
+88,#32,AC35-6,I01-SCOPE,DeploymentPropertiesTest,exact-frozen-release,pass
+89,#33,AC35-5,O01-OPERATIONS,OperationsFlowTest,exact-frozen-release,pass
+90,#34,AC35-5,R01-RESTORE,RecoveryFlowTest,exact-frozen-release,pass

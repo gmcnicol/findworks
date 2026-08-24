@@ -18,12 +18,17 @@ case "$role" in
       --findworks.recovery.run-command=true \
       --spring.main.web-application-type=none --spring.flyway.enabled=false
     ;;
+  acceptance)
+    exec java -jar /app/app.jar --findworks.process-role=acceptance \
+      --findworks.acceptance.run-command=true \
+      --spring.main.web-application-type=none --spring.flyway.enabled=false
+    ;;
   migrate)
     exec java -jar /app/app.jar --findworks.process-role=migrate \
       --spring.main.web-application-type=none --spring.flyway.enabled=true
     ;;
   *)
-    echo "usage: entrypoint local|web|worker|migrate|support|recovery" >&2
+    echo "usage: entrypoint local|web|worker|migrate|support|recovery|acceptance" >&2
     exit 64
     ;;
 esac

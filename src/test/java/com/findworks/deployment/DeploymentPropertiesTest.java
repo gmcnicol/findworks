@@ -27,6 +27,9 @@ class DeploymentPropertiesTest {
         assertThatCode(() -> deployment.validate(
                 "recovery", TLS_DATABASE, "https://findworks.example", false, false, ""))
                 .doesNotThrowAnyException();
+        assertThatCode(() -> deployment.validate(
+                "acceptance", TLS_DATABASE, "https://findworks.example", false, false, ""))
+                .doesNotThrowAnyException();
 
         assertThatThrownBy(() -> deployment.validate(
                 "local", TLS_DATABASE, "https://findworks.example", false, true, DIGEST))
@@ -36,6 +39,9 @@ class DeploymentPropertiesTest {
                 .hasMessageContaining("Flyway disabled");
         assertThatThrownBy(() -> deployment.validate(
                 "recovery", TLS_DATABASE, "https://findworks.example", true, false, ""))
+                .hasMessageContaining("Flyway disabled");
+        assertThatThrownBy(() -> deployment.validate(
+                "acceptance", TLS_DATABASE, "https://findworks.example", true, false, ""))
                 .hasMessageContaining("Flyway disabled");
         assertThatThrownBy(() -> deployment.validate(
                 "worker", TLS_DATABASE, "https://findworks.example", false, false, "findworks/pi:latest"))
