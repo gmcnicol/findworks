@@ -51,14 +51,20 @@ class DiscoveryRepository {
         var investigator = tenant.investigator(email);
         return jdbc.sql("""
                 SELECT id, title, objective, created_at
+                     , (SELECT due_at_snapshot FROM retention_warnings w
+                        WHERE w.discovery_id = discoveries.id
+                          AND w.due_at_snapshot = discoveries.retention_due_at
+                        ORDER BY w.created_at DESC LIMIT 1) warning_due_at
                 FROM discoveries
                 WHERE id = ? AND owner_membership_id = ? AND status = 'active'
                 """).params(id, investigator.membershipId()).query((rs, row) -> new Discovery(
                         rs.getObject("id", UUID.class), rs.getString("title"), rs.getString("objective"),
-                        rs.getTimestamp("created_at").toInstant())).optional()
+                        rs.getTimestamp("created_at").toInstant(),
+                        rs.getTimestamp("warning_due_at") == null ? null
+                                : rs.getTimestamp("warning_due_at").toInstant())).optional()
                 .orElseThrow(() -> new AccessDeniedException("Discovery access denied."));
     }
 
     record DiscoverySummary(UUID id, String title, String objective, Instant updatedAt) {}
-    record Discovery(UUID id, String title, String objective, Instant createdAt) {}
+    record Discovery(UUID id, String title, String objective, Instant createdAt, Instant warningDueAt) {}
 }

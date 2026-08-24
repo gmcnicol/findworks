@@ -4,7 +4,7 @@ import java.net.URI;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("findworks.invitation")
-record InvitationProperties(
+public record InvitationProperties(
         String publicOrigin,
         String sender,
         String activeKeyId,
@@ -25,7 +25,7 @@ record InvitationProperties(
         return origin;
     }
 
-    String requiredSender() {
+    public String requiredSender() {
         if (sender == null || sender.length() > 320
                 || !sender.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
             throw new IllegalStateException("Invitation sender identity is not configured.");

@@ -14,6 +14,12 @@
     <p class="eyebrow">Discovery</p>
     <h1 class="page-title" th:text="${discovery.title}">Discovery title</h1>
     <p class="lede" th:text="${discovery.objective}">Objective</p>
+    <section class="panel" th:if="${discovery.warningDueAt != null}" role="status">
+        <h2>Scheduled deletion</h2>
+        <p>This Discovery is nearing the end of its retention period.</p>
+        <p th:text="${'Deletion is scheduled for ' + #temporals.format(discovery.warningDueAt, 'd MMM yyyy, HH:mm')}">Deletion date</p>
+        <p>Contact support before this date if the work must be retained longer.</p>
+    </section>
     <section class="action-card shaping-card">
         <p class="eyebrow">Shape this Discovery</p>
         <h2>Clarify what must be learned</h2>

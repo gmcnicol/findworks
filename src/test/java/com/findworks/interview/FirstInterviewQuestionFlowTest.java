@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.findworks.shaping.ShapingWorker;
+import com.findworks.retention.RetentionRepository;
 import com.findworks.runtime.InterviewTurnRunner;
 import com.findworks.runtime.FindingsExtractionRunner;
 import com.findworks.runtime.RuntimeFailure;
@@ -86,12 +87,15 @@ class FirstInterviewQuestionFlowTest {
     @Autowired InterviewRepository interviews;
     @Autowired FindingsRepository findings;
     @Autowired FindingsExtractionRunner findingsRunner;
+    @Autowired RetentionRepository retention;
     @Autowired PlatformTransactionManager transactions;
 
     @BeforeEach
     void setUp() throws Exception {
         jdbc.sql("DELETE FROM discoveries").update();
         jdbc.sql("DELETE FROM audit_records").update();
+        jdbc.sql("UPDATE organisations SET retention_days = 90 WHERE id = ?")
+                .param(ORGANISATION).update();
         Files.deleteIfExists(CAPTURE);
         seed();
     }
@@ -1161,6 +1165,10 @@ class FirstInterviewQuestionFlowTest {
         assertThat(jdbc.sql("SELECT decision || ':' || review_revision || ':' || notes FROM findings_package_decisions")
                 .query(String.class).single())
                 .isEqualTo("accepted:2:Reviewed, with follow-up still required.");
+        assertThat(jdbc.sql("""
+                SELECT d.retention_due_at = p.decided_at + interval '90 days'
+                FROM discoveries d, findings_package_decisions p WHERE d.id = ?
+                """).param(DISCOVERY).query(Boolean.class).single()).isTrue();
         assertThat(jdbc.sql("SELECT kind FROM findings_package_unresolved_outcomes")
                 .query(String.class).single()).isEqualTo("unknown");
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(decisionPath,
@@ -1176,6 +1184,8 @@ class FirstInterviewQuestionFlowTest {
     @Test
     void exactPackageCanBeRejectedWithoutAcceptingItsFindings() throws Exception {
         var packageVersion = readyFindings();
+        jdbc.sql("UPDATE organisations SET retention_days = 120 WHERE id = ?")
+                .param(ORGANISATION).update();
 
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
                         "/missions/{mission}/findings/{version}/decision", MISSION, packageVersion)
@@ -1188,6 +1198,10 @@ class FirstInterviewQuestionFlowTest {
                 .query(String.class).single()).isEqualTo("rejected:Needs another interview.");
         assertThat(jdbc.sql("SELECT confirmation_state FROM knowledge_item_versions")
                 .query(String.class).single()).isEqualTo("unreviewed");
+        assertThat(jdbc.sql("""
+                SELECT d.retention_due_at = p.decided_at + interval '120 days'
+                FROM discoveries d, findings_package_decisions p WHERE d.id = ?
+                """).param(DISCOVERY).query(Boolean.class).single()).isTrue();
     }
 
     @Test
@@ -1209,6 +1223,103 @@ class FirstInterviewQuestionFlowTest {
         assertThat(jdbc.sql("SELECT count(*) FROM findings_package_unresolved_outcomes o "
                 + "LEFT JOIN findings_unresolved_outcome_reviews r ON r.outcome_id = o.outcome_id "
                 + "WHERE r.id IS NULL").query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void discoveryDeletionBlocksImmediatelyThenPurgesTheWholeContentGraph() throws Exception {
+        var packageVersion = readyFindings();
+        var knowledgeVersion = jdbc.sql("SELECT id FROM knowledge_item_versions")
+                .query(UUID.class).single();
+        var unresolved = jdbc.sql("SELECT outcome_id FROM findings_package_unresolved_outcomes")
+                .query(UUID.class).single();
+        findings.reviewKnowledge(MISSION, packageVersion, knowledgeVersion, 0,
+                "accepted", "investigator@findworks.local");
+        findings.acknowledgeOutcome(MISSION, packageVersion, unresolved, 1,
+                "investigator@findworks.local");
+        findings.decide(MISSION, packageVersion, 2, "accepted", "Retain for reference.",
+                "investigator@findworks.local");
+        var unrelated = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO discoveries (id, organisation_id, owner_membership_id, title, objective)
+                VALUES (?, ?, ?, 'Other Discovery', 'Must remain')
+                """).params(unrelated, ORGANISATION, OWNER).update();
+
+        retention.requestDiscoveryDeletion(DISCOVERY, "investigator@findworks.local");
+
+        assertThat(jdbc.sql("SELECT status || ':' || (access_blocked_at IS NOT NULL) FROM discoveries WHERE id = ?")
+                .param(DISCOVERY).query(String.class).single()).isEqualTo("deletion_pending:true");
+        assertThat(jdbc.sql("SELECT bool_and(revoked_at IS NOT NULL) FROM interview_access_grants")
+                .query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT bool_and(invalidated_at IS NOT NULL) FROM findings_package_versions")
+                .query(Boolean.class).single()).isTrue();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/discoveries/{id}", DISCOVERY)
+                        .with(user("investigator@findworks.local").roles("INVESTIGATOR")))
+                .andExpect(status().isForbidden());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
+                        .cookie(new Cookie("findworks_interview", GRANT)))
+                .andExpect(status().isBadRequest());
+        assertThat(runtime.claimNext()).isNull();
+
+        var purge = retention.claimPurge();
+        retention.purge(purge);
+        retention.purge(purge);
+
+        assertThat(jdbc.sql("SELECT count(*) FROM discoveries WHERE id = ?")
+                .param(DISCOVERY).query(Integer.class).single()).isZero();
+        for (var table : List.of("discovery_participants", "interview_missions", "investigation_items",
+                "invitations", "interview_sessions", "interview_access_grants", "interview_questions",
+                "evidence", "investigation_results", "investigation_outcomes", "findings_packages",
+                "knowledge_items", "interview_runtime_runs", "runtime_credentials", "runtime_checkpoints",
+                "interview_application_events", "discovery_shaping_sessions")) {
+            assertThat(jdbc.sql("SELECT count(*) FROM " + table).query(Integer.class).single())
+                    .as(table).isZero();
+        }
+        assertThat(jdbc.sql("SELECT count(*) FROM discoveries WHERE id = ?")
+                .param(unrelated).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("""
+                SELECT stage || ':' || (completed_at IS NOT NULL) || ':' ||
+                       (backup_expiry_due_at = completed_at + interval '30 days')
+                FROM deletion_ledger WHERE target_id = ?
+                """).param(DISCOVERY).query(String.class).single()).isEqualTo("completed:true:true");
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_records WHERE resource_id = ?")
+                .param(DISCOVERY).query(Integer.class).single()).isGreaterThan(0);
+    }
+
+    @Test
+    void sessionDeletionRemovesOnlyItsSubtreeAndUnreferencedParticipant() throws Exception {
+        readyFindings();
+        seedSecondSession();
+        var missionItemCount = jdbc.sql("SELECT count(*) FROM investigation_items WHERE interview_mission_id = ?")
+                .param(MISSION).query(Integer.class).single();
+
+        retention.requestSessionDeletion(MISSION, SESSION, "investigator@findworks.local");
+        assertThat(jdbc.sql("SELECT access_blocked_at IS NOT NULL FROM interview_sessions WHERE id = ?")
+                .param(SESSION).query(Boolean.class).single()).isTrue();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/interview")
+                        .cookie(new Cookie("findworks_interview", GRANT)))
+                .andExpect(status().isBadRequest());
+        var purge = retention.claimPurge();
+        retention.purge(purge);
+
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_sessions WHERE id = ?")
+                .param(SESSION).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM evidence WHERE interview_session_id = ?")
+                .param(SESSION).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM findings_packages WHERE interview_session_id = ?")
+                .param(SESSION).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_runtime_runs WHERE interview_session_id = ?")
+                .param(SESSION).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_results WHERE interview_session_id = ?")
+                .param(SESSION).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM investigation_items WHERE interview_mission_id = ?")
+                .param(MISSION).query(Integer.class).single()).isEqualTo(missionItemCount);
+        assertThat(jdbc.sql("SELECT count(*) FROM interview_sessions WHERE id = ?")
+                .param(SECOND_SESSION).query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM discovery_participants WHERE id = ?")
+                .param(PARTICIPANT).query(Integer.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM discovery_participants WHERE id = ?")
+                .param(SECOND_PARTICIPANT).query(Integer.class).single()).isEqualTo(1);
     }
 
     @Test

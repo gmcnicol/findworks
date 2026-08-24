@@ -48,12 +48,15 @@ public class InterviewRuntimeRepository {
         tenant.select();
         exhaustDeadRestarts();
         var row = jdbc.sql("""
-                SELECT id, status FROM interview_runtime_runs
-                WHERE available_at <= now()
-                  AND (status = 'queued'
-                    OR (status = 'running' AND lease_until < now() AND process_restarts < 1))
-                ORDER BY created_at
-                FOR UPDATE SKIP LOCKED LIMIT 1
+                SELECT r.id, r.status FROM interview_runtime_runs r
+                JOIN interview_sessions s ON s.id = r.interview_session_id
+                    AND s.organisation_id = r.organisation_id
+                JOIN discoveries d ON d.id = r.discovery_id AND d.organisation_id = r.organisation_id
+                WHERE r.available_at <= now() AND d.status = 'active' AND s.access_blocked_at IS NULL
+                  AND (r.status = 'queued'
+                    OR (r.status = 'running' AND r.lease_until < now() AND r.process_restarts < 1))
+                ORDER BY r.created_at
+                FOR UPDATE OF r SKIP LOCKED LIMIT 1
                 """).query((rs, ignored) -> new Claim(
                         rs.getObject("id", UUID.class), rs.getString("status"))).optional();
         if (row.isEmpty()) {
@@ -120,6 +123,7 @@ public class InterviewRuntimeRepository {
                 WHERE r.id = ? AND r.interview_session_id = ? AND r.interview_mission_id = ?
                   AND r.organisation_id = ? AND r.status = 'running' AND r.lease_owner = ?
                   AND s.status = 'active' AND s.revision = r.expected_revision
+                  AND s.access_blocked_at IS NULL
                   AND s.active_question_id IS NULL
                   AND m.approved_at IS NOT NULL AND d.status = 'active'
                   AND ((r.trigger IN ('session_start', 'resume') AND r.evidence_id IS NULL)
