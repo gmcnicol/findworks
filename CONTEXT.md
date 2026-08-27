@@ -10,8 +10,8 @@ The product must stay broader than a requirements questionnaire. The underlying 
 
 ## Core product loop
 
-1. Create a discovery objective.
-2. Grill the investigator to clarify what must be learned and from whom.
+1. Shape a discovery objective in the Investigator's chosen agent harness.
+2. Grill the Investigator there to clarify what must be learned and from whom.
 3. Produce an **Interview Mission**: the deliberate package of knowledge-seeking work handed to one interviewee.
 4. Investigator reviews and approves the mission.
 5. Interviewee receives a simple web session, ideally via a low-friction invite or magic link.
@@ -38,9 +38,9 @@ The product must stay broader than a requirements questionnaire. The underlying 
 
 A longer-lived investigation that can span multiple people, missions, sessions, and outputs.
 
-### Discovery Shaping Session
+### Interview Mission Shaping
 
-A resumable adaptive conversation between an Investigator and FindWorks used to create or revise an Interview Mission. Its messages are immutable sources for Mission elements; an agent proposal becomes authoritative only when the Investigator confirms it.
+An adaptive conversation between an Investigator and their chosen agent harness, grounded in the Investigator's project context, used to create or revise an Interview Mission. A dedicated FindWorks companion skill conducts project-aware grilling, applies the Mission completeness rules, captures minimal source references, and submits the structured draft through the FindWorks MCP boundary rather than cloning the shaping transcript. The MCP contract remains normative for other harness integrations. A submitted proposal becomes authoritative only when the Investigator approves its exact version in FindWorks.
 
 ### Discovery Participant
 
@@ -104,12 +104,13 @@ The Investigator-facing collection of Investigation Results produced for one Int
 
 ## Agent/runtime direction already discussed
 
-The preferred direction is to use **Pi (or an equivalent agent harness) as the agent runtime**, rather than have the web application concatenate `SKILL.md` files into direct OpenAI API requests.
+The preferred direction is to use **Pi (or an equivalent agent harness) as the Interview Session runtime**, rather than have the web application concatenate `SKILL.md` files into direct OpenAI API requests. Interview Mission Shaping runs separately in the Investigator's chosen project-aware harness.
 
 The intended boundary is:
 
 - FindWorks owns product/domain state, participants, missions, knowledge, provenance, persistence, permissions, and UX.
-- Pi owns the agent loop, skill loading, model/provider interaction, and tool execution.
+- The engineer's harness owns project context and the Interview Mission Shaping agent loop. It exchanges only stable semantic Mission and reviewed Discovery data with FindWorks through OAuth-authenticated MCP.
+- Pi owns the Interview Session agent loop, skill loading, model/provider interaction, and tool execution.
 - OpenAI can be a model provider behind Pi; it is not the FindWorks orchestration layer.
 - A small custom Pi extension is likely to expose FindWorks-specific tools such as `ask_question`, `record_fact`, `record_assumption`, `record_conflict`, `record_unknown`, `create_investigation`, `delegate_investigation`, and `complete_interview`.
 - FindWorks should expose a stable semantic protocol to its web UI rather than leaking raw Pi event shapes to the browser.
@@ -141,8 +142,8 @@ Live Pi context contains only the approved shared Interview Mission, questions a
 A likely high-level shape is:
 
 ```text
-Web UI
-  -> FindWorks application/domain
+Engineer harness -> FindWorks MCP
+Web UI           -> FindWorks application/domain
        -> persistent relational store
        -> agent-runtime adapter
             -> Pi + FindWorks extension + skills
@@ -168,9 +169,9 @@ The immediate goal is not to build the whole platform. Use Wayfinder to reach a 
 The candidate slice is:
 
 ```text
-investigator creates discovery
-  -> harness grills investigator
-  -> investigator approves Interview Mission
+engineer harness shapes Interview Mission
+  -> harness submits Discovery and draft Mission through FindWorks MCP
+  -> investigator reviews and approves Interview Mission in FindWorks
   -> interviewee receives invitation
   -> adaptive Pi/skill interview runs
   -> structured findings return to investigator
@@ -178,7 +179,7 @@ investigator creates discovery
 
 The Wayfinder effort is complete when enough product, domain, UX, runtime, persistence, and integration decisions are settled that `/to-spec` and `/to-tickets` can proceed without implementation agents inventing product decisions.
 
-M0 must specify a pilot-ready web experience for one organisation. One real investigator must be able to create a Discovery, approve an Interview Mission, invite one real external interviewee, complete an adaptive Interview Session, and receive persisted Knowledge Items linked to Evidence. The experience requires basic security and recoverable failure handling, but not full SaaS operational maturity.
+M0 must specify a pilot-ready MCP and web experience for one organisation. One real Investigator must be able to shape a Mission in their chosen harness, create a Discovery and draft Interview Mission through FindWorks MCP, approve it in the web app, invite one real external interviewee, complete an adaptive Interview Session, review persisted Knowledge Items linked to Evidence, and retrieve reviewed Discovery context through MCP. The experience requires basic security and recoverable failure handling, but not full SaaS operational maturity.
 
 M0 succeeds when the investigator confirms that the findings answer the Interview Mission's intent while exposing relevant unknowns, assumptions, conflicts, and ownership gaps. Automated coverage measures and interviewee approval may assist later, but they do not decide M0 success.
 
@@ -186,15 +187,15 @@ The first pilot exercises one investigator, one Interview Mission, one external 
 
 The M0 Investigator persona is a software engineer. Investigator remains the canonical role because later Discoveries may be led by analysts, architects, product people, or others.
 
-Before invitation, FindWorks grills the Investigator to identify the required Investigation Items and produces a reviewable Interview Mission containing coverage and proposed opening questions. This is not a fixed questionnaire: questions remain adaptive during the Interview Session. The Investigator must explicitly approve the Interview Mission and choose to send the invitation; FindWorks must never send it automatically.
+Before invitation, the Investigator's chosen harness conducts Interview Mission Shaping to identify the required Investigation Items and submits a reviewable draft Interview Mission through FindWorks MCP containing coverage and proposed opening questions. This is not a fixed questionnaire: questions remain adaptive during the Interview Session. The Investigator must explicitly approve the Interview Mission in FindWorks and choose to send the invitation; neither MCP nor FindWorks sends it automatically.
 
-FindWorks may propose the Interview Mission when its objective, intended interviewee, required Investigation Items, known context, boundaries, terminology, and completion criteria are explicit, with unresolved ambiguity exposed. The Investigator reviews all of those elements plus proposed opening questions. Before approval, they may edit the mission, ask for further grilling, or regenerate affected parts without restarting the Discovery.
+The harness may submit the draft Interview Mission only when its objective, intended interviewee, required Investigation Items, known context, boundaries, terminology, and completion criteria are explicit, with unresolved ambiguity exposed. The Investigator reviews all of those elements plus proposed opening questions in FindWorks. Before approval, they may edit the Mission or return to their harness for further shaping and submit a revised draft without restarting the Discovery.
 
 An M0 Interview Mission contains its objective and desired outcome; intended interviewee and their relevance; required Investigation Items; shared known context; boundaries and prohibited topics; terminology; proposed opening questions; completion criteria; expected commitment; and data-use summary.
 
 Each Investigation Item states the knowledge gap, why it matters, its priority, relevant known context, and acceptable outcomes such as supported knowledge, unknown, conflict, or ownership gap. It is not a fixed question. Required items must receive an explicit outcome before mission completion; optional items may remain uncovered.
 
-Investigator grilling classifies context as either shared with the interviewee or private to the Investigator. Private context is excluded from the Interview Mission runtime. Proposed opening questions are editable guidance for reviewing tone and direction, but do not constrain runtime wording or order.
+Interview Mission Shaping classifies context as either shared with the interviewee or private to the Investigator. Only shared context crosses the MCP boundary into the draft Mission; private project and shaping context remains in the engineer's harness. Proposed opening questions are editable guidance for reviewing tone and direction, but do not constrain runtime wording or order.
 
 Every generated Interview Mission element traces either to an Investigator statement or to an explicit agent proposal confirmed by the Investigator. The Investigator may approve only when every required section is complete and each unresolved ambiguity is resolved or deliberately represented by an Investigation Item.
 
@@ -230,13 +231,13 @@ During the Interview Session, the interviewee sees one clear natural-language qu
 
 Structured findings and provenance review are exclusively Investigator-facing in M0. The interviewee receives a completion acknowledgement rather than a findings-review workflow.
 
-M0 uses a calm, focused interaction with one primary task at a time and minimal surrounding chrome across Discovery shaping, Interview Mission approval, Interview Session, and findings review. The Interview Session includes a simple progress bar and plain-language coverage summary. Avoid document-first workspace navigation and dense multi-panel presentation as the default experience.
+M0 uses a calm, focused interaction with one primary task at a time and minimal surrounding chrome across Interview Mission approval, Interview Session, and findings review. The Interview Session includes a simple progress bar and plain-language coverage summary. Avoid document-first workspace navigation and dense multi-panel presentation as the default experience.
 
 The Investigator receives findings grouped by Investigation Item. Each group shows its outcome, Knowledge Items, unresolved gaps, and review state; the package also shows mission-level coverage. Each claim shows a short source excerpt and participant, with one action to open the surrounding answer context or referenced attachment. The full transcript remains secondary Evidence rather than the primary findings view.
 
 Before accepting the findings package, the Investigator reviews every required Investigation Item outcome; optional findings may remain unreviewed. They accept the package with notes or reject it and record required follow-up. Corrections append Investigator Evidence and never alter the interviewee's original Evidence.
 
-Acceptance must show adaptive behaviour in both human interactions. Investigator grilling asks answer-dependent follow-ups, exposes vague requirements, and converts clarified needs into Investigation Items. Interviewee grilling asks answer-dependent follow-ups, skips irrelevant planned questions, records uncertainty and ownership gaps, and stops only when every Investigation Item has an outcome.
+Acceptance must show adaptive behaviour in both human interactions. Interview Mission Shaping in the engineer's harness asks answer-dependent follow-ups, exposes vague requirements, and converts clarified needs into Investigation Items. The Interview Session asks answer-dependent follow-ups, skips irrelevant planned questions, records uncertainty and ownership gaps, and stops only when every Investigation Item has an outcome.
 
 During an Interview Session, the agent prioritises unresolved required Investigation Items, follows useful new information, clarifies ambiguity or contradiction, avoids already answered ground, and considers optional items only when required coverage and the expected commitment allow. It asks one plain-language question at a time, explains why only when useful, and adapts wording to the interviewee's vocabulary.
 
