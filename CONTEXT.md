@@ -42,6 +42,12 @@ A longer-lived investigation that can span multiple people, missions, sessions, 
 
 An adaptive conversation between an Investigator and their chosen agent harness, grounded in the Investigator's project context, used to create or revise an Interview Mission. A dedicated FindWorks companion skill conducts project-aware grilling, applies the Mission completeness rules, captures minimal source references, and submits the structured draft through the FindWorks MCP boundary rather than cloning the shaping transcript. The MCP contract remains normative for other harness integrations. A submitted proposal becomes authoritative only when the Investigator approves its exact version in FindWorks.
 
+M0 exposes two draft-only MCP submission commands: one atomically creates a Discovery with its first Interview Mission, and one adds a distinct Interview Mission to a Discovery already owned by the authenticated Investigator. New Discovery submissions require a human-confirmed title and longer-lived Discovery objective. Organisation, ownership, identifiers, lifecycle, version, approval, recipient selection, invitation, findings review, and deletion remain server- or web-controlled rather than harness-supplied.
+
+A submission is a complete structured Mission snapshot, not a patch or document. Each semantic field and list entry identifies either an Investigator statement or an explicitly confirmed agent proposal. Optional repository-file and issue locators contain no source content, are never dereferenced, and are Mission-shaping provenance rather than Interview Evidence. Submissions contain only an intended interviewee role and relevance; the actual person and email are selected later in FindWorks.
+
+The MCP submission is semantically idempotent through a client-generated submission identity. A successful submission creates immutable Mission Version 1 in draft state. FindWorks derives a non-versioned administrative Mission label from its objective; that label is excluded from Interview Session runtime context and can be renamed without affecting approval.
+
 ### Discovery Participant
 
 An external person represented only within one Discovery. A Discovery Participant is not an authenticated User and is never silently linked to the same email address in another Discovery.
@@ -100,7 +106,11 @@ Interview transcripts are reconstructed from ordered immutable Questions and Evi
 
 ### Findings Package
 
-The Investigator-facing collection of Investigation Results produced for one Interview Session. Successful extraction creates an immutable Findings Package version, and the Investigator accepts or rejects one exact version.
+The Investigator-facing collection of Investigation Results produced for one Interview Session. Successful extraction creates an immutable Findings Package version, and the Investigator accepts or rejects one exact version. Acceptance publishes that version as reviewed Discovery context; a later accepted version for the same Interview Session supersedes it without erasing the earlier version.
+
+Published Discovery context preserves its Interview Mission, Interview Session, Findings Package, and Investigation Item boundaries rather than presenting a flattened current truth. It contains only accepted or corrected Knowledge Items and explicitly acknowledged Unknowns, Conflicts, and Ownership Gaps. Required unresolved results must be acknowledged before package acceptance; optional unreviewed material and rejected claims remain unpublished.
+
+An authorised Investigator harness may retrieve this reviewed context with bounded exact Evidence excerpts and source attribution, but never full answers or transcripts, unreviewed claims, private shaping context, participant contact details, or agent-runtime data. Retrieval is an explicit export into Investigator-controlled project systems: the Interview Mission data-use summary discloses that use, and later FindWorks deletion cannot recall downstream copies.
 
 ## Agent/runtime direction already discussed
 
@@ -193,7 +203,7 @@ The harness may submit the draft Interview Mission only when its objective, inte
 
 An M0 Interview Mission contains its objective and desired outcome; intended interviewee and their relevance; required Investigation Items; shared known context; boundaries and prohibited topics; terminology; proposed opening questions; completion criteria; expected commitment; and data-use summary.
 
-Each Investigation Item states the knowledge gap, why it matters, its priority, relevant known context, and acceptable outcomes such as supported knowledge, unknown, conflict, or ownership gap. It is not a fixed question. Required items must receive an explicit outcome before mission completion; optional items may remain uncovered.
+Each Investigation Item states the knowledge gap, why it matters, its priority, relevant known context, and the evidence or detail that would count as sufficiently explored. It is not a fixed question. Knowledge, Unknown, Conflict, and Ownership Gap always remain honest terminal outcomes; required means an explicit outcome is required before mission completion, not that a preferred answer must be obtained. Optional items may remain uncovered.
 
 Interview Mission Shaping classifies context as either shared with the interviewee or private to the Investigator. Only shared context crosses the MCP boundary into the draft Mission; private project and shaping context remains in the engineer's harness. Proposed opening questions are editable guidance for reviewing tone and direction, but do not constrain runtime wording or order.
 
