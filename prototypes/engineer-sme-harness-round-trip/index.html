@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Engineer → SME → harness round-trip prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17211b;
+      --muted: #5d6a62;
+      --paper: #f5f4ee;
+      --surface: #fffef9;
+      --line: #d4dad3;
+      --line-strong: #aeb9b1;
+      --accent: #176447;
+      --accent-dark: #104d36;
+      --accent-soft: #dcefe5;
+      --amber: #805707;
+      --amber-soft: #fff1c9;
+      --red: #8c342e;
+      --red-soft: #fbe6e2;
+      --blue: #315e73;
+      --blue-soft: #e2edf1;
+      --radius: 14px;
+      --shadow: 0 18px 48px rgba(36, 50, 41, .09);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; }
+    button { font: inherit; }
+    button:focus-visible, summary:focus-visible { outline: 3px solid #63ad8c; outline-offset: 3px; }
+    ::selection { background: #acd8c3; color: var(--ink); }
+    .header { display: flex; align-items: center; justify-content: space-between; min-height: 68px; padding: 0 clamp(18px, 4vw, 56px); border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.02em; }
+    .brand-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; background: var(--ink); color: white; }
+    .prototype { color: var(--muted); font-size: .82rem; }
+    .shell { width: min(1280px, calc(100% - 36px)); margin: 0 auto; padding: 54px 0 90px; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 980px; margin-bottom: 18px; font-size: clamp(2.4rem, 6vw, 5rem); line-height: .98; letter-spacing: -.04em; }
+    h2 { font-size: 1.4rem; letter-spacing: -.02em; }
+    h3 { font-size: 1rem; }
+    .lede { max-width: 78ch; color: var(--muted); font-size: 1.08rem; }
+    .question { max-width: 88ch; margin: 28px 0 38px; padding: 18px 20px; border: 1px solid #aac7b7; border-radius: var(--radius); background: var(--accent-soft); }
+    .question strong { display: block; margin-bottom: 4px; }
+    .question p { margin: 0; }
+    .caveat { margin-top: 10px !important; color: var(--muted); font-size: .86rem; }
+
+    .mode-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+    .tab { min-height: 42px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--ink); font-weight: 730; cursor: pointer; }
+    .tab[aria-selected="true"] { border-color: var(--accent); background: var(--accent); color: white; }
+
+    .walkthrough { display: grid; grid-template-columns: .8fr 1.2fr; gap: 22px; margin-bottom: 28px; }
+    .walkthrough-copy, .walkthrough-steps { padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .walkthrough-copy p { color: var(--muted); }
+    .walkthrough-steps { display: flex; flex-wrap: wrap; align-content: start; gap: 9px; }
+    .step { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: white; color: var(--ink); cursor: pointer; }
+    .step::before { content: attr(data-step); display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: #e8ece8; color: var(--muted); font-size: .72rem; font-weight: 800; }
+    .step.done { border-color: #a8cbb9; background: var(--accent-soft); color: var(--accent-dark); }
+    .step.current { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .step[disabled] { cursor: not-allowed; opacity: .52; }
+
+    .state-top { display: grid; grid-template-columns: 1.2fr .8fr; gap: 22px; margin-bottom: 22px; }
+    .current-state { padding: 28px; border-radius: var(--radius); background: var(--ink); color: white; }
+    .current-state .label { color: #afbeb5; font-size: .78rem; font-weight: 730; text-transform: uppercase; letter-spacing: .06em; }
+    .current-state h2 { max-width: 700px; margin: 8px 0 9px; font-size: clamp(1.65rem, 3vw, 2.5rem); }
+    .current-state p { max-width: 70ch; margin-bottom: 0; color: #c9d3cd; }
+    .last-change { padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .last-change.good { border-color: #a8cbb9; background: var(--accent-soft); }
+    .last-change.denied { border-color: #dfb0aa; background: var(--red-soft); }
+    .last-change strong { display: block; margin-bottom: 7px; }
+    .last-change p { margin: 0; color: var(--muted); }
+
+    .stores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+    .store { min-height: 240px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .store-head { display: flex; align-items: start; justify-content: space-between; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+    .store-head h3 { margin-bottom: 2px; }
+    .store-head span { color: var(--muted); font-size: .76rem; }
+    .count { display: grid; min-width: 31px; height: 31px; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark) !important; font-weight: 800; }
+    .store dl { margin: 12px 0 0; }
+    .store dl div { padding: 10px 0; border-top: 1px solid #e5e9e5; }
+    .store dl div:first-child { border-top: 0; }
+    dt { color: var(--muted); font-size: .76rem; font-weight: 720; }
+    dd { margin: 3px 0 0; font-size: .9rem; overflow-wrap: anywhere; }
+    .empty { margin-top: 16px; color: var(--muted); font-size: .88rem; }
+
+    .boundary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 22px; }
+    .boundary { padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .boundary h2 { margin-bottom: 5px; }
+    .boundary .direction { color: var(--muted); font-size: .82rem; }
+    .transfer-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+    .transfer-columns h3 { margin-bottom: 8px; color: var(--accent-dark); }
+    .transfer-columns .withheld h3 { color: var(--red); }
+    .transfer-columns ul { margin: 0; padding-left: 19px; color: var(--muted); font-size: .87rem; }
+    .transfer-columns li + li { margin-top: 5px; }
+
+    .proofs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 28px; }
+    .proof { padding: 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+    .proof.pass { border-color: #acd0bd; }
+    .proof.fail { border-color: #dfa9a3; background: var(--red-soft); }
+    .proof.pending { border-color: #ddc47e; background: var(--amber-soft); }
+    .proof strong, .proof span { display: block; }
+    .proof span { margin-top: 4px; color: var(--muted); font-size: .8rem; }
+
+    .free-play { padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .action-groups { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+    .action-group { display: grid; align-content: start; gap: 8px; }
+    .action-group h3 { margin-bottom: 2px; }
+    .action-button { min-height: 40px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: white; color: var(--ink); text-align: left; cursor: pointer; }
+    .action-button:hover { border-color: var(--accent); color: var(--accent-dark); }
+    .reset { margin-top: 18px; min-height: 42px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--accent); color: white; font-weight: 760; cursor: pointer; }
+
+    details.log { margin-top: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    details.log summary { padding: 18px 20px; cursor: pointer; font-weight: 760; }
+    .log-list { margin: 0; padding: 0 20px 18px; list-style: none; }
+    .log-list li { display: grid; grid-template-columns: 78px 120px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: .84rem; }
+    .log-list time, .log-list .actor { color: var(--muted); }
+    .log-list .denied { color: var(--red); font-weight: 720; }
+
+    @media (max-width: 980px) {
+      .stores, .action-groups { grid-template-columns: 1fr 1fr; }
+      .walkthrough, .state-top { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 680px) {
+      .shell { width: min(100% - 24px, 1280px); padding-top: 34px; }
+      .prototype { display: none; }
+      .stores, .boundary-grid, .proofs, .action-groups, .transfer-columns { grid-template-columns: 1fr; }
+      .log-list li { grid-template-columns: 1fr; gap: 2px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">F</span><span>FindWorks</span></div>
+    <span class="prototype">Throwaway boundary prototype · sample data only</span>
+  </header>
+
+  <main class="shell">
+    <h1>Engineer → SME → harness round trip</h1>
+    <p class="lede">Drive the complete M0 handoff and inspect what moves between the engineer's project harness, FindWorks, the SME browser, and the reviewed context returned downstream.</p>
+
+    <section class="question">
+      <strong>Question this prototype answers</strong>
+      <p>Do the agreed semantic handoffs form one coherent, authority-preserving route from project-aware Mission shaping to useful reviewed Discovery context?</p>
+      <p class="caveat">This prototype tests domain state, legal transitions, and information boundaries. It does not claim to prove Streamable HTTP, OAuth, Codex, or Pi-adapter interoperability; those remain real transport checks rather than simulated facts.</p>
+    </section>
+
+    <nav id="scenario-tabs" class="mode-tabs" aria-label="Guided walkthroughs"></nav>
+    <section class="walkthrough">
+      <div class="walkthrough-copy"><h2 id="scenario-title"></h2><p id="scenario-description"></p><button id="restart-scenario" class="reset" type="button">Restart this walkthrough</button></div>
+      <div id="scenario-steps" class="walkthrough-steps" aria-label="Walkthrough steps"></div>
+    </section>
+
+    <section class="state-top" aria-live="polite">
+      <div class="current-state"><span class="label">Current responsibility</span><h2 id="phase-title"></h2><p id="phase-description"></p></div>
+      <div id="last-change" class="last-change"><strong>Nothing has moved yet</strong><p>Start a walkthrough or use free play.</p></div>
+    </section>
+
+    <section id="stores" class="stores" aria-label="Authoritative stores"></section>
+    <section id="boundaries" class="boundary-grid" aria-label="Latest boundary transfers"></section>
+    <section id="proofs" class="proofs" aria-label="Boundary assertions"></section>
+
+    <section class="free-play">
+      <h2>Free play</h2>
+      <p class="lede">Try actions in any order. Illegal actions are denied without silently changing state.</p>
+      <div id="action-groups" class="action-groups"></div>
+      <button id="reset-all" class="reset" type="button">Reset everything</button>
+    </section>
+
+    <details class="log">
+      <summary>Full event record</summary>
+      <ol id="event-log" class="log-list"></ol>
+    </details>
+  </main>
+
+  <script>
+    // Pure prototype module: no DOM access in this block.
+    const RoundTrip = (() => {
+      const initialState = () => ({
+        phase: "local_shaping",
+        harness: {
+          missionReady: false,
+          submissionId: "8f779fa2-7116-4e32-a759-bd39a75ca640",
+          privateContext: ["A suspected customer-specific exception that must not be shared"],
+          projectLocators: ["issue #118", "docs/reconciliation.md"],
+          reviewedContext: null
+        },
+        findworks: {
+          discovery: null,
+          mission: null,
+          invitation: null,
+          session: null,
+          findings: null,
+          published: false
+        },
+        sme: { access: "none", visibleQuestion: null, previousAnswers: 0 },
+        transfers: [],
+        records: { missionVersions: 0, invitations: 0, evidence: 0, findingsPackages: 0, exports: 0 },
+        assertions: {
+          privateContextStayedLocal: "pending",
+          mcpCreatedDraftOnly: "pending",
+          webAuthorityPreserved: "pending",
+          acceptedEvidenceImmutable: "pending",
+          retrievalReviewedOnly: "pending",
+          noTranscriptClone: "pending"
+        },
+        last: { kind: "neutral", title: "Nothing has moved yet", detail: "Start a walkthrough or use free play." },
+        log: [{ actor: "System", action: "Prototype reset", result: "Ready for local Mission shaping", denied: false }]
+      });
+
+      const clone = value => structuredClone(value);
+      const event = (state, actor, action, result, denied = false) => {
+        state.log.unshift({ actor, action, result, denied });
+        state.last = { kind: denied ? "denied" : "good", title: denied ? "Action denied safely" : action, detail: result };
+        return state;
+      };
+      const deny = (state, actor, action, reason) => event(state, actor, action, reason, true);
+      const transfer = (state, direction, included, withheld) => {
+        state.transfers.unshift({ direction, included, withheld });
+        state.transfers = state.transfers.slice(0, 2);
+      };
+      const requiredOutcomes = state => state.findworks.session?.outcomes ?? 0;
+
+      const reducer = (previous, action) => {
+        const state = clone(previous);
+        const type = action.type;
+
+        if (type === "RESET") return initialState();
+
+        if (type === "SHAPE_MISSION") {
+          if (state.harness.missionReady) return event(state, "Engineer harness", "Mission shaping replayed", "The complete local draft is unchanged.");
+          state.harness.missionReady = true;
+          state.phase = "ready_to_submit";
+          return event(state, "Engineer harness", "Mission shaped locally", "A complete shared Mission snapshot is ready; private project context remains local.");
+        }
+
+        if (type === "SUBMIT_MISSION") {
+          if (!state.harness.missionReady) return deny(state, "Engineer harness", "Submit Mission", "Mission completeness and confirmation gates have not passed.");
+          if (state.findworks.mission) {
+            return event(state, "FindWorks MCP", "Submission replayed idempotently", "The original Discovery and draft Mission are returned; no duplicate records were created.");
+          }
+          state.findworks.discovery = { id: "disc_7K2", title: "Ledgerling reconciliation discovery" };
+          state.findworks.mission = { id: "mission_Q4M", version: 1, status: "draft", objective: "Clarify transaction reconciliation rules", items: 2, source: "5 Investigator statements · 4 confirmed agent proposals" };
+          state.records.missionVersions = 1;
+          state.phase = "web_review";
+          state.assertions.privateContextStayedLocal = "pass";
+          state.assertions.mcpCreatedDraftOnly = "pass";
+          transfer(state, "Engineer harness → FindWorks MCP", ["Discovery title and objective", "Complete shared Mission snapshot", "Authority bindings", "Two non-content project locators", "Submission identity"], ["Private project context", "Repository contents", "Shaping transcript", "Recipient identity"]);
+          return event(state, "FindWorks MCP", "Draft Mission created", "Version 1 is a draft. Review continues in FindWorks; nothing was approved or sent.");
+        }
+
+        if (type === "MCP_APPROVE") {
+          return deny(state, "Engineer harness", "Approve through MCP", "Approval is not an MCP capability. The owning Investigator must approve the exact version in FindWorks.");
+        }
+
+        if (type === "APPROVE_MISSION") {
+          if (!state.findworks.mission) return deny(state, "Investigator web", "Approve Mission", "No imported Mission exists.");
+          if (state.findworks.mission.status !== "draft") return deny(state, "Investigator web", "Approve Mission", "Only the current complete draft can be approved.");
+          state.findworks.mission.status = "approved";
+          state.phase = "recipient_selection";
+          state.assertions.webAuthorityPreserved = "pass";
+          return event(state, "Investigator web", `Version ${state.findworks.mission.version} approved`, "Approval froze this exact version and sent nothing.");
+        }
+
+        if (type === "MCP_SEND_INVITATION") {
+          return deny(state, "Engineer harness", "Send invitation through MCP", "Recipient selection and invitation sending are web-only human actions.");
+        }
+
+        if (type === "SEND_INVITATION") {
+          if (state.findworks.mission?.status !== "approved") return deny(state, "Investigator web", "Send invitation", "An exact approved Mission version is required.");
+          if (state.findworks.invitation?.status === "sent") return deny(state, "Investigator web", "Send invitation", "A current invitation already exists; reissue is a separate confirmed action.");
+          state.findworks.invitation = { id: "invite_D91", status: "sent", missionVersion: state.findworks.mission.version, recipient: "Clare" };
+          state.records.invitations += 1;
+          state.sme.access = "invited";
+          state.phase = "awaiting_sme";
+          transfer(state, "FindWorks → SME email", ["Investigator identity", "Organisation", "Mission purpose", "Expected commitment", "Data-use and retention summary", "Single-use access link"], ["Private harness context", "Proposed question list", "Findings", "Internal Mission metadata"]);
+          return event(state, "Investigator web", "Invitation sent separately", `Clare was invited against approved Mission version ${state.findworks.mission.version}.`);
+        }
+
+        if (type === "EDIT_AFTER_APPROVAL") {
+          if (!state.findworks.mission || state.findworks.mission.status !== "approved") return deny(state, "Investigator web", "Edit approved Mission", "There is no current approved Mission to supersede.");
+          if (state.findworks.session?.status === "active") return deny(state, "Investigator web", "Edit approved Mission", "An active Interview Session remains bound to its immutable approved version; new needs become follow-up work.");
+          state.findworks.mission = { ...state.findworks.mission, version: state.findworks.mission.version + 1, status: "draft" };
+          state.records.missionVersions += 1;
+          if (state.findworks.invitation) state.findworks.invitation.status = "revoked";
+          state.sme.access = "revoked";
+          state.phase = "web_review";
+          return event(state, "Investigator web", `Version ${state.findworks.mission.version} created as draft`, "Prior approval was superseded and unused access revoked. The previous version remains immutable in history.");
+        }
+
+        if (type === "BEGIN_INTERVIEW") {
+          if (state.sme.access !== "invited" || state.findworks.invitation?.status !== "sent") return deny(state, "SME browser", "Begin Interview", "No valid current invitation is available.");
+          state.findworks.invitation.status = "redeemed";
+          state.sme.access = "active";
+          state.sme.visibleQuestion = "What tells you that an imported transaction and ledger entry are likely to match?";
+          state.findworks.session = { id: "session_51C", status: "active", missionVersion: state.findworks.mission.version, outcomes: 0, runtime: "settled" };
+          state.phase = "adaptive_interview";
+          transfer(state, "FindWorks → Interview agent", ["Approved shared Mission version", "Current Session Evidence", "Required coverage and outcomes", "Expected commitment"], ["Private harness context", "Other Sessions", "Participant email", "Findings review", "Audit and runtime internals"]);
+          return event(state, "SME browser", "Interview explicitly begun", "One Mission-driven question is active; the SME sees no Investigation Item controls or agent internals.");
+        }
+
+        if (type === "ANSWER_MATCHING") {
+          if (state.findworks.session?.status !== "active") return deny(state, "SME browser", "Submit matching answer", "No active Interview Session exists.");
+          state.records.evidence += 1;
+          state.sme.previousAnswers += 1;
+          state.findworks.session.outcomes = Math.max(1, state.findworks.session.outcomes);
+          state.sme.visibleQuestion = "When the date and amount line up but the reference differs, what do you do before confirming the match?";
+          state.assertions.acceptedEvidenceImmutable = "pass";
+          return event(state, "SME browser", "Answer accepted as immutable Evidence", "The next question follows the SME's matching rule instead of replaying a fixed questionnaire.");
+        }
+
+        if (type === "ANSWER_OWNER_GAP") {
+          if (state.findworks.session?.status !== "active") return deny(state, "SME browser", "Identify another owner", "No active Interview Session exists.");
+          state.records.evidence += 1;
+          state.sme.previousAnswers += 1;
+          state.findworks.session.outcomes = 2;
+          state.sme.visibleQuestion = "Both required areas now have an outcome. Would you like to finish?";
+          return event(state, "SME browser", "Ownership Gap recorded honestly", "The finance lead owns tolerance changes. FindWorks stops pressing Clare for that policy decision.");
+        }
+
+        if (type === "ANSWER_THEN_RUNTIME_FAIL") {
+          if (state.findworks.session?.status !== "active") return deny(state, "SME browser", "Submit answer before runtime failure", "No active Interview Session exists.");
+          state.records.evidence += 1;
+          state.sme.previousAnswers += 1;
+          state.findworks.session.runtime = "failed";
+          state.sme.visibleQuestion = null;
+          state.assertions.acceptedEvidenceImmutable = "pass";
+          return event(state, "FindWorks runtime", "Evidence accepted; runtime failed afterwards", "The answer remains committed exactly once. Clare can retry without repeating it.");
+        }
+
+        if (type === "RETRY_RUNTIME") {
+          if (state.findworks.session?.runtime !== "failed") return deny(state, "SME browser", "Retry runtime", "The current runtime state is not failed.");
+          state.findworks.session.runtime = "settled";
+          state.findworks.session.outcomes = Math.max(1, state.findworks.session.outcomes);
+          state.sme.visibleQuestion = "Who owns the decision when a likely match remains ambiguous?";
+          return event(state, "FindWorks runtime", "Runtime recovered without duplicate Evidence", "The Session resumes after the last accepted answer.");
+        }
+
+        if (type === "CONFIRM_COMPLETION") {
+          if (state.findworks.session?.status !== "active") return deny(state, "SME browser", "Confirm completion", "No active Interview Session exists.");
+          if (requiredOutcomes(state) < 2) return deny(state, "SME browser", "Confirm completion", "A required Investigation Item has no explicit outcome, so normal completion cannot be proposed.");
+          state.findworks.session.status = "completed";
+          state.sme.access = "completed";
+          state.sme.visibleQuestion = null;
+          state.phase = "findings_processing";
+          return event(state, "SME browser", "Interview completion confirmed", "The human interaction is complete independently of findings extraction.");
+        }
+
+        if (type === "EXTRACT_FINDINGS") {
+          if (state.findworks.session?.status !== "completed") return deny(state, "FindWorks runtime", "Extract findings", "The Interview Session is not complete.");
+          if (state.findworks.findings?.status === "ready") return deny(state, "FindWorks runtime", "Extract findings", "A current Findings Package already exists.");
+          state.findworks.findings = { id: "package_P1", version: 1, status: "ready", knowledge: 2, unknowns: 0, conflicts: 0, ownershipGaps: 1, accepted: false };
+          state.records.findingsPackages += 1;
+          state.phase = "findings_review";
+          return event(state, "FindWorks runtime", "Findings Package 1 extracted", "Claims and the Ownership Gap link to exact Evidence; nothing is published yet.");
+        }
+
+        if (type === "FAIL_EXTRACTION") {
+          if (state.findworks.session?.status !== "completed") return deny(state, "FindWorks runtime", "Fail extraction", "The Interview Session is not complete.");
+          state.findworks.findings = { status: "failed" };
+          state.phase = "findings_processing";
+          return event(state, "FindWorks runtime", "Findings extraction failed safely", "No partial package exists. Retry can rebuild from immutable Evidence without another interview.");
+        }
+
+        if (type === "REVIEW_FINDINGS") {
+          if (state.findworks.findings?.status !== "ready") return deny(state, "Investigator web", "Accept Findings Package", "No ready exact package version exists.");
+          state.findworks.findings.accepted = true;
+          state.findworks.findings.status = "accepted";
+          state.findworks.published = true;
+          state.phase = "reviewed_context_available";
+          return event(state, "Investigator web", "Exact Findings Package accepted", "Reviewed Knowledge and the acknowledged Ownership Gap are now published Discovery context.");
+        }
+
+        if (type === "RETRIEVE_CONTEXT") {
+          if (!state.findworks.published || state.findworks.findings?.status !== "accepted") return deny(state, "Engineer harness", "Retrieve reviewed context", "No accepted Findings Package has published reviewed Discovery context.");
+          state.harness.reviewedContext = { discovery: state.findworks.discovery.title, missionVersion: state.findworks.session.missionVersion, packageVersion: state.findworks.findings.version, knowledge: 2, ownershipGaps: 1, evidenceExcerpts: 3 };
+          state.records.exports += 1;
+          state.phase = "round_trip_complete";
+          state.assertions.retrievalReviewedOnly = "pass";
+          state.assertions.noTranscriptClone = "pass";
+          transfer(state, "FindWorks MCP → Engineer harness", ["Discovery framing", "Approved Mission and accepted package identities", "Reviewed Knowledge Items", "Acknowledged Ownership Gap", "Bounded exact Evidence excerpts and deep links"], ["Full answers and transcript", "Unreviewed or rejected claims", "Private shaping context", "Participant email and invitation data", "Pi events, model reasoning, audit and operations data"]);
+          return event(state, "FindWorks MCP", "Reviewed Discovery context retrieved", "Useful reviewed context returned to the project harness without cloning the interview or private shaping state.");
+        }
+
+        return deny(state, "System", action.type, "Unknown prototype action.");
+      };
+
+      const phases = {
+        local_shaping: ["Engineer shapes locally", "Project context and private reasoning stay in the engineer's harness."],
+        ready_to_submit: ["Engineer confirms the exact shared Mission", "The harness can submit a complete draft through the semantic MCP boundary."],
+        web_review: ["Investigator reviews in FindWorks", "The imported Mission is a draft. Human review and exact-version approval happen in the web app."],
+        recipient_selection: ["Investigator chooses whether to invite", "Approval sent nothing. Recipient selection and invitation are a separate human action."],
+        awaiting_sme: ["SME decides whether to participate", "The invitation exposes purpose, commitment, data use, retention, and a deliberate Begin action."],
+        adaptive_interview: ["SME answers one adaptive question", "FindWorks commits each answer as Evidence before the Interview agent advances coverage."],
+        findings_processing: ["FindWorks processes retained Evidence", "Interview completion is stable while findings extraction runs or retries separately."],
+        findings_review: ["Investigator reviews findings and provenance", "Nothing becomes reviewed Discovery context until the exact package is accepted."],
+        reviewed_context_available: ["Reviewed context is available to the harness", "The publication gate has passed; bounded semantic retrieval is now legal."],
+        round_trip_complete: ["The round trip is complete", "Reviewed knowledge returned to the project harness without repository or transcript cloning."]
+      };
+
+      return { initialState, reducer, phases };
+    })();
+  </script>
+
+  <script>
+    // Throwaway page shell: DOM rendering and click wiring only.
+    const actionLabels = {
+      SHAPE_MISSION: "Shape complete Mission",
+      SUBMIT_MISSION: "Submit draft through MCP",
+      MCP_APPROVE: "Try MCP approval",
+      APPROVE_MISSION: "Approve exact version in web",
+      MCP_SEND_INVITATION: "Try MCP invitation",
+      SEND_INVITATION: "Confirm and send invitation",
+      EDIT_AFTER_APPROVAL: "Edit after approval",
+      BEGIN_INTERVIEW: "SME explicitly begins",
+      ANSWER_MATCHING: "Answer matching rule",
+      ANSWER_OWNER_GAP: "Identify another owner",
+      ANSWER_THEN_RUNTIME_FAIL: "Answer, then runtime fails",
+      RETRY_RUNTIME: "Retry runtime",
+      CONFIRM_COMPLETION: "Confirm completion",
+      EXTRACT_FINDINGS: "Extract Findings Package",
+      FAIL_EXTRACTION: "Simulate extraction failure",
+      REVIEW_FINDINGS: "Review and accept package",
+      RETRIEVE_CONTEXT: "Retrieve reviewed context"
+    };
+
+    const actionGroups = {
+      "Engineer harness": ["SHAPE_MISSION", "SUBMIT_MISSION", "MCP_APPROVE", "MCP_SEND_INVITATION", "RETRIEVE_CONTEXT"],
+      "Investigator web": ["APPROVE_MISSION", "SEND_INVITATION", "EDIT_AFTER_APPROVAL", "REVIEW_FINDINGS"],
+      "SME browser": ["BEGIN_INTERVIEW", "ANSWER_MATCHING", "ANSWER_OWNER_GAP", "ANSWER_THEN_RUNTIME_FAIL", "CONFIRM_COMPLETION"],
+      "FindWorks runtime": ["RETRY_RUNTIME", "EXTRACT_FINDINGS", "FAIL_EXTRACTION"]
+    };
+
+    const scenarios = {
+      roundtrip: {
+        title: "Complete round trip",
+        description: "Walk from private project-aware shaping to reviewed context returned to the same harness. Watch authority move to the right human at each gate.",
+        actions: ["SHAPE_MISSION", "SUBMIT_MISSION", "APPROVE_MISSION", "SEND_INVITATION", "BEGIN_INTERVIEW", "ANSWER_MATCHING", "ANSWER_OWNER_GAP", "CONFIRM_COMPLETION", "EXTRACT_FINDINGS", "REVIEW_FINDINGS", "RETRIEVE_CONTEXT"]
+      },
+      authority: {
+        title: "Human authority cannot leak into MCP",
+        description: "Try to approve and invite from the engineer harness. Both attempts must fail without mutating the Mission or contacting the SME.",
+        actions: ["SHAPE_MISSION", "SUBMIT_MISSION", "MCP_APPROVE", "APPROVE_MISSION", "MCP_SEND_INVITATION", "SEND_INVITATION"]
+      },
+      recovery: {
+        title: "Approved Mission changes before interview",
+        description: "Edit after approval and invitation but before the SME begins. The new draft must supersede approval and revoke unused access without erasing history.",
+        actions: ["SHAPE_MISSION", "SUBMIT_MISSION", "APPROVE_MISSION", "SEND_INVITATION", "EDIT_AFTER_APPROVAL"]
+      },
+      failure: {
+        title: "Accepted Evidence survives runtime failure",
+        description: "Commit an SME answer, fail the agent turn, and retry. The SME must not repeat the answer and the runtime must not create duplicate Evidence.",
+        actions: ["SHAPE_MISSION", "SUBMIT_MISSION", "APPROVE_MISSION", "SEND_INVITATION", "BEGIN_INTERVIEW", "ANSWER_THEN_RUNTIME_FAIL", "RETRY_RUNTIME", "ANSWER_OWNER_GAP", "CONFIRM_COMPLETION"]
+      },
+      publication: {
+        title: "Retrieval is gated by human review",
+        description: "Attempt retrieval before review, then accept the exact package and retrieve again. Compare included and withheld data at the final boundary.",
+        actions: ["SHAPE_MISSION", "SUBMIT_MISSION", "APPROVE_MISSION", "SEND_INVITATION", "BEGIN_INTERVIEW", "ANSWER_MATCHING", "ANSWER_OWNER_GAP", "CONFIRM_COMPLETION", "EXTRACT_FINDINGS", "RETRIEVE_CONTEXT", "REVIEW_FINDINGS", "RETRIEVE_CONTEXT"]
+      }
+    };
+
+    let state = RoundTrip.initialState();
+    let scenarioKey = "roundtrip";
+    let scenarioStep = 0;
+
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+    }
+
+    function dispatch(type, guided = false) {
+      state = RoundTrip.reducer(state, { type });
+      if (guided && scenarioStep < scenarios[scenarioKey].actions.length && scenarios[scenarioKey].actions[scenarioStep] === type) scenarioStep += 1;
+      render();
+    }
+
+    function setScenario(key) {
+      scenarioKey = key;
+      scenarioStep = 0;
+      state = RoundTrip.initialState();
+      render();
+    }
+
+    function storeCard(title, subtitle, count, fields, emptyText) {
+      const content = fields.length ? `<dl>${fields.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl>` : `<p class="empty">${esc(emptyText)}</p>`;
+      return `<article class="store"><div class="store-head"><div><h3>${esc(title)}</h3><span>${esc(subtitle)}</span></div><span class="count">${count}</span></div>${content}</article>`;
+    }
+
+    function renderStores() {
+      const m = state.findworks.mission;
+      const session = state.findworks.session;
+      const findings = state.findworks.findings;
+      const localFields = [
+        ["Mission draft", state.harness.missionReady ? "Complete and confirmed" : "Not yet shaped"],
+        ["Private context", `${state.harness.privateContext.length} local item retained`],
+        ["Project references", state.harness.projectLocators.join(" · ")]
+      ];
+      if (state.harness.reviewedContext) localFields.push(["Reviewed context", `${state.harness.reviewedContext.knowledge} Knowledge Items · ${state.harness.reviewedContext.ownershipGaps} Ownership Gap`]);
+      const fwFields = [];
+      if (m) fwFields.push(["Interview Mission", `Version ${m.version} · ${m.status}`], ["Source authority", m.source]);
+      if (state.findworks.invitation) fwFields.push(["Invitation", `${state.findworks.invitation.status} · version ${state.findworks.invitation.missionVersion}`]);
+      if (session) fwFields.push(["Interview Session", `${session.status} · ${state.records.evidence} Evidence items`]);
+      if (findings) fwFields.push(["Findings Package", findings.version ? `Version ${findings.version} · ${findings.status}` : findings.status]);
+      const smeFields = [];
+      if (state.sme.access !== "none") smeFields.push(["Access", state.sme.access], ["Previous answers visible", state.sme.previousAnswers]);
+      if (state.sme.visibleQuestion) smeFields.push(["Active question", state.sme.visibleQuestion]);
+      const exportFields = state.harness.reviewedContext ? [
+        ["Discovery", state.harness.reviewedContext.discovery],
+        ["Published package", `Version ${state.harness.reviewedContext.packageVersion}`],
+        ["Bounded excerpts", state.harness.reviewedContext.evidenceExcerpts]
+      ] : [];
+
+      document.getElementById("stores").innerHTML = [
+        storeCard("Engineer harness", "Project-aware local state", state.harness.missionReady ? 1 : 0, localFields, "No local Mission yet."),
+        storeCard("FindWorks", "Authoritative product state", state.records.missionVersions + state.records.invitations + state.records.evidence + state.records.findingsPackages, fwFields, "No product records yet."),
+        storeCard("SME browser", "Participant-scoped view", state.sme.previousAnswers, smeFields, "No invitation or Session access."),
+        storeCard("Harness retrieval", "Explicit downstream export", state.records.exports, exportFields, "No reviewed context exported.")
+      ].join("");
+    }
+
+    function renderBoundaries() {
+      const boundaries = state.transfers.length ? state.transfers : [{ direction: "No boundary crossed yet", included: ["Shape the Mission locally first"], withheld: ["Everything remains in the project harness"] }];
+      document.getElementById("boundaries").innerHTML = boundaries.map((boundary, index) => `<article class="boundary"><h2>${index === 0 ? "Latest transfer" : "Previous transfer"}</h2><span class="direction">${esc(boundary.direction)}</span><div class="transfer-columns"><div><h3>Included</h3><ul>${boundary.included.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div><div class="withheld"><h3>Withheld</h3><ul>${boundary.withheld.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div></div></article>`).join("");
+    }
+
+    function renderProofs() {
+      const labels = {
+        privateContextStayedLocal: ["Private context stayed local", "Mission submission"],
+        mcpCreatedDraftOnly: ["MCP created a draft only", "Authority boundary"],
+        webAuthorityPreserved: ["Web human authority preserved", "Approval"],
+        acceptedEvidenceImmutable: ["Accepted Evidence survived", "Interview runtime"],
+        retrievalReviewedOnly: ["Retrieval returned reviewed context only", "Publication gate"],
+        noTranscriptClone: ["No transcript or repository clone", "Both MCP boundaries"]
+      };
+      document.getElementById("proofs").innerHTML = Object.entries(state.assertions).map(([key, value]) => `<article class="proof ${value}"><strong>${esc(labels[key][0])}</strong><span>${value === "pass" ? "Proved by current walkthrough state" : value === "fail" ? "Boundary violated" : `Pending · ${labels[key][1]}`}</span></article>`).join("");
+    }
+
+    function renderScenario() {
+      const scenario = scenarios[scenarioKey];
+      document.getElementById("scenario-tabs").innerHTML = Object.entries(scenarios).map(([key, value]) => `<button class="tab" type="button" data-scenario="${key}" aria-selected="${key === scenarioKey}">${esc(value.title)}</button>`).join("");
+      document.getElementById("scenario-title").textContent = scenario.title;
+      document.getElementById("scenario-description").textContent = scenario.description;
+      document.getElementById("scenario-steps").innerHTML = scenario.actions.map((type, index) => `<button class="step ${index < scenarioStep ? "done" : index === scenarioStep ? "current" : ""}" type="button" data-guided-action="${type}" data-step="${index + 1}" ${index > scenarioStep ? "disabled" : ""}>${esc(actionLabels[type])}</button>`).join("");
+      document.querySelectorAll("[data-scenario]").forEach(button => button.addEventListener("click", () => setScenario(button.dataset.scenario)));
+      document.querySelectorAll("[data-guided-action]").forEach(button => button.addEventListener("click", () => dispatch(button.dataset.guidedAction, true)));
+    }
+
+    function renderActions() {
+      document.getElementById("action-groups").innerHTML = Object.entries(actionGroups).map(([group, actions]) => `<section class="action-group"><h3>${esc(group)}</h3>${actions.map(type => `<button class="action-button" type="button" data-action="${type}">${esc(actionLabels[type])}</button>`).join("")}</section>`).join("");
+      document.querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", () => dispatch(button.dataset.action)));
+    }
+
+    function renderLog() {
+      document.getElementById("event-log").innerHTML = state.log.map((entry, index) => `<li><time>Event ${state.log.length - index}</time><span class="actor">${esc(entry.actor)}</span><span class="${entry.denied ? "denied" : ""}"><strong>${esc(entry.action)}</strong> — ${esc(entry.result)}</span></li>`).join("");
+    }
+
+    function render() {
+      const phase = RoundTrip.phases[state.phase];
+      document.getElementById("phase-title").textContent = phase[0];
+      document.getElementById("phase-description").textContent = phase[1];
+      const last = document.getElementById("last-change");
+      last.className = `last-change ${state.last.kind}`;
+      last.innerHTML = `<strong>${esc(state.last.title)}</strong><p>${esc(state.last.detail)}</p>`;
+      renderScenario();
+      renderStores();
+      renderBoundaries();
+      renderProofs();
+      renderActions();
+      renderLog();
+    }
+
+    document.getElementById("restart-scenario").addEventListener("click", () => setScenario(scenarioKey));
+    document.getElementById("reset-all").addEventListener("click", () => { state = RoundTrip.initialState(); scenarioStep = 0; render(); });
+    render();
+  </script>
+</body>
+</html>
