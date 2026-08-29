@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Imported Mission administration prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17211b;
+      --muted: #5d6a62;
+      --faint: #7d8981;
+      --paper: #f5f4ee;
+      --surface: #fffef9;
+      --surface-2: #ecefe8;
+      --line: #d4dad3;
+      --line-strong: #aeb9b1;
+      --accent: #176447;
+      --accent-dark: #104d36;
+      --accent-soft: #dcefe5;
+      --amber: #8a5d0a;
+      --amber-soft: #fff2ce;
+      --red: #8c342e;
+      --red-soft: #fbe7e3;
+      --blue: #315e73;
+      --blue-soft: #e3eef2;
+      --shadow: 0 18px 48px rgba(36, 50, 41, .09);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--paper); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    button, input, select, textarea { font: inherit; }
+    button, select { min-height: 42px; }
+    button { cursor: pointer; }
+    button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+      outline: 3px solid #63ad8c;
+      outline-offset: 3px;
+    }
+    ::selection { background: #acd8c3; color: var(--ink); }
+
+    .site-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 68px;
+      padding: 0 clamp(18px, 4vw, 56px);
+      border-bottom: 1px solid var(--line);
+      background: rgba(245, 244, 238, .94);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 780; letter-spacing: -.02em; }
+    .brand-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; background: var(--ink); color: white; }
+    .prototype-flag { color: var(--muted); font-size: .82rem; }
+
+    .shell { width: min(1160px, calc(100% - 36px)); margin: 0 auto; padding: 44px 0 128px; }
+    .breadcrumb { display: flex; gap: 8px; margin-bottom: 22px; color: var(--muted); font-size: .86rem; }
+    .breadcrumb span + span::before { content: "/"; margin-right: 8px; color: var(--line-strong); }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 880px; margin-bottom: 14px; font-size: clamp(2.1rem, 5vw, 4.35rem); line-height: 1.02; letter-spacing: -.04em; }
+    h2 { font-size: clamp(1.35rem, 2.5vw, 2rem); line-height: 1.15; letter-spacing: -.025em; }
+    h3 { font-size: 1.05rem; line-height: 1.3; }
+    .lede { max-width: 72ch; color: var(--muted); font-size: 1.05rem; }
+    .muted { color: var(--muted); }
+    .quiet { color: var(--faint); font-size: .82rem; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .78rem; font-variant-numeric: tabular-nums; }
+
+    .badge, .source-chip, .priority, .stage-pill {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      font-size: .76rem;
+      font-weight: 730;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .badge { padding: 8px 10px; background: var(--surface-2); color: var(--muted); }
+    .badge.ready { background: var(--accent-soft); color: var(--accent-dark); }
+    .badge.warning { background: var(--amber-soft); color: var(--amber); }
+    .badge.failure { background: var(--red-soft); color: var(--red); }
+    .source-chip { padding: 6px 9px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-weight: 620; }
+    .priority { padding: 6px 8px; background: var(--surface-2); color: var(--muted); }
+
+    .button {
+      display: inline-flex;
+      min-height: 44px;
+      width: fit-content;
+      align-items: center;
+      justify-content: center;
+      padding: 0 17px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      background: var(--accent);
+      color: white;
+      font-weight: 750;
+    }
+    .button:hover { background: var(--accent-dark); }
+    .button:active { transform: translateY(1px); }
+    .button.secondary { border-color: var(--line-strong); background: var(--surface); color: var(--ink); }
+    .button.secondary:hover { border-color: var(--accent); color: var(--accent-dark); }
+    .button.danger { border-color: #d9aaa5; background: var(--surface); color: var(--red); }
+    .button.text { min-height: 36px; padding: 0 5px; background: transparent; color: var(--accent); }
+    .button[disabled] { cursor: not-allowed; background: #cad0cb; color: #69746d; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+    .status-banner { margin: 28px 0; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .status-banner strong { display: block; margin-bottom: 4px; }
+    .status-banner.success { border-color: #a8cbb9; background: var(--accent-soft); }
+    .status-banner.warning { border-color: #dfc889; background: var(--amber-soft); }
+    .status-banner.failure { border-color: #deb0ab; background: var(--red-soft); }
+
+    .lifecycle { display: grid; grid-template-columns: repeat(5, 1fr); margin: 28px 0 34px; padding: 0; list-style: none; }
+    .lifecycle li { position: relative; padding-top: 18px; border-top: 2px solid var(--line); color: var(--faint); font-size: .78rem; font-weight: 700; }
+    .lifecycle li::before { content: ""; position: absolute; width: 10px; height: 10px; top: -6px; left: 0; border-radius: 50%; background: var(--line-strong); }
+    .lifecycle li.done { border-color: var(--accent); color: var(--accent); }
+    .lifecycle li.done::before, .lifecycle li.current::before { background: var(--accent); }
+    .lifecycle li.current { color: var(--ink); }
+
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .panel-pad { padding: clamp(20px, 4vw, 34px); }
+    .panel + .panel { margin-top: 16px; }
+    .divider { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+
+    /* Variant A: one focused checkpoint at a time. */
+    .guided-head { display: flex; align-items: start; justify-content: space-between; gap: 24px; }
+    .guided-head .version-block { display: grid; justify-items: end; gap: 8px; }
+    .review-progress { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 14px; margin-bottom: 24px; color: var(--muted); font-size: .84rem; }
+    .review-progress progress { width: 100%; height: 7px; accent-color: var(--accent); }
+    .focus-card { box-shadow: var(--shadow); }
+    .focus-heading { display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 26px; }
+    .focus-heading h2 { margin-bottom: 5px; }
+    .field { padding: 18px 0; border-top: 1px solid var(--line); }
+    .field:first-of-type { border-top: 0; }
+    .field-label { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: var(--muted); font-size: .78rem; font-weight: 760; text-transform: uppercase; letter-spacing: .05em; }
+    .field-value { max-width: 75ch; margin: 0; font-size: 1.04rem; }
+    .guided-footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .guided-summary { display: grid; grid-template-columns: 1.4fr .8fr; gap: 18px; margin-top: 18px; }
+    .readiness-list { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; }
+    .readiness-list li { display: flex; gap: 9px; color: var(--muted); font-size: .9rem; }
+    .readiness-list li::before { content: "✓"; color: var(--accent); font-weight: 900; }
+
+    /* Variant B: source-aware brief with progressive disclosure. */
+    .brief-top { display: grid; grid-template-columns: 1fr auto; gap: 28px; align-items: end; padding-bottom: 28px; border-bottom: 1px solid var(--line-strong); }
+    .brief-top h1 { max-width: 760px; font-size: clamp(2.3rem, 5vw, 4.6rem); }
+    .source-ledger { display: grid; gap: 7px; min-width: 260px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .source-ledger strong { font-size: .88rem; }
+    .brief-sections { margin-top: 30px; border-top: 1px solid var(--line); }
+    .brief-sections details { border-bottom: 1px solid var(--line); background: transparent; }
+    .brief-sections summary { display: grid; grid-template-columns: minmax(170px, .42fr) 1fr auto; gap: 20px; align-items: center; padding: 22px 4px; cursor: pointer; list-style: none; }
+    .brief-sections summary::-webkit-details-marker { display: none; }
+    .brief-sections summary::after { content: "+"; color: var(--accent); font-size: 1.3rem; }
+    .brief-sections details[open] summary::after { content: "−"; }
+    .brief-sections summary strong { font-size: 1rem; }
+    .brief-sections summary span { color: var(--muted); }
+    .brief-content { padding: 0 44px 28px calc(42% + 24px); }
+    .brief-content p { max-width: 70ch; }
+    .brief-content .source-line { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 22px; }
+    .item-row { display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: start; padding: 17px 0; border-top: 1px solid var(--line); }
+    .item-number { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; background: var(--surface-2); color: var(--muted); font-size: .78rem; font-weight: 780; }
+    .item-row p { margin-bottom: 5px; }
+    .brief-action { position: sticky; bottom: 84px; display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 28px; padding: 16px 18px; border: 1px solid var(--line-strong); border-radius: 12px; background: rgba(255, 254, 249, .96); box-shadow: var(--shadow); }
+
+    /* Variant C: lifecycle and next action first. */
+    .admin-title { display: flex; align-items: start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+    .admin-title h1 { max-width: 730px; font-size: clamp(2rem, 4vw, 3.5rem); }
+    .next-action { display: grid; grid-template-columns: 1.25fr .75fr; min-height: 240px; overflow: hidden; border-radius: var(--radius); background: var(--ink); color: white; }
+    .next-copy { display: grid; align-content: center; padding: clamp(24px, 5vw, 52px); }
+    .next-copy h2 { max-width: 620px; margin-bottom: 12px; font-size: clamp(1.7rem, 3.2vw, 2.8rem); }
+    .next-copy p { max-width: 62ch; color: #c7d0ca; }
+    .next-copy .button { background: #e5f5ec; color: #123c2d; }
+    .next-meta { display: grid; align-content: center; gap: 16px; padding: 30px; background: #24332b; }
+    .meta-pair { padding-top: 13px; border-top: 1px solid #4c5e53; }
+    .meta-pair:first-child { padding-top: 0; border-top: 0; }
+    .meta-pair span { display: block; color: #aebcb3; font-size: .76rem; }
+    .meta-pair strong { display: block; margin-top: 4px; font-size: .95rem; }
+    .admin-grid { display: grid; grid-template-columns: .72fr 1.28fr; gap: 26px; margin-top: 30px; }
+    .timeline { margin: 0; padding: 0; list-style: none; }
+    .timeline li { position: relative; padding: 0 0 26px 28px; color: var(--muted); }
+    .timeline li::before { content: ""; position: absolute; width: 10px; height: 10px; top: 5px; left: 0; border-radius: 50%; background: var(--line-strong); }
+    .timeline li::after { content: ""; position: absolute; width: 1px; top: 16px; bottom: 4px; left: 5px; background: var(--line); }
+    .timeline li:last-child::after { display: none; }
+    .timeline li.done::before, .timeline li.current::before { background: var(--accent); }
+    .timeline li.current { color: var(--ink); }
+    .timeline strong, .timeline span { display: block; }
+    .timeline span { margin-top: 3px; font-size: .82rem; }
+    .snapshot-list { display: grid; gap: 0; margin: 0; }
+    .snapshot-list div { display: grid; grid-template-columns: 160px 1fr; gap: 20px; padding: 15px 0; border-top: 1px solid var(--line); }
+    .snapshot-list div:first-child { border-top: 0; }
+    .snapshot-list dt { color: var(--muted); font-size: .8rem; font-weight: 730; }
+    .snapshot-list dd { margin: 0; }
+
+    .findings-preview { display: grid; gap: 12px; margin-top: 18px; }
+    .finding { padding: 16px 0; border-top: 1px solid var(--line); }
+    .finding:first-child { border-top: 0; }
+    .finding blockquote { margin: 10px 0 0; padding-left: 14px; border-left: 1px solid var(--accent); color: var(--muted); }
+    .session-progress { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; margin: 16px 0; }
+    .session-progress progress { width: 100%; height: 8px; accent-color: var(--accent); }
+
+    .toast {
+      position: fixed;
+      z-index: 30;
+      right: 24px;
+      bottom: 94px;
+      max-width: 360px;
+      padding: 13px 16px;
+      border-radius: 10px;
+      background: var(--ink);
+      color: white;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity .16s ease-out, transform .16s ease-out;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .prototype-bar {
+      position: fixed;
+      z-index: 40;
+      left: 50%;
+      bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: min(760px, calc(100% - 24px));
+      padding: 8px;
+      border: 1px solid #3d4942;
+      border-radius: 13px;
+      background: #17211b;
+      color: white;
+      box-shadow: 0 14px 34px rgba(20, 30, 24, .24);
+      transform: translateX(-50%);
+    }
+    .prototype-bar button, .prototype-bar select {
+      min-height: 38px;
+      border: 1px solid #4b5a51;
+      border-radius: 8px;
+      background: #26322b;
+      color: white;
+    }
+    .prototype-bar button { padding: 0 12px; }
+    .prototype-bar button:hover { background: #344239; }
+    .prototype-bar select { min-width: 160px; padding: 0 30px 0 10px; }
+    .variant-label { flex: 1; min-width: 150px; text-align: center; font-size: .84rem; font-weight: 750; }
+    .state-button { color: #c8d3cc !important; font-size: .78rem; }
+    .state-drawer {
+      position: fixed;
+      z-index: 35;
+      right: 18px;
+      bottom: 82px;
+      width: min(420px, calc(100% - 36px));
+      max-height: 60vh;
+      overflow: auto;
+      padding: 18px;
+      border-radius: 12px;
+      background: #17211b;
+      color: #dce5df;
+      box-shadow: var(--shadow);
+    }
+    .state-drawer pre { margin: 0; white-space: pre-wrap; font: .75rem/1.55 ui-monospace, monospace; }
+
+    @media (max-width: 800px) {
+      .shell { width: min(100% - 24px, 1160px); padding-top: 28px; }
+      .guided-head, .brief-top, .admin-title { display: grid; }
+      .guided-head .version-block { justify-items: start; }
+      .guided-summary, .admin-grid, .next-action { grid-template-columns: 1fr; }
+      .brief-top { align-items: start; }
+      .source-ledger { min-width: 0; }
+      .brief-sections summary { grid-template-columns: 1fr auto; gap: 8px; }
+      .brief-sections summary span { grid-column: 1; }
+      .brief-sections summary::after { grid-column: 2; grid-row: 1 / 3; }
+      .brief-content { padding-left: 4px; }
+      .snapshot-list div { grid-template-columns: 1fr; gap: 4px; }
+      .prototype-bar { flex-wrap: wrap; }
+      .variant-label { order: -1; flex-basis: 100%; }
+      .prototype-bar select { flex: 1; }
+    }
+    @media (max-width: 520px) {
+      .site-header { padding-inline: 14px; }
+      .prototype-flag { display: none; }
+      .focus-heading, .guided-footer, .brief-action { display: grid; }
+      .field-label { display: grid; }
+      .item-row { grid-template-columns: auto 1fr; }
+      .item-row .priority { grid-column: 2; }
+      .prototype-bar button { padding-inline: 9px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">F</span><span>FindWorks</span></div>
+    <span class="prototype-flag">Throwaway prototype · sample data</span>
+  </header>
+
+  <div id="app"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <aside id="state-drawer" class="state-drawer" hidden aria-label="Prototype state"><pre id="state-output"></pre></aside>
+
+  <nav class="prototype-bar" aria-label="Prototype controls">
+    <button id="previous-variant" type="button" aria-label="Previous variant">Previous</button>
+    <div id="variant-label" class="variant-label">A · Focused review</div>
+    <button id="next-variant" type="button" aria-label="Next variant">Next</button>
+    <label class="quiet" for="scenario-select">Scenario</label>
+    <select id="scenario-select">
+      <option value="draft">Draft review</option>
+      <option value="approved">Approved</option>
+      <option value="invited">Invitation sent</option>
+      <option value="active">Interview active</option>
+      <option value="findings">Findings ready</option>
+      <option value="recovery">Safe recovery</option>
+    </select>
+    <button id="state-button" class="state-button" type="button" aria-expanded="false">State</button>
+  </nav>
+
+  <script>
+    // THROWAWAY PROTOTYPE. All state and content are illustrative and live in memory.
+    const variants = {
+      A: "Focused review",
+      B: "Source-aware brief",
+      C: "Lifecycle-led administration"
+    };
+    const variantKeys = Object.keys(variants);
+    const scenarios = ["draft", "approved", "invited", "active", "findings", "recovery"];
+    const scenarioLabels = {
+      draft: "Draft review",
+      approved: "Approved",
+      invited: "Invitation sent",
+      active: "Interview active",
+      findings: "Findings ready",
+      recovery: "Safe recovery"
+    };
+
+    const mission = {
+      discovery: "Ledgerling reconciliation discovery",
+      title: "Clarify transaction reconciliation rules",
+      label: "Transaction reconciliation",
+      version: 1,
+      imported: "14 minutes ago",
+      submission: "fw-sub-72F4",
+      objective: "Understand how Ledgerling should match imported bank transactions to ledger entries, surface ambiguous matches, and preserve accountant oversight.",
+      desiredOutcome: "A precise set of matching rules, review boundaries, exceptions, and unresolved ownership that engineering can use without inventing accounting policy.",
+      interviewee: "Bookkeeper responsible for monthly bank reconciliation",
+      relevance: "Owns the current reconciliation process and handles ambiguous matches in practice.",
+      commitment: "25 minutes",
+      completion: "Every required Investigation Item has supported knowledge, an explicit Unknown, a Conflict, or an Ownership Gap.",
+      dataUse: "Answers will be used to produce reviewed findings for this Discovery and may be retrieved into the Investigator's project harness after approval.",
+      sharedContext: [
+        "Ledgerling imports bank transactions before a human confirms their ledger treatment.",
+        "The proposed change must preserve a visible review step for uncertain matches."
+      ],
+      boundaries: [
+        "Discuss the current reconciliation process and decision rules only.",
+        "Do not request customer names, bank account numbers, or real transaction data."
+      ],
+      terminology: [
+        ["Candidate match", "A ledger entry the system suggests may correspond to an imported transaction."],
+        ["Confirmed match", "A match accepted by an authorised human."]
+      ],
+      items: [
+        {
+          gap: "Which signals make a transaction and ledger entry an exact or likely match?",
+          why: "Defines what may be suggested safely and what must remain unmatched.",
+          priority: "High",
+          required: true,
+          source: "Investigator statement"
+        },
+        {
+          gap: "When must a suggested match be reviewed, rejected, or escalated?",
+          why: "Prevents automation from silently making an accounting decision.",
+          priority: "High",
+          required: true,
+          source: "Confirmed agent proposal"
+        },
+        {
+          gap: "Which terms used by bookkeepers differ from the current product language?",
+          why: "Lets the product use language the interviewee recognises.",
+          priority: "Medium",
+          required: false,
+          source: "Investigator statement"
+        }
+      ]
+    };
+
+    const state = {
+      variant: normalise(new URLSearchParams(location.search).get("variant"), variantKeys, "A"),
+      scenario: normalise(new URLSearchParams(location.search).get("scenario"), scenarios, "draft"),
+      reviewStep: 2,
+      reviewedSections: 3,
+      editOpen: false,
+      lastAction: null
+    };
+
+    function normalise(value, allowed, fallback) {
+      return allowed.includes(value) ? value : fallback;
+    }
+
+    function scenarioData() {
+      const data = {
+        draft: {
+          version: 1, status: "Draft · ready for approval", badge: "ready", current: 0,
+          headline: "Review the imported Mission before it becomes authoritative",
+          explanation: "All required sections are complete. Approval will freeze version 1; it will not send an invitation.",
+          action: "Approve version 1", actionName: "approve", secondary: "Edit Mission"
+        },
+        approved: {
+          version: 1, status: "Version 1 approved", badge: "ready", current: 1,
+          headline: "Choose the recipient for the approved Mission",
+          explanation: "Approval is complete. Confirm the recipient separately before FindWorks sends anything.",
+          action: "Prepare invitation", actionName: "prepare-invite", secondary: "View approved version"
+        },
+        invited: {
+          version: 1, status: "Invitation accepted by provider", badge: "ready", current: 2,
+          headline: "The invitation is ready for Clare",
+          explanation: "Sent to clare@example.test. It expires in 6 days. Provider acceptance does not prove recipient delivery.",
+          action: "View invitation status", actionName: "view-invite", secondary: "Revoke and reissue"
+        },
+        active: {
+          version: 1, status: "Interview Session active", badge: "ready", current: 3,
+          headline: "Clare's Interview Session is in progress",
+          explanation: "Accepted Evidence is safe. Two of three required outcomes are being explored; no findings are visible to the interviewee.",
+          action: "View Session status", actionName: "view-session", secondary: "Terminate access"
+        },
+        findings: {
+          version: 1, status: "Findings Package 1 ready", badge: "ready", current: 4,
+          headline: "Review findings against their Evidence",
+          explanation: "Every required Investigation Item has an explicit outcome. Findings remain unpublished until you review and accept this exact package version.",
+          action: "Review findings", actionName: "review-findings", secondary: "Reject package"
+        },
+        recovery: {
+          version: 2, status: "Version 2 draft · approval required", badge: "warning", current: 0,
+          headline: "Mission changes safely superseded the prior approval",
+          explanation: "Version 1 approval and its unused invitation were revoked. No Interview Session started and no Evidence was lost.",
+          action: "Review version 2 changes", actionName: "review-changes", secondary: "Return to harness"
+        }
+      };
+      return data[state.scenario];
+    }
+
+    function breadcrumb() {
+      return `<div class="breadcrumb" aria-label="Breadcrumb"><span>Discoveries</span><span>${mission.discovery}</span><span>${mission.label}</span></div>`;
+    }
+
+    function sourceChip(label = "Imported from harness") {
+      return `<span class="source-chip">${label}</span>`;
+    }
+
+    function lifecycle(current) {
+      const labels = ["Review", "Approve", "Invite", "Interview", "Findings"];
+      return `<ol class="lifecycle" aria-label="Mission lifecycle">${labels.map((label, index) => {
+        const cls = index < current ? "done" : index === current ? "current" : "";
+        return `<li class="${cls}">${label}</li>`;
+      }).join("")}</ol>`;
+    }
+
+    function statusBanner(data) {
+      const tone = data.badge === "warning" ? "warning" : "success";
+      return `<div class="status-banner ${tone}" role="status"><strong>${data.status}</strong><span>${data.explanation}</span></div>`;
+    }
+
+    function primaryActions(data) {
+      const danger = state.scenario === "active" && data.secondary.includes("Terminate") ? "danger" : "secondary";
+      return `<div class="actions">
+        <button class="button" type="button" data-action="${data.actionName}">${data.action}</button>
+        <button class="button ${danger}" type="button" data-action="secondary">${data.secondary}</button>
+      </div>`;
+    }
+
+    function findingsPreview() {
+      return `<div class="findings-preview">
+        <article class="finding"><span class="badge ready">Supported knowledge</span><h3>Likely matches always remain suggestions until a bookkeeper confirms them.</h3><blockquote>“Even when the amount and date line up, I still check the reference before I confirm it.”</blockquote><span class="quiet">Clare · answer 4 · exact Evidence context available</span></article>
+        <article class="finding"><span class="badge warning">Ownership Gap</span><h3>Who may change the reconciliation tolerance remains unresolved.</h3><p class="muted">The finance lead owns this policy; Clare can describe the current practice but cannot authorise a change.</p></article>
+      </div>`;
+    }
+
+    function scenarioSupplement() {
+      if (state.scenario === "active") {
+        return `<div class="panel panel-pad"><h3>Interview coverage</h3><div class="session-progress"><span>2 of 3 required areas explored</span><progress value="2" max="3">2 of 3</progress></div><p class="muted">Current: review and escalation boundaries. Accepted answers: 4. Last runtime turn settled 2 minutes ago.</p></div>`;
+      }
+      if (state.scenario === "findings") {
+        return `<div class="panel panel-pad"><h3>Findings Package 1</h3><p class="muted">2 Knowledge Items · 1 Ownership Gap · all required outcomes ready for review</p>${findingsPreview()}</div>`;
+      }
+      if (state.scenario === "recovery") {
+        return `<div class="panel panel-pad"><h3>Safe recovery record</h3><ul><li>Version 1 remains immutable and shows its former approval.</li><li>The unused invitation was revoked automatically.</li><li>Version 2 changes only shared context and one Investigation Item.</li><li>Approval and invitation must happen again in separate steps.</li></ul></div>`;
+      }
+      return "";
+    }
+
+    function variantA(data) {
+      const steps = ["Purpose", "Interviewee", "Investigation Items", "Shared context and boundaries", "Completion and data use"];
+      const focus = state.scenario === "draft" || state.scenario === "recovery";
+      return `<main class="shell guided">
+        ${breadcrumb()}
+        <div class="guided-head">
+          <div><h1>${focus ? "Review " + mission.title : data.headline}</h1><p class="lede">${focus ? "A complete Mission was submitted from your project harness. Review its exact content here; the shaping conversation remains in your harness." : data.explanation}</p></div>
+          <div class="version-block"><span class="badge ${data.badge}">${data.status}</span><span class="mono">Version ${data.version} · ${mission.submission}</span></div>
+        </div>
+        ${lifecycle(data.current)}
+        ${focus ? `
+          <section class="panel panel-pad focus-card">
+            <div class="review-progress"><span>Checkpoint ${state.reviewStep + 1} of ${steps.length}</span><progress value="${state.reviewStep + 1}" max="${steps.length}">${state.reviewStep + 1} of ${steps.length}</progress></div>
+            <div class="focus-heading"><div><h2>${steps[state.reviewStep]}</h2><p class="muted">Review what the interview agent must learn, not a fixed question list.</p></div>${sourceChip("Mixed confirmed sources")}</div>
+            <div class="field"><div class="field-label"><span>Required item 1 · High priority</span>${sourceChip("Investigator statement")}</div><p class="field-value">${mission.items[0].gap}</p><p class="muted">Why it matters: ${mission.items[0].why}</p></div>
+            <div class="field"><div class="field-label"><span>Required item 2 · High priority</span>${sourceChip("Confirmed agent proposal")}</div><p class="field-value">${mission.items[1].gap}</p><p class="muted">Why it matters: ${mission.items[1].why}</p></div>
+            <div class="field"><div class="field-label"><span>Optional item 3 · Medium priority</span>${sourceChip("Investigator statement")}</div><p class="field-value">${mission.items[2].gap}</p></div>
+            <div class="guided-footer"><button class="button secondary" type="button" data-action="previous-step" ${state.reviewStep === 0 ? "disabled" : ""}>Previous checkpoint</button><div class="actions"><button class="button text" type="button" data-action="edit">Edit this section</button><button class="button" type="button" data-action="next-step">${state.reviewStep === 4 ? "Finish review" : "Mark reviewed and continue"}</button></div></div>
+          </section>
+          <div class="guided-summary">
+            <section class="panel panel-pad"><h3>Ready for approval</h3><ul class="readiness-list"><li>All required Mission sections are complete</li><li>Every element has a human-authority source</li><li>Ambiguity is represented by Investigation Item 2</li><li>No private harness context was imported</li></ul></section>
+            <section class="panel panel-pad"><h3>Approval remains separate</h3><p class="muted">Approval freezes exact version ${data.version}. It sends nothing and selects no recipient.</p>${primaryActions(data)}</section>
+          </div>` : `${statusBanner(data)}<section class="panel panel-pad"><h2>${data.headline}</h2><p class="muted">Mission: ${mission.title} · exact version ${data.version}</p>${primaryActions(data)}</section>${scenarioSupplement()}`}
+      </main>`;
+    }
+
+    function briefSection(title, summary, body, source, open = false) {
+      return `<details ${open ? "open" : ""}><summary><strong>${title}</strong><span>${summary}</span></summary><div class="brief-content">${body}<div class="source-line">${sourceChip(source)}<button class="button text" type="button" data-action="edit">Edit section</button></div></div></details>`;
+    }
+
+    function variantB(data) {
+      const purpose = `<p><strong>Objective.</strong> ${mission.objective}</p><p><strong>Desired outcome.</strong> ${mission.desiredOutcome}</p>`;
+      const person = `<p><strong>${mission.interviewee}</strong></p><p>${mission.relevance}</p>`;
+      const items = mission.items.map((item, i) => `<article class="item-row"><span class="item-number">${i + 1}</span><div><p><strong>${item.gap}</strong></p><p class="muted">${item.why}</p>${sourceChip(item.source)}</div><span class="priority">${item.required ? "Required" : "Optional"} · ${item.priority}</span></article>`).join("");
+      const context = `<p><strong>Shared context</strong></p><ul>${mission.sharedContext.map(x => `<li>${x}</li>`).join("")}</ul><p><strong>Boundaries</strong></p><ul>${mission.boundaries.map(x => `<li>${x}</li>`).join("")}</ul>`;
+      const completion = `<p><strong>Completion.</strong> ${mission.completion}</p><p><strong>Commitment.</strong> ${mission.commitment}</p><p><strong>Data use.</strong> ${mission.dataUse}</p>`;
+      return `<main class="shell brief">
+        ${breadcrumb()}
+        <header class="brief-top">
+          <div><div class="actions"><span class="badge ${data.badge}">${data.status}</span><span class="quiet">Administrative label: ${mission.label}</span></div><h1>${mission.title}</h1><p class="lede">${data.headline}</p></div>
+          <aside class="source-ledger"><strong>Imported Mission snapshot</strong><span class="quiet">Submitted ${mission.imported}</span><span class="mono">${mission.submission}</span>${sourceChip("Project issue #118")}${sourceChip("docs/reconciliation.md")}
+          <span class="quiet">Locators only. FindWorks imported no repository content or shaping transcript.</span></aside>
+        </header>
+        ${statusBanner(data)}
+        <section class="brief-sections" aria-label="Mission sections">
+          ${briefSection("Purpose", "Objective and desired outcome", purpose, "Investigator statement", true)}
+          ${briefSection("Interviewee", mission.interviewee, person, "Investigator statement")}
+          ${briefSection("Investigation Items", "2 required · 1 optional", items, "Mixed confirmed sources", true)}
+          ${briefSection("Shared context and boundaries", "2 context entries · 2 boundaries", context, "Mixed confirmed sources")}
+          ${briefSection("Completion and data use", mission.commitment + " expected", completion, "Confirmed agent proposal")}
+        </section>
+        ${scenarioSupplement()}
+        <div class="brief-action"><div><strong>${data.status}</strong><div class="quiet">Actions target exact version ${data.version}</div></div>${primaryActions(data)}</div>
+      </main>`;
+    }
+
+    function timelineItems(current) {
+      const rows = [
+        ["Mission imported", "Harness submission retained as version 1"],
+        ["Mission approved", "Exact content frozen by Gareth"],
+        ["Invitation", "Recipient and version confirmed separately"],
+        ["Interview Session", "External participant access and progress"],
+        ["Findings review", "Evidence-backed package decision"]
+      ];
+      return rows.map((row, index) => `<li class="${index < current ? "done" : index === current ? "current" : ""}"><strong>${row[0]}</strong><span>${index < current ? "Complete · " : index === current ? "Current · " : "Pending · "}${row[1]}</span></li>`).join("");
+    }
+
+    function variantC(data) {
+      return `<main class="shell admin">
+        ${breadcrumb()}
+        <header class="admin-title"><div><h1>${mission.label}</h1><p class="lede">Administer the Mission lifecycle without reopening the private shaping conversation.</p></div><div><span class="badge ${data.badge}">${data.status}</span><div class="mono">Version ${data.version}</div></div></header>
+        <section class="next-action">
+          <div class="next-copy"><h2>${data.headline}</h2><p>${data.explanation}</p>${primaryActions(data)}</div>
+          <aside class="next-meta">
+            <div class="meta-pair"><span>Interview Mission</span><strong>${mission.title}</strong></div>
+            <div class="meta-pair"><span>Source</span><strong>Imported from project harness ${mission.imported}</strong></div>
+            <div class="meta-pair"><span>Human authority</span><strong>${state.scenario === "draft" || state.scenario === "recovery" ? "Approval required" : "Approved by Gareth"}</strong></div>
+            <div class="meta-pair"><span>Private context</span><strong>Not imported</strong></div>
+          </aside>
+        </section>
+        <div class="admin-grid">
+          <section class="panel panel-pad"><h2>Lifecycle</h2><ol class="timeline">${timelineItems(data.current)}</ol></section>
+          <section class="panel panel-pad"><h2>Mission snapshot</h2><dl class="snapshot-list">
+            <div><dt>Objective</dt><dd>${mission.objective}</dd></div>
+            <div><dt>Interviewee</dt><dd>${mission.interviewee}</dd></div>
+            <div><dt>Coverage</dt><dd>2 required Investigation Items · 1 optional</dd></div>
+            <div><dt>Commitment</dt><dd>${mission.commitment}</dd></div>
+            <div><dt>Source authority</dt><dd>5 Investigator statements · 4 confirmed agent proposals</dd></div>
+          </dl><hr class="divider"><div class="actions"><button class="button secondary" type="button" data-action="inspect">Inspect exact Mission</button><button class="button text" type="button" data-action="history">Version history</button></div></section>
+        </div>
+        ${scenarioSupplement()}
+      </main>`;
+    }
+
+    function render() {
+      const data = scenarioData();
+      const app = document.getElementById("app");
+      app.innerHTML = state.variant === "A" ? variantA(data) : state.variant === "B" ? variantB(data) : variantC(data);
+      document.getElementById("variant-label").textContent = `${state.variant} · ${variants[state.variant]}`;
+      document.getElementById("scenario-select").value = state.scenario;
+      document.getElementById("state-output").textContent = JSON.stringify({
+        prototype: "Shape imported Mission administration in the web app",
+        variant: state.variant,
+        variantName: variants[state.variant],
+        scenario: state.scenario,
+        scenarioLabel: scenarioLabels[state.scenario],
+        missionVersion: data.version,
+        missionStatus: data.status,
+        reviewStep: state.reviewStep,
+        reviewedSections: state.reviewedSections,
+        lastAction: state.lastAction
+      }, null, 2);
+      bindActions();
+    }
+
+    function updateUrl() {
+      const url = new URL(location.href);
+      url.searchParams.set("variant", state.variant);
+      url.searchParams.set("scenario", state.scenario);
+      history.replaceState(null, "", url);
+    }
+
+    function setVariant(offset) {
+      const current = variantKeys.indexOf(state.variant);
+      state.variant = variantKeys[(current + offset + variantKeys.length) % variantKeys.length];
+      updateUrl();
+      render();
+    }
+
+    function setScenario(value) {
+      state.scenario = normalise(value, scenarios, "draft");
+      state.lastAction = null;
+      updateUrl();
+      render();
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove("show"), 2600);
+    }
+
+    function bindActions() {
+      document.querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", () => {
+        const action = button.dataset.action;
+        state.lastAction = action;
+        if (action === "next-step") {
+          if (state.reviewStep < 4) {
+            state.reviewStep += 1;
+            state.reviewedSections = Math.max(state.reviewedSections, state.reviewStep + 1);
+            showToast("Checkpoint marked reviewed. No Mission content changed.");
+          } else {
+            showToast("Review complete. Approval remains a separate action.");
+          }
+          render();
+          return;
+        }
+        if (action === "previous-step") {
+          state.reviewStep = Math.max(0, state.reviewStep - 1);
+          render();
+          return;
+        }
+        if (action === "approve") {
+          showToast("Prototype: exact version 1 approved. No invitation sent.");
+          setScenario("approved");
+          return;
+        }
+        if (action === "prepare-invite") {
+          showToast("Prototype: recipient confirmation opened separately.");
+          setScenario("invited");
+          return;
+        }
+        if (action === "review-findings") {
+          showToast("Prototype: findings review opens against Package 1.");
+          return;
+        }
+        if (action === "edit") {
+          showToast("Prototype: editing would create a new immutable draft version on save.");
+          return;
+        }
+        if (action === "secondary" && state.scenario === "active") {
+          showToast("Prototype: termination requires explicit confirmation; accepted Evidence remains.");
+          return;
+        }
+        showToast(`Prototype action: ${button.textContent.trim()}`);
+        render();
+      }));
+    }
+
+    document.getElementById("previous-variant").addEventListener("click", () => setVariant(-1));
+    document.getElementById("next-variant").addEventListener("click", () => setVariant(1));
+    document.getElementById("scenario-select").addEventListener("change", event => setScenario(event.target.value));
+    document.getElementById("state-button").addEventListener("click", event => {
+      const drawer = document.getElementById("state-drawer");
+      drawer.hidden = !drawer.hidden;
+      event.currentTarget.setAttribute("aria-expanded", String(!drawer.hidden));
+    });
+    document.addEventListener("keydown", event => {
+      const target = event.target;
+      if (target.matches("input, textarea, select, [contenteditable]")) return;
+      if (event.key === "ArrowLeft") setVariant(-1);
+      if (event.key === "ArrowRight") setVariant(1);
+    });
+
+    render();
+  </script>
+</body>
+</html>
