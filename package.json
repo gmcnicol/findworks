@@ -1,0 +1,14 @@
+{
+  "name": "findworks-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test": "playwright test",
+    "test:all": "bash scripts/test.sh"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

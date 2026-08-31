@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: findworks
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:${FINDWORKS_DATABASE_URL:jdbc:postgresql://localhost:5432/findworks}}
+    username: ${SPRING_DATASOURCE_USERNAME:${FINDWORKS_DATABASE_USERNAME:findworks}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${FINDWORKS_DATABASE_PASSWORD:findworks}}
+  thymeleaf:
+    cache: false
+  flyway:
+    locations: classpath:db/migration
+server:
+  shutdown: graceful
+findworks:
+  pilot-organization-slug: ${FINDWORKS_PILOT_ORGANIZATION_SLUG:pilot-org}
+logging:
+  level:
+    org.springframework.security: WARN
