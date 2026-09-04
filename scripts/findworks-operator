@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+base="${FINDWORKS_OPERATOR_URL:-http://127.0.0.1:8080}"
+token="${FINDWORKS_OPERATOR_TOKEN:?Set FINDWORKS_OPERATOR_TOKEN}"
+command="${1:-status}"
+shift || true
+case "$command" in
+  status) curl -fsS -H "X-Operator-Token: $token" "$base/operator/status" ;;
+  retention) curl -fsS -X POST -H "X-Operator-Token: $token" "$base/operator/retention/run-once" ;;
+  purge|retry-purge) curl -fsS -X POST -H "X-Operator-Token: $token" "$base/operator/purge/run-once" ;;
+  extend) curl -fsS -X POST -H "X-Operator-Token: $token" --data-urlencode "discoveryId=${1:?discovery id}" --data-urlencode "days=${2:?days}" "$base/operator/retention/extend" ;;
+  revoke) curl -fsS -X POST -H "X-Operator-Token: $token" "$base/operator/invitations/${1:?invitation id}/revoke" ;;
+  terminate) curl -fsS -X POST -H "X-Operator-Token: $token" "$base/operator/sessions/${1:?session id}/terminate" ;;
+  delete-discovery) curl -fsS -X POST -H "X-Operator-Token: $token" "$base/operator/discoveries/${1:?discovery id}/delete" ;;
+  delete-session) curl -fsS -X POST -H "X-Operator-Token: $token" "$base/operator/sessions/${1:?session id}/delete" ;;
+  retry-runtime) curl -fsS -X POST -H "X-Operator-Token: $token" "$base/operator/runtime/${1:?run id}/retry" ;;
+  retry-extraction) curl -fsS -X POST -H "X-Operator-Token: $token" "$base/operator/extractions/${1:?session id}/retry" ;;
+  *) echo "usage: findworks-operator status|retention|purge|retry-purge|extend DISCOVERY DAYS|revoke INVITATION|terminate SESSION|delete-discovery DISCOVERY|delete-session SESSION|retry-runtime RUN|retry-extraction SESSION" >&2; exit 2 ;;
+esac

@@ -15,6 +15,10 @@ Distinguish clearly between:
 
 Do not silently promote a working assumption into a product decision.
 
+## Prototypes
+
+Offer a prototype only when uncertain usability interactions must be experienced to answer a specific design question. Use prose, diagrams, tables, or state-transition examples for known workflows and action sequences. A prototype must reveal evidence unavailable from restating the designed steps; otherwise, do not propose or build one.
+
 ## Matt Pocock engineering skills
 
 This repo is intended to use Matt Pocock's engineering skills under Pi. Before using Wayfinder or downstream engineering skills, run `/skill:setup-matt-pocock-skills` once so this repository's issue tracker and domain-document locations are configured under `docs/agents/`.

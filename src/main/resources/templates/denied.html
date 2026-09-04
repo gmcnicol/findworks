@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Access denied · FindWorks</title>
+    <link rel="stylesheet" th:href="@{/assets/app.css}">
+</head>
+<body>
+<main class="shell centered">
+    <section class="panel">
+        <p class="eyebrow">Access denied</p>
+        <h1>This account cannot open FindWorks.</h1>
+        <p>FindWorks only allows verified pilot Investigator memberships in the active Organisation.</p>
+        <a class="button secondary" th:href="@{/signin}">Try another account</a>
+    </section>
+</main>
+</body>
+</html>

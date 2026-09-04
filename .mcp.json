@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "findworks": {
+      "url": "https://nuc.tail653f74.ts.net/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "scope": "findworks:read findworks:write",
+        "clientName": "Pi 0.84.4 with pi-mcp-adapter 2.31.0"
+      }
+    }
+  }
+}

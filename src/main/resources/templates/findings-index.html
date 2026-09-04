@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Findings · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body class="app-body"><div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('findings', ${investigator})}"></th:block>
+    <main class="app-main">
+        <header class="workspace-header"><div><h1>Findings</h1><p>Completed Interview Sessions moving through extraction and Investigator review.</p></div></header>
+        <div class="empty-state" th:if="${#lists.isEmpty(findings)}"><h2>No findings yet</h2><p>Completed Interviews will appear here while findings are prepared and reviewed.</p></div>
+        <div class="ledger-wrap" th:unless="${#lists.isEmpty(findings)}"><table class="work-ledger">
+            <thead><tr><th scope="col">Mission</th><th scope="col">Discovery</th><th scope="col">Interviewee</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+            <tbody><tr th:each="item : ${findings}">
+                <td data-label="Mission"><a class="ledger-title" th:href="@{/app/findings/{id}(id=${item.sessionId()})}" th:text="${item.mission()}">Mission</a></td>
+                <td data-label="Discovery" th:text="${item.discovery()}">Discovery</td>
+                <td data-label="Interviewee" th:text="${item.participant()}">Interviewee</td>
+                <td data-label="Status"><span class="status-label" th:classappend="' status-' + ${item.statusTone()}" th:text="${item.status()}">Status</span></td>
+                <td class="ledger-action"><a th:href="@{/app/findings/{id}(id=${item.sessionId()})}" th:text="${item.action()}">Open</a></td>
+            </tr></tbody>
+        </table></div>
+    </main>
+</div></body>
+</html>

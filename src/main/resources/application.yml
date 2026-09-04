@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: findworks
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:${FINDWORKS_DATABASE_URL:jdbc:postgresql://localhost:5432/findworks}}
+    username: ${SPRING_DATASOURCE_USERNAME:${FINDWORKS_DATABASE_USERNAME:findworks}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${FINDWORKS_DATABASE_PASSWORD:findworks}}
+  thymeleaf:
+    cache: false
+  flyway:
+    locations: classpath:db/migration
+server:
+  shutdown: graceful
+findworks:
+  base-url: ${FINDWORKS_BASE_URL:http://127.0.0.1:8080}
+  test-support: ${FINDWORKS_TEST_SUPPORT:false}
+  process-mode: ${FINDWORKS_PROCESS_MODE:web}
+  cookie-secure: ${FINDWORKS_COOKIE_SECURE:false}
+  operator-token: ${FINDWORKS_OPERATOR_TOKEN:disabled}
+  pilot-organization-slug: ${FINDWORKS_PILOT_ORGANIZATION_SLUG:pilot-org}
+  runtime-command: ${FINDWORKS_RUNTIME_COMMAND:docker}
+  runtime-image: ${FINDWORKS_RUNTIME_IMAGE:findworks-runtime:0.84.4}
+  runtime-network: ${FINDWORKS_RUNTIME_NETWORK:findworks-runtime}
+  runtime-internal-url: ${FINDWORKS_RUNTIME_INTERNAL_URL:http://web:8080/internal/runtime/turn}
+  runtime-wall-seconds: ${FINDWORKS_RUNTIME_WALL_SECONDS:120}
+  outbox-key: ${FINDWORKS_OUTBOX_KEY:disabled}
+  email-endpoint: ${FINDWORKS_EMAIL_ENDPOINT:disabled}
+  email-api-key: ${FINDWORKS_EMAIL_API_KEY:disabled}
+  email-from: ${FINDWORKS_EMAIL_FROM:FindWorks <interviews@localhost>}
+logging:
+  level:
+    org.springframework.security: WARN

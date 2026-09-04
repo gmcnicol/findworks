@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard · FindWorks</title>
+    <link rel="stylesheet" th:href="@{/assets/app.css}">
+</head>
+<body class="app-body">
+<!--
+THESIS: FindWorks is an operations ledger for knowledge-seeking work, not a gallery of disconnected cards.
+OWN-WORLD: Cool paper-white surfaces, deep navy ink, cobalt actions, fine rules, and compact status labels.
+STORY: The Investigator sees what needs attention, scans every Mission in context, and moves directly to the next task.
+FIRST VIEWPORT: Persistent left navigation frames an attention statement, a compact state summary, and a full-width Mission ledger.
+FORM: Operations ledger, the rolled structure, seed 695ce343.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('dashboard', ${investigator})}"></th:block>
+    <main class="app-main">
+        <header class="workspace-header">
+            <div>
+                <h1>Your work</h1>
+                <p th:if="${attentionCount > 0}"><strong th:text="${attentionCount}">1</strong><span th:text="${attentionCount == 1 ? ' item needs your attention.' : ' items need your attention.'}"> item needs your attention.</span></p>
+                <p th:if="${attentionCount == 0}">Nothing needs your attention right now.</p>
+            </div>
+            <a class="button secondary compact" th:href="@{/app/discoveries}">View all Discoveries</a>
+        </header>
+
+        <dl class="workspace-summary" aria-label="Workspace status">
+            <div><dt>Discoveries</dt><dd th:text="${discoveryCount}">0</dd></div>
+            <div><dt>Interview Missions</dt><dd th:text="${missionCount}">0</dd></div>
+            <div><dt>Interviews active</dt><dd th:text="${activeInterviewCount}">0</dd></div>
+            <div class="summary-attention"><dt>Needs attention</dt><dd th:text="${attentionCount}">0</dd></div>
+        </dl>
+
+        <section class="workspace-section" aria-labelledby="attention-heading">
+            <div class="section-heading">
+                <div><h2 id="attention-heading">Needs attention</h2><p>Mission work waiting for an Investigator decision or recovery.</p></div>
+            </div>
+            <div class="empty-state compact-empty" th:if="${#lists.isEmpty(attention)}">
+                <h3>You’re caught up</h3>
+                <p>New draft Missions and reviewable findings will appear here.</p>
+            </div>
+            <div class="ledger-wrap" th:unless="${#lists.isEmpty(attention)}">
+                <table class="work-ledger">
+                    <thead><tr><th scope="col">Mission</th><th scope="col">Discovery</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+                    <tbody>
+                    <tr th:each="mission : ${attention}">
+                        <td data-label="Mission"><a class="ledger-title" th:href="${mission.href()}" th:text="${mission.label()}">Mission</a><span th:text="'Version ' + ${mission.version()}">Version 1</span></td>
+                        <td data-label="Discovery"><a th:href="@{/app/discoveries/{id}(id=${mission.discoveryId()})}" th:text="${mission.discovery()}">Discovery</a></td>
+                        <td data-label="Status"><span class="status-label" th:classappend="' status-' + ${mission.statusTone()}" th:text="${mission.status()}">Status</span></td>
+                        <td class="ledger-action"><a th:href="${mission.href()}" th:text="${mission.action()}">Open</a></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="workspace-section" aria-labelledby="missions-heading">
+            <div class="section-heading">
+                <div><h2 id="missions-heading">Recent Missions</h2><p>Every Mission stays attached to its Discovery and current lifecycle state.</p></div>
+                <a th:href="@{/app/missions}">View all Missions</a>
+            </div>
+            <div class="empty-state" th:if="${#lists.isEmpty(recentMissions)}">
+                <h3>No Missions yet</h3>
+                <p>Shape and submit an Interview Mission from your project-aware harness.</p>
+                <a th:href="@{/oauth/grants}">Manage harness access</a>
+            </div>
+            <div class="ledger-wrap" th:unless="${#lists.isEmpty(recentMissions)}">
+                <table class="work-ledger">
+                    <thead><tr><th scope="col">Mission</th><th scope="col">Discovery</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+                    <tbody>
+                    <tr th:each="mission : ${recentMissions}">
+                        <td data-label="Mission"><a class="ledger-title" th:href="${mission.href()}" th:text="${mission.label()}">Mission</a><span th:text="'Version ' + ${mission.version()}">Version 1</span></td>
+                        <td data-label="Discovery"><a th:href="@{/app/discoveries/{id}(id=${mission.discoveryId()})}" th:text="${mission.discovery()}">Discovery</a></td>
+                        <td data-label="Status"><span class="status-label" th:classappend="' status-' + ${mission.statusTone()}" th:text="${mission.status()}">Status</span></td>
+                        <td class="ledger-action"><a th:href="${mission.href()}" th:text="${mission.action()}">Open</a></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="workspace-section" aria-labelledby="discoveries-heading">
+            <div class="section-heading">
+                <div><h2 id="discoveries-heading">Your Discoveries</h2><p>The longer-lived investigations containing your Missions and findings.</p></div>
+                <a th:href="@{/app/discoveries}">View all Discoveries</a>
+            </div>
+            <div class="empty-state" th:if="${#lists.isEmpty(recentDiscoveries)}">
+                <h3>No Discoveries yet</h3>
+                <p>Your first Discovery is created when your harness submits its first draft Mission.</p>
+            </div>
+            <div class="discovery-list" th:unless="${#lists.isEmpty(recentDiscoveries)}">
+                <a class="discovery-row" th:each="discovery : ${recentDiscoveries}" th:href="@{/app/discoveries/{id}(id=${discovery.id()})}">
+                    <span><strong th:text="${discovery.title()}">Discovery</strong><span th:text="${discovery.objective()}">Objective</span></span>
+                    <span class="discovery-meta"><strong th:text="${discovery.missionCount()}">1</strong><span th:text="${discovery.missionCount() == 1 ? ' Mission' : ' Missions'}"> Mission</span></span>
+                </a>
+            </div>
+        </section>
+    </main>
+</div>
+</body>
+</html>

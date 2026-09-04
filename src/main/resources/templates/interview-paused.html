@@ -1,0 +1,5 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interview paused · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body><main class="shell centered"><section class="panel participant-panel"><p class="eyebrow">Paused</p><h1>Your place is saved</h1><p>Return in this browser and resume when ready.</p><form method="post" th:action="@{/interview/resume}"><button class="button">Resume interview</button></form><form method="post" th:action="@{/interview/end-early}"><button class="button secondary">End here</button></form></section></main></body>
+</html>

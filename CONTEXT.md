@@ -122,12 +122,10 @@ The intended boundary is:
 - The engineer's harness owns project context and the Interview Mission Shaping agent loop. It exchanges only stable semantic Mission and reviewed Discovery data with FindWorks through OAuth-authenticated MCP.
 - Pi owns the Interview Session agent loop, skill loading, model/provider interaction, and tool execution.
 - OpenAI can be a model provider behind Pi; it is not the FindWorks orchestration layer.
-- A small custom Pi extension is likely to expose FindWorks-specific tools such as `ask_question`, `record_fact`, `record_assumption`, `record_conflict`, `record_unknown`, `create_investigation`, `delegate_investigation`, and `complete_interview`.
-- FindWorks should expose a stable semantic protocol to its web UI rather than leaking raw Pi event shapes to the browser.
+- A small custom Pi extension exposes only the atomic Interview Session and findings-submission capabilities defined below.
+- FindWorks exposes a stable semantic protocol to its web UI rather than leaking raw Pi event shapes to the browser.
 
-Treat the exact Pi integration mechanism (RPC process, SDK service, or another shape) as a decision still to be proven.
-
-Current primary-source research shows that Pi supports TypeScript SDK embedding and stdin/stdout JSONL RPC, but no hosted service or daemon. A real Pi prototype validated one supervised RPC child per active Interview Session as the M0 runtime boundary, conditional on FindWorks remaining authoritative and the deployment providing hard process isolation. The exact semantic command, event, synchronisation, and recovery contract remains an architecture decision.
+Current primary-source research shows that Pi supports TypeScript SDK embedding and stdin/stdout JSONL RPC, but no hosted service or daemon. A real Pi prototype validated one supervised RPC child per active Interview Session as the M0 runtime boundary, conditional on FindWorks remaining authoritative and the deployment providing hard process isolation. The semantic command, event, synchronisation, and recovery contract is settled below.
 
 Pi process isolation is fault isolation, not a security sandbox. Any M0 integration must disable built-in filesystem and shell tools and ambient resources, explicitly load only the approved interview skill and trusted semantic-tool extension, translate raw Pi events behind the FindWorks adapter, and make application mutations authorised and idempotent. Pi session files are sensitive secondary checkpoints within Interview Session retention and deletion boundaries, never authoritative FindWorks state. A dedicated OS identity, sandbox, or container must prevent Pi and its trusted extension from reaching another Interview Session's files, processes, application credentials, or provider credentials.
 
@@ -164,6 +162,8 @@ A conventional relational domain model is preferred over a generic entity/attrib
 
 A modular monolith is the expected starting point unless Wayfinder surfaces evidence that another deployment shape is required.
 
+M0 exposes tools-only, stateless Streamable HTTP MCP from that monolith. The MCP resource uses the Investigator's existing browser identity through OAuth Authorization Code with PKCE, RFC 9728 protected-resource discovery, RFC 8707 resource indicators, exact MCP-resource audience validation, and coarse read/write scopes backed by FindWorks record-level authorisation. Public-client registration is limited to PKCE, approved scopes, loopback redirects, bounded registration rates, and no client secrets. Client registrations, grants, authorisations, signing keys, and revocations persist in PostgreSQL. Adoption remains gated by the implemented acceptance journey against the installed Codex CLI and pinned Pi MCP adapter; no simulated walkthrough counts as interoperability evidence.
+
 ## SaaS kernel
 
 There is an existing separate Apache-2.0-licensed SaaS kernel project. Current research shows that it is a semantic workflow kernel rather than a reusable identity or SaaS platform layer: it provides tenant-scoped database and authorisation patterns, durable Intent/Event evidence, and telemetry, but not identity, membership, invitations, email, product-wide audit, retention, or deletion.
@@ -190,6 +190,8 @@ engineer harness shapes Interview Mission
 The Wayfinder effort is complete when enough product, domain, UX, runtime, persistence, and integration decisions are settled that `/to-spec` and `/to-tickets` can proceed without implementation agents inventing product decisions.
 
 M0 must specify a pilot-ready MCP and web experience for one organisation. One real Investigator must be able to shape a Mission in their chosen harness, create a Discovery and draft Interview Mission through FindWorks MCP, approve it in the web app, invite one real external interviewee, complete an adaptive Interview Session, review persisted Knowledge Items linked to Evidence, and retrieve reviewed Discovery context through MCP. The experience requires basic security and recoverable failure handling, but not full SaaS operational maturity.
+
+The M0 engineer-harness compatibility baseline is the software installed for the pilot: Codex CLI 0.151.0 and Pi 0.84.4 with `pi-mcp-adapter` 2.31.0. Both clients must pass the same OAuth, Mission submission, structured-failure, idempotent-replay, review-link, and reviewed-context retrieval journey. The semantic MCP contract remains harness-neutral, but M0 makes no compatibility promise beyond the versions recorded in its acceptance run.
 
 M0 succeeds when the investigator confirms that the findings answer the Interview Mission's intent while exposing relevant unknowns, assumptions, conflicts, and ownership gaps. Automated coverage measures and interviewee approval may assist later, but they do not decide M0 success.
 
@@ -219,7 +221,7 @@ Sending an invitation is separate from approval and requires confirmation of the
 
 Interview Mission versions have draft, approved, or superseded lifecycle states. Invitation delivery and Interview Session progress have separate lifecycles rather than being overloaded onto the Mission.
 
-M0 sends the approved invitation by email. Before starting, the interviewee sees the Investigator's identity, organisation, Interview Mission purpose, expected commitment, a data-use summary, and an explicit choice to begin. They do not receive the Investigator's raw transcript or a fixed list of every proposed question.
+M0 supports Investigator-controlled delivery of the approved invitation. The owning Investigator may send it by configured email delivery or generate a secure invitation link in FindWorks to copy and send through another channel. A manually generated link is shown only at generation time, expires after seven days, works once, and is revoked when reissued. FindWorks audits manual generation without claiming that the recipient controlled the entered email address. Before starting, the interviewee sees the Investigator's identity, organisation, Interview Mission purpose, expected commitment, a data-use summary, and an explicit choice to begin. They do not receive the Investigator's raw transcript or a fixed list of every proposed question.
 
 The Investigator uses an authenticated account with verified email and membership in the pilot organisation. They may access all M0 records for Discoveries they own in that organisation, but nothing belonging to another organisation.
 
@@ -237,7 +239,7 @@ Audit records actor, time, organisation, resource, and outcome for authenticatio
 
 M0 accepts text answers only. The Evidence model may support attachment references later, but M0 has no file-upload feature.
 
-M0 requires TLS, encryption at rest, hashed invitation tokens, secure browser cookies, rate limits, least privilege, and no secrets or interview content in logs. FindWorks records only that the interviewee controlled the invited email link; it does not claim real-world identity verification.
+M0 requires TLS, encryption at rest, hashed invitation tokens, secure browser cookies, rate limits, least privilege, and no secrets or interview content in logs. For email delivery, FindWorks records only that the interviewee controlled the invited email link; for manual delivery, it records only that the owning Investigator generated the link and a bearer redeemed it. Neither route claims real-world identity verification.
 
 During the Interview Session, the interviewee sees one clear natural-language question at a time, brief human context when needed, an answer input, simple ways to say they do not know, name another owner, or request clarification, and simple progress and completion cues. The SME interacts with the FindWorks Interview agent, which runs on Pi with the approved Interview Mission context; this is distinct from the Investigator's project-aware Pi or other harness. Structured responses suggested by the FindWorks Interview agent are non-binding conveniences: FindWorks always lets the interviewee answer in their own words. For an ordinary M0 Question, the agent may suggest yes/no, yes/no/partly, paraphrase confirmation, or one choice from two to five short question-specific options. Every structured choice permits optional explanatory text in the same answer. `I don't know` and `someone else owns this` remain visually secondary but available on every substantive Question regardless of the suggested response mode. A structured answer is one immutable Evidence item that preserves the exact displayed option and its stable identity separately from the interviewee's optional verbatim explanation, with the Question supplying context. Selecting an option never asks the interviewee to classify Knowledge Items or Investigation Results. FindWorks asks them to confirm a paraphrase only when an answer is ambiguous, contradictory, inferred, or materially important.
 
@@ -245,7 +247,7 @@ Structured findings and provenance review are exclusively Investigator-facing in
 
 M0 uses a calm, focused interaction with one primary task at a time and minimal surrounding chrome across Interview Mission approval, Interview Session, and findings review. The Interview Session includes a simple progress bar and plain-language coverage summary. Avoid document-first workspace navigation and dense multi-panel presentation as the default experience.
 
-The Investigator receives findings grouped by Investigation Item. Each group shows its outcome, Knowledge Items, unresolved gaps, and review state; the package also shows mission-level coverage. Each claim shows a short source excerpt and participant, with one action to open the surrounding answer context or referenced attachment. The full transcript remains secondary Evidence rather than the primary findings view.
+The Investigator receives findings grouped by Investigation Item. Each group shows its outcome, Knowledge Items, unresolved gaps, and review state; the package also shows mission-level coverage. Each claim shows a short source excerpt and participant, with one action to open the surrounding answer context. The reconstructed transcript remains secondary Evidence rather than the primary findings view.
 
 Before accepting the findings package, the Investigator reviews every required Investigation Item outcome; optional findings may remain unreviewed. They accept the package with notes or reject it and record required follow-up. Corrections append Investigator Evidence and never alter the interviewee's original Evidence.
 
@@ -281,13 +283,13 @@ Only investigator and interviewee require product UI in M0. Organisation setup a
 
 M0 acceptance is anchored in a real requirements and domain discovery for a bounded software change. Evidence must combine one live end-to-end pilot with repeatable scripted checks for agreed boundary and failure scenarios.
 
-The investigator may accept the result only when every Interview Mission area ends as supported knowledge, an explicit unknown, a conflict, or an ownership gap; every asserted Knowledge Item links to Evidence; and no critical fabrication or misattribution exists.
+The Investigator may accept the result only when every required Investigation Item ends as supported Knowledge, an explicit Unknown, a Conflict, or an Ownership Gap; every asserted Knowledge Item links to Evidence; and no critical fabrication or misattribution exists.
 
 Boundary checks must cover an interviewee who does not know, identifies another owner, contradicts known context, revises an earlier answer, or offers an unsupported assumption. Failure checks must cover an expired or reused invitation, an interrupted Interview Session, a model or runtime failure, and a findings extraction failure. Accepted answers must never disappear, duplicate, or become detached from their Evidence.
 
 An expired or reused invitation must fail safely and allow reissue. An interrupted Interview Session resumes after its last accepted answer. Runtime failure retries or resumes without duplicating work. Findings extraction can rerun from retained Evidence without another interview.
 
-Any fabricated Knowledge Item, wrong Evidence attribution, cross-participant disclosure, lost accepted answer, recovery duplication, premature Interview Session completion, or invitation bypass automatically fails M0 acceptance. The acceptance record retains the approved Interview Mission, invitation lifecycle, timestamped Evidence, structured findings with provenance, scripted check results, and the Investigator's acceptance decision with notes.
+Any fabricated Knowledge Item, wrong Evidence attribution, cross-participant disclosure, lost accepted answer, recovery duplication, premature Interview Session completion, or invitation bypass automatically fails M0 acceptance. The acceptance record retains the approved Interview Mission, invitation lifecycle, timestamped Evidence, structured findings with provenance, scripted check results, and the Investigator's acceptance decision with notes. Only the implemented live journey and its repeatable checks count as end-to-end proof; a simulated restatement of the designed workflow does not.
 
 ## Keep out of the initial map unless it becomes necessary
 

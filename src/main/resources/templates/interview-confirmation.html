@@ -1,0 +1,5 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Confirm completion · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body><main class="shell centered"><section class="panel participant-panel"><p class="subtle">One last check</p><h1>Ready to finish?</h1><p>We recorded your answers. These points remain open:</p><ul><li th:each="item : ${unresolved}" th:text="${item}">Unresolved point</li></ul><p>You can confirm this is an honest stopping point. It does not pretend the open points are resolved.</p><form method="post" th:action="@{/interview/confirm-completion}"><button class="button" type="submit">Confirm and finish</button></form></section></main></body>
+</html>

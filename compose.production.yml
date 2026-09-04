@@ -1,0 +1,96 @@
+name: findworks
+services:
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      FINDWORKS_DOMAIN: ${FINDWORKS_DOMAIN:?}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [frontend]
+    depends_on:
+      web:
+        condition: service_healthy
+
+  web:
+    image: ${FINDWORKS_APP_IMAGE:?Pin an immutable application image digest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      FINDWORKS_PROCESS_MODE: web
+      FINDWORKS_BASE_URL: https://${FINDWORKS_DOMAIN:?}
+      FINDWORKS_COOKIE_SECURE: "true"
+      SPRING_DATASOURCE_URL: ${FINDWORKS_WEB_DATABASE_URL:?}
+      SPRING_DATASOURCE_USERNAME: ${FINDWORKS_WEB_DATABASE_USERNAME:?}
+      SPRING_DATASOURCE_PASSWORD: ${FINDWORKS_WEB_DATABASE_PASSWORD:?}
+      FINDWORKS_OPERATOR_TOKEN: disabled
+      FINDWORKS_OUTBOX_KEY: ${FINDWORKS_OUTBOX_KEY:?}
+    networks: [frontend, runtime]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  worker:
+    image: ${FINDWORKS_WORKER_IMAGE:?Pin an immutable worker image digest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      FINDWORKS_PROCESS_MODE: worker
+      FINDWORKS_BASE_URL: https://${FINDWORKS_DOMAIN:?}
+      SPRING_DATASOURCE_URL: ${FINDWORKS_WORKER_DATABASE_URL:?}
+      SPRING_DATASOURCE_USERNAME: ${FINDWORKS_WORKER_DATABASE_USERNAME:?}
+      SPRING_DATASOURCE_PASSWORD: ${FINDWORKS_WORKER_DATABASE_PASSWORD:?}
+      SPRING_FLYWAY_ENABLED: "false"
+      FINDWORKS_OPERATOR_TOKEN: ${FINDWORKS_OPERATOR_TOKEN:?}
+      FINDWORKS_OUTBOX_KEY: ${FINDWORKS_OUTBOX_KEY:?}
+      FINDWORKS_EMAIL_ENDPOINT: ${FINDWORKS_EMAIL_ENDPOINT:?}
+      FINDWORKS_EMAIL_API_KEY: ${FINDWORKS_EMAIL_API_KEY:?}
+      FINDWORKS_EMAIL_FROM: ${FINDWORKS_EMAIL_FROM:?}
+      FINDWORKS_RUNTIME_COMMAND: docker
+      FINDWORKS_RUNTIME_IMAGE: ${FINDWORKS_RUNTIME_IMAGE:?Pin an immutable runtime image digest}
+      FINDWORKS_RUNTIME_NETWORK: findworks_runtime
+      FINDWORKS_RUNTIME_INTERNAL_URL: http://web:8080/internal/runtime/turn
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?}
+      FINDWORKS_MODEL_PROVIDER: openai
+      FINDWORKS_MODEL: ${FINDWORKS_MODEL:?}
+      HTTPS_PROXY: http://egress-proxy:3128
+      NO_PROXY: web
+    volumes:
+      - ${FINDWORKS_ROOTLESS_DOCKER_SOCKET:?}:/var/run/docker.sock
+    networks: [runtime, egress]
+    depends_on:
+      web:
+        condition: service_healthy
+      egress-proxy:
+        condition: service_started
+
+  egress-proxy:
+    image: ubuntu/squid:6.10-24.10_edge
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/var/log/squid:rw,noexec,nosuid,size=16m", "/var/spool/squid:rw,noexec,nosuid,size=16m", "/run:rw,noexec,nosuid,size=4m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./deploy/squid.conf:/etc/squid/squid.conf:ro
+    networks: [runtime, egress]
+
+networks:
+  frontend: {}
+  runtime:
+    internal: true
+  egress: {}
+volumes:
+  caddy-data: {}
+  caddy-config: {}

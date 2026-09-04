@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Harness access · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body class="app-body"><div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('harnesses', ${investigator})}"></th:block>
+    <main class="app-main">
+        <header class="workspace-header"><div><h1>Harness access</h1><p>Project-aware agent harnesses authorised to submit Missions or retrieve reviewed context.</p></div></header>
+        <div class="empty-state" th:if="${#lists.isEmpty(grants)}"><h2>No active grants.</h2><p>Your harness will ask you to authorise access when it first connects.</p></div>
+        <div class="access-list" th:unless="${#lists.isEmpty(grants)}">
+            <article class="access-row" th:each="grant : ${grants}">
+                <div><h2 th:text="${grant.name}">Harness</h2><p th:text="${grant.scopes}">Scopes</p></div>
+                <form method="post" th:action="@{/oauth/revoke-grant}"><input type="hidden" name="id" th:value="${grant.id}"><button class="button secondary compact" type="submit">Revoke access</button></form>
+            </article>
+        </div>
+    </main>
+</div></body>
+</html>

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<body>
+<aside class="app-sidebar" th:fragment="sidebar(active, investigator)">
+    <a class="app-wordmark" th:href="@{/app}" aria-label="FindWorks dashboard">
+        <span class="app-wordmark-mark" aria-hidden="true">F</span>
+        <span>FindWorks</span>
+    </a>
+
+    <nav class="app-navigation" aria-label="Workspace">
+        <a th:href="@{/app}" th:classappend="${active == 'dashboard'} ? ' is-active'" th:attr="aria-current=${active == 'dashboard'} ? 'page' : null">Dashboard</a>
+        <a th:href="@{/app/discoveries}" th:classappend="${active == 'discoveries'} ? ' is-active'" th:attr="aria-current=${active == 'discoveries'} ? 'page' : null">Discoveries</a>
+        <a th:href="@{/app/missions}" th:classappend="${active == 'missions'} ? ' is-active'" th:attr="aria-current=${active == 'missions'} ? 'page' : null">Missions</a>
+        <a th:href="@{/app/findings}" th:classappend="${active == 'findings'} ? ' is-active'" th:attr="aria-current=${active == 'findings'} ? 'page' : null">Findings</a>
+        <a th:href="@{/oauth/grants}" th:classappend="${active == 'harnesses'} ? ' is-active'" th:attr="aria-current=${active == 'harnesses'} ? 'page' : null">Harness access</a>
+    </nav>
+
+    <div class="app-account">
+        <span class="app-account-name" th:text="${investigator.displayName()}">Gareth</span>
+        <span th:text="${investigator.organizationName()}">FindWorks Pilot</span>
+        <form method="post" th:action="@{/signout}">
+            <button class="text-button" type="submit">Sign out</button>
+        </form>
+    </div>
+</aside>
+</body>
+</html>
