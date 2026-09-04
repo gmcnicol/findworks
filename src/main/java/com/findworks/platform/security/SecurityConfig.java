@@ -26,13 +26,13 @@ public class SecurityConfig {
 
         http
                 .authorizeHttpRequests((authorize) -> authorize
-                        .requestMatchers("/", "/signin", "/denied", "/health", "/assets/**").permitAll()
-                        .requestMatchers("/api/**", "/app/**").authenticated()
+                        .requestMatchers("/", "/error", "/signin", "/denied", "/health", "/assets/**", "/invite/**", "/interview/**", "/test/**", "/internal/**", "/mcp", "/.well-known/**", "/oauth/register", "/oauth/token", "/oauth/revoke", "/operator/**").permitAll()
+                        .requestMatchers("/api/**", "/app/**", "/oauth/authorize", "/oauth/grants", "/oauth/revoke-grant").authenticated()
                         .anyRequest().denyAll())
                 .formLogin((form) -> form
                         .loginPage("/signin")
                         .loginProcessingUrl("/signin")
-                        .defaultSuccessUrl("/app", true)
+                        .defaultSuccessUrl("/app")
                         .failureHandler(failureHandler))
                 .logout((logout) -> logout
                         .logoutUrl("/signout")
@@ -42,7 +42,7 @@ public class SecurityConfig {
                                 new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
                                 request -> request.getRequestURI().startsWith("/api/"))
                         .accessDeniedPage("/denied"))
-                .csrf((csrf) -> csrf.ignoringRequestMatchers("/api/**"))
+                .csrf((csrf) -> csrf.ignoringRequestMatchers("/api/**", "/mcp", "/oauth/register", "/oauth/token", "/oauth/revoke", "/test/**", "/internal/**", "/operator/**"))
                 .headers((headers) -> headers.frameOptions(Customizer.withDefaults()));
 
         return http.build();

@@ -1,0 +1,5 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interview paused · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body><main class="shell centered"><section class="panel participant-panel"><p class="eyebrow">Your answer is safe</p><h1>We could not prepare the next question</h1><p>You do not need to repeat your accepted answer. You can try again, leave this paused, or end here.</p><blockquote th:if="${answer != null}" th:text="${answer}">Your accepted answer</blockquote><form method="post" th:action="@{/interview/retry}"><button class="button">Try again</button></form><form method="post" th:action="@{/interview/end-early}"><button class="button secondary">End the interview here</button></form></section></main></body>
+</html>

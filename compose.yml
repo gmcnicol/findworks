@@ -23,6 +23,7 @@ services:
       FINDWORKS_TEST_SUPPORT: "true"
       FINDWORKS_PROCESS_MODE: all
       FINDWORKS_COOKIE_SECURE: "false"
+      FINDWORKS_OPERATOR_TOKEN: test-operator-token
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
       postgres:

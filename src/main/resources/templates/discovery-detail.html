@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title th:text="${discovery.title()} + ' · FindWorks'">Discovery · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body class="app-body"><div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('discoveries', ${investigator})}"></th:block>
+    <main class="app-main">
+        <nav class="breadcrumbs" aria-label="Breadcrumb"><a th:href="@{/app/discoveries}">Discoveries</a><span aria-hidden="true">/</span><span th:text="${discovery.title()}">Current Discovery</span></nav>
+        <header class="workspace-header detail-header"><div><h1 th:text="${discovery.title()}">Discovery</h1><p th:text="${discovery.objective()}">Objective</p></div></header>
+        <p class="inline-notice" th:if="${discovery.warning()}" role="status"><strong>Scheduled deletion is within 14 days.</strong> Extend retention through pilot support if this work must remain available.</p>
+
+        <section class="workspace-section" aria-labelledby="discovery-missions-heading">
+            <div class="section-heading"><div><h2 id="discovery-missions-heading">Interview Missions</h2><p>The deliberate knowledge-seeking work inside this Discovery.</p></div></div>
+            <div class="empty-state compact-empty" th:if="${#lists.isEmpty(missions)}"><h3>No Missions yet</h3><p>Submit a draft Mission from your project-aware harness.</p></div>
+            <div class="discovery-list" th:unless="${#lists.isEmpty(missions)}">
+                <a class="discovery-row" th:each="mission : ${missions}" th:href="@{/app/missions/{id}/review(id=${mission.id})}">
+                    <span><strong th:text="${mission.label}">Mission</strong><span th:text="${mission.approved ? 'Approved version ' + mission.version : 'Draft version ' + mission.version}">Status</span></span>
+                    <span class="discovery-meta">Open Mission</span>
+                </a>
+            </div>
+        </section>
+
+        <section class="danger-zone">
+            <h2>Delete this Discovery</h2>
+            <p>Access stops immediately. Content is purged within seven days and backups age it out within 30 days.</p>
+            <form method="post" th:action="@{/app/discoveries/{id}/delete(id=${discovery.id()})}"><button class="button danger" type="submit">Delete Discovery</button></form>
+        </section>
+    </main>
+</div></body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${mission.label()} + ' · FindWorks'">Interview Mission · FindWorks</title>
+    <link rel="stylesheet" th:href="@{/assets/app.css}">
+</head>
+<body class="app-body">
+<div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('missions', ${investigator})}"></th:block>
+<main class="app-main review-shell">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a th:href="@{/app/missions}">Missions</a><span aria-hidden="true">/</span><span th:text="${mission.label()}">Current Mission</span></nav>
+    <header class="review-header">
+        <div>
+            <h1 th:text="${mission.label()}">Interview Mission</h1>
+            <p class="subtle" th:text="${mission.state() == 'APPROVED' ? 'Approved' : 'Draft'} + ' · Version ' + ${mission.version()}">Draft · Version 1</p>
+            <p class="notice" th:if="${mission.approvalSuperseded()}"><strong>Approval superseded.</strong> Review and approve this version before sending a new invitation.</p>
+            <p class="notice" th:if="${mission.state() == 'APPROVED' and !activeInvitation}">Approved. No invitation has been sent.</p>
+            <p class="notice" th:if="${mission.state() == 'APPROVED' and activeInvitation}"><strong>An invitation link is active.</strong> Generating another link will revoke it.</p>
+        </div>
+        <div class="review-progress" aria-label="Review progress">
+            <strong th:text="${reviewedCount} + ' of 5 checkpoints reviewed'">0 of 5 checkpoints reviewed</strong>
+            <span>Approval stays unavailable until review is complete.</span>
+        </div>
+    </header>
+
+    <section class="review-section" aria-labelledby="purpose-heading">
+        <h2 id="purpose-heading">Purpose</h2>
+        <dl class="review-fields">
+            <div><dt>Objective</dt><dd th:text="${mission.objective()}">Mission objective</dd></div>
+            <div><dt>Desired outcome</dt><dd th:text="${mission.desiredOutcome()}">Desired outcome</dd></div>
+        </dl>
+    </section>
+
+    <section class="review-section" aria-labelledby="interviewee-heading">
+        <h2 id="interviewee-heading">Intended interviewee</h2>
+        <dl class="review-fields">
+            <div><dt>Role</dt><dd th:text="${mission.intervieweeRole()}">Role</dd></div>
+            <div><dt>Why this person</dt><dd th:text="${mission.intervieweeRelevance()}">Relevance</dd></div>
+        </dl>
+    </section>
+
+    <section class="review-section" aria-labelledby="items-heading">
+        <h2 id="items-heading">Investigation Items</h2>
+        <article class="investigation-item" th:each="item : ${items}">
+            <div class="item-heading">
+                <h3 th:text="${item.gap}">Knowledge gap</h3>
+                <span th:text="${item.required ? 'Required' : 'Optional'}">Required</span>
+            </div>
+            <p th:text="${item.why}">Why it matters</p>
+            <p class="subtle"><strong>Priority:</strong> <span th:text="${item.priority}">HIGH</span></p>
+            <p class="subtle"><strong>Relevant context:</strong> <span th:text="${item.context}"></span></p>
+            <p class="subtle"><strong>Enough evidence:</strong> <span th:text="${item.sufficient}"></span></p>
+        </article>
+    </section>
+
+    <section class="review-section" aria-labelledby="context-heading">
+        <h2 id="context-heading">Shared context and boundaries</h2>
+        <h3>Shared context</h3><ul><li th:each="entry : ${entries['SHARED_CONTEXT']}" th:text="${entry.value()}">Context</li></ul>
+        <h3>Boundaries</h3><ul><li th:each="entry : ${entries['BOUNDARY']}" th:text="${entry.value()}">Boundary</li></ul>
+        <h3>Prohibited topics</h3><ul><li th:each="entry : ${entries['PROHIBITED_TOPIC']}" th:text="${entry.value()}">Topic</li></ul>
+        <h3>Opening questions</h3><ul><li th:each="entry : ${entries['OPENING_QUESTION']}" th:text="${entry.value()}">Question</li></ul>
+    </section>
+
+    <section class="review-section" aria-labelledby="completion-heading">
+        <h2 id="completion-heading">Completion and data use</h2>
+        <p><strong th:text="${mission.expectedMinutes()} + ' minutes expected'">20 minutes expected</strong></p>
+        <p th:text="${mission.dataUse()}">Data use</p>
+        <h3>Completion criteria</h3><ul><li th:each="entry : ${entries['COMPLETION_CRITERION']}" th:text="${entry.value()}">Criterion</li></ul>
+    </section>
+
+    <details class="review-section">
+        <summary>Edit this Mission</summary>
+        <p>Saving one field creates a new immutable draft version and supersedes any approval.</p>
+        <form class="form" method="post" th:action="@{/app/missions/{id}/label(id=${missionId})}">
+            <label>Administrative label<input name="label" required maxlength="160" th:value="${mission.label()}"></label>
+            <button class="button secondary" type="submit">Rename Mission</button>
+        </form>
+        <form class="form" th:each="field : ${editableFields}" method="post" th:action="@{/app/missions/{id}/edit(id=${missionId})}">
+            <input type="hidden" name="version" th:value="${mission.version()}">
+            <input type="hidden" name="field" th:value="${field.name()}">
+            <label th:text="${field.label()}">Field</label>
+            <textarea name="value" rows="3" maxlength="4000" required th:text="${field.value()}"></textarea>
+            <button class="button secondary" type="submit" th:text="'Save ' + ${field.label()}">Save</button>
+        </form>
+        <form class="form" th:each="item : ${items}" method="post" th:action="@{/app/missions/{id}/items/{position}/edit(id=${missionId},position=${item.position})}">
+            <input type="hidden" name="version" th:value="${mission.version()}">
+            <h3 th:text="'Investigation Item ' + (${item.position} + 1)">Investigation Item</h3>
+            <label>Knowledge gap<textarea name="gap" rows="3" maxlength="4000" required th:text="${item.gap}"></textarea></label>
+            <label>Why it matters<textarea name="why" rows="3" maxlength="4000" required th:text="${item.why}"></textarea></label>
+            <label>Priority<select name="priority"><option value="HIGH" th:selected="${item.priority == 'HIGH'}">HIGH</option><option value="MEDIUM" th:selected="${item.priority == 'MEDIUM'}">MEDIUM</option><option value="LOW" th:selected="${item.priority == 'LOW'}">LOW</option></select></label>
+            <label><input type="checkbox" name="required" value="true" th:checked="${item.required}"> Required</label>
+            <label>Relevant context<textarea name="context" rows="3" maxlength="4000" required th:text="${item.context}"></textarea></label>
+            <label>Sufficient evidence<textarea name="sufficient" rows="3" maxlength="4000" required th:text="${item.sufficient}"></textarea></label>
+            <button class="button secondary" type="submit">Save Investigation Item</button>
+        </form>
+        <th:block th:each="group : ${entries}">
+            <form class="form" th:each="entry : ${group.value}" method="post" th:action="@{/app/missions/{id}/entries/{kind}/{position}/edit(id=${missionId},kind=${entry.kind()},position=${entry.position()})}">
+                <input type="hidden" name="version" th:value="${mission.version()}">
+                <label th:text="${entry.kind()}">Entry</label>
+                <textarea name="value" rows="3" maxlength="4000" required th:text="${entry.value()}"></textarea>
+                <label th:if="${entry.kind() == 'TERM'}">Meaning<textarea name="detail" rows="3" maxlength="4000" required th:text="${entry.detail()}"></textarea></label>
+                <button class="button secondary" type="submit">Save entry</button>
+            </form>
+        </th:block>
+    </details>
+
+    <details class="review-section">
+        <summary>Source authority</summary>
+        <dl class="review-fields"><div th:each="origin : ${origins}"><dt th:text="${origin.pointer()}">Field</dt><dd th:text="${origin.authority()}">Authority</dd></div></dl>
+    </details>
+
+    <footer class="review-actions" th:if="${mission.state() == 'DRAFT'}">
+        <form th:each="checkpoint : ${checkpoints}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}">
+            <input type="hidden" name="version" th:value="${mission.version()}">
+            <button class="button secondary" type="submit" th:disabled="${checkpoint.reviewed()}" th:text="${checkpoint.reviewed() ? 'Reviewed · ' + checkpoint.label() : 'Mark reviewed · ' + checkpoint.label()}">Mark reviewed</button>
+        </form>
+        <form method="post" th:action="@{/app/missions/{id}/approve(id=${missionId})}">
+            <input type="hidden" name="version" th:value="${mission.version()}">
+            <button class="button" type="submit" th:disabled="${reviewedCount != 5 or !originBindingsComplete}">Approve this version</button>
+        </form>
+    </footer>
+    <section class="review-section" th:if="${mission.state() == 'APPROVED'}">
+        <h2>Invite the interviewee</h2>
+        <p th:if="${!activeInvitation}">Enter the recipient, generate their secure link, then copy and send it yourself.</p>
+        <p th:if="${activeInvitation}">Generate a replacement only if the interviewee has lost access. Their previous link will stop working.</p>
+        <form class="form" method="post" th:action="@{/app/missions/{id}/invite(id=${missionId})}">
+            <input type="hidden" name="version" th:value="${mission.version()}">
+            <label>Name<input name="name" autocomplete="name" required maxlength="120"></label>
+            <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
+            <div class="form-actions">
+                <button class="button" type="submit" name="delivery" value="manual">Generate link</button>
+                <button class="button secondary" th:if="${emailDeliveryAvailable}" type="submit" name="delivery" value="email">Send invitation</button>
+            </div>
+        </form>
+    </section>
+</main>
+</div>
+</body>
+</html>

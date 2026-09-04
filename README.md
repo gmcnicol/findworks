@@ -7,13 +7,17 @@ The first use case is requirements and domain discovery: an Investigator shapes 
 ## Current status
 
 `main` remains the canonical discovery baseline described in [`CONTEXT.md`](./CONTEXT.md).
-This branch starts the M0 implementation with the pilot shell from issue 47:
+This working tree implements the local M0 journey from issues 47 through 61:
 
 - Java 25
 - Spring Boot 4.1 WebMVC
 - PostgreSQL + Flyway
-- Investigator sign-in and empty Discovery home
-- Playwright browser checks for sign-in, denial, and sign-out
+- OAuth-protected Streamable HTTP MCP for Codex and Pi
+- Mission review, external Interviews, Evidence-backed Findings, retrieval, recovery, and deletion
+- Isolated Pi runtime containers and production web/worker topology
+- Integration, Playwright, fault-injection, and container-isolation checks
+
+See [`docs/acceptance/m0-local-2026-08-31.md`](./docs/acceptance/m0-local-2026-08-31.md) for local evidence and the external deployment and real-pilot gates that remain.
 
 ## Run the pilot shell
 

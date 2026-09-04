@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-04T10:05:00Z",
+  "title": "Design System: FindWorks",
+  "extensions": {
+    "colorMeta": {
+      "action-cobalt": { "role": "primary", "displayName": "Action Cobalt", "canonical": "#2649d8", "tonalRamp": ["#101f5d", "#18308a", "#2649d8", "#4169e1", "#708bec", "#a7b8f5", "#d4ddfb", "#f2f5ff"] },
+      "navigation-navy": { "role": "neutral", "displayName": "Navigation Navy", "canonical": "#111a2b", "tonalRamp": ["#0a101b", "#111a2b", "#263755", "#465772", "#71809a", "#a7b2c3", "#d5dce7", "#f3f6fb"] },
+      "cool-paper": { "role": "neutral", "displayName": "Cool Paper", "canonical": "#f3f6fb", "tonalRamp": ["#18202d", "#303b4c", "#526076", "#7c899d", "#aab4c3", "#cfd6e1", "#e7ebf2", "#f3f6fb"] },
+      "attention-ink": { "role": "secondary", "displayName": "Attention Umber", "canonical": "#984018", "tonalRamp": ["#431707", "#67250c", "#984018", "#bd6338", "#d98c68", "#ebb8a0", "#f8ddd0", "#fff0e8"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Workspace Display", "purpose": "Major workspace and detail-page titles." },
+      "headline": { "displayName": "Section Headline", "purpose": "Operational section boundaries." },
+      "body": { "displayName": "Workhorse Body", "purpose": "Instructions, descriptions, and form content." },
+      "label": { "displayName": "Ledger Label", "purpose": "Table columns and compact field labels." }
+    },
+    "shadows": [
+      { "name": "ledger-lift", "value": "0 12px 34px rgba(28, 47, 78, 0.055)", "purpose": "Separates dense operational ledgers from cool paper." },
+      { "name": "focused-panel", "value": "0 20px 60px rgba(23, 32, 51, 0.08)", "purpose": "Isolated sign-in, Interviewee, and single-task panels." }
+    ],
+    "breakpoints": [
+      { "name": "workspace-compact", "value": "900px" },
+      { "name": "mobile", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The clear commit action for one focused task.",
+      "html": "<button class=\"ds-button-primary\">Approve this version</button>",
+      "css": ".ds-button-primary{min-height:44px;padding:0 18px;border:0;border-radius:999px;background:#2649d8;color:#fff;font:600 1rem system-ui;cursor:pointer}.ds-button-primary:hover{background:#1f3fbe}.ds-button-primary:focus-visible{outline:3px solid #87a2ff;outline-offset:3px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A reversible or lower-emphasis action.",
+      "html": "<button class=\"ds-button-secondary\">View all Discoveries</button>",
+      "css": ".ds-button-secondary{min-height:44px;padding:0 18px;border:0;border-radius:999px;background:#e8eefc;color:#2649d8;font:600 1rem system-ui;cursor:pointer}.ds-button-secondary:hover{background:#dbe5fb}.ds-button-secondary:focus-visible{outline:3px solid #87a2ff;outline-offset:3px}"
+    },
+    {
+      "name": "Workspace Navigation",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Persistent Investigator orientation with one unmistakable active destination.",
+      "html": "<nav class=\"ds-navigation\"><a href=\"#\">Discoveries</a><a class=\"is-active\" href=\"#\">Missions</a><a href=\"#\">Findings</a></nav>",
+      "css": ".ds-navigation{display:grid;gap:4px;width:220px;padding:12px;background:#111a2b}.ds-navigation a{display:flex;min-height:42px;align-items:center;padding:0 12px;border-radius:10px;color:#aebbd1;font:580 .93rem system-ui;text-decoration:none}.ds-navigation a:hover{background:#1b2840;color:#fff}.ds-navigation a.is-active{background:#263755;color:#fff}.ds-navigation a:focus-visible{outline:3px solid #87a2ff;outline-offset:2px}"
+    },
+    {
+      "name": "Attention Status",
+      "kind": "chip",
+      "refersTo": "status-attention",
+      "description": "A compact lifecycle state reserved for work requiring action.",
+      "html": "<span class=\"ds-status-attention\">Findings ready to review</span>",
+      "css": ".ds-status-attention{display:inline-flex;min-height:27px;align-items:center;padding:0 9px;border-radius:999px;background:#fff0e8;color:#984018;font:720 .75rem system-ui}"
+    },
+    {
+      "name": "Ledger Row",
+      "kind": "custom",
+      "description": "Mission identity, parent Discovery, state, and next action in one comparison row.",
+      "html": "<div class=\"ds-ledger-row\"><span><strong>Reconciliation decisions</strong><small>Version 2</small></span><a href=\"#\">Ledger discovery</a><span>Draft needs review</span><a href=\"#\">Review Mission</a></div>",
+      "css": ".ds-ledger-row{display:grid;grid-template-columns:1.4fr 1.4fr 1fr auto;gap:18px;align-items:center;padding:17px 18px;border:1px solid #d8e0ec;border-radius:14px;background:#fff;color:#41516a;font:.9rem/1.4 system-ui}.ds-ledger-row strong,.ds-ledger-row small{display:block}.ds-ledger-row strong{color:#172033}.ds-ledger-row small{margin-top:3px;color:#7b889b}.ds-ledger-row a{color:#2649d8;text-underline-offset:.18em}.ds-ledger-row a:focus-visible{outline:3px solid #87a2ff;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Operations Ledger",
+    "overview": "FindWorks feels like a well-kept operational record: calm enough for sustained work and structured enough that state and next action are never ambiguous. The dark navigation frame establishes place; cool paper and white working surfaces keep content legible under ordinary office lighting.",
+    "keyCharacteristics": ["Persistent orientation across Investigator surfaces", "Dense but readable ledgers rather than galleries of equal cards", "Fine rules and tonal layers for structure", "Compact, text-first lifecycle states", "One clear next action per row"],
+    "rules": [
+      { "name": "The Scarce Signal Rule", "body": "Cobalt identifies interaction; warm hues identify attention. Do not scatter either color decoratively.", "section": "colors" },
+      { "name": "The Parent Context Rule", "body": "A Mission row always names its Discovery. Detail pages retain both global navigation and a local breadcrumb.", "section": "layout" },
+      { "name": "The Flat-by-Default Rule", "body": "Use dividers and whitespace first. Add elevation only where a bounded working surface must separate from the page.", "section": "elevation" }
+    ],
+    "dos": ["Do show lifecycle state and the next action together.", "Do keep Discovery context visible anywhere Missions or findings are listed.", "Do use flat rows and rules when content needs comparison.", "Do preserve a focused, shell-free experience for external Interviewees."],
+    "donts": ["Don't create dead navigation destinations or placeholder dashboard modules.", "Don't use a grid of equal metric cards as the dashboard’s primary structure.", "Don't use warm attention color for ordinary decoration.", "Don't hide required mobile navigation behind horizontal scrolling."]
+  }
+}

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Missions · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body class="app-body"><div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('missions', ${investigator})}"></th:block>
+    <main class="app-main">
+        <header class="workspace-header"><div><h1>Interview Missions</h1><p>Every knowledge-seeking handover, its parent Discovery, and the next step.</p></div></header>
+        <div class="empty-state" th:if="${#lists.isEmpty(missions)}"><h2>No Missions yet</h2><p>Shape and submit an Interview Mission from your project-aware harness.</p><a th:href="@{/oauth/grants}">Manage harness access</a></div>
+        <div class="ledger-wrap" th:unless="${#lists.isEmpty(missions)}"><table class="work-ledger">
+            <thead><tr><th scope="col">Mission</th><th scope="col">Discovery</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+            <tbody><tr th:each="mission : ${missions}">
+                <td data-label="Mission"><a class="ledger-title" th:href="${mission.href()}" th:text="${mission.label()}">Mission</a><span th:text="'Version ' + ${mission.version()}">Version 1</span></td>
+                <td data-label="Discovery"><a th:href="@{/app/discoveries/{id}(id=${mission.discoveryId()})}" th:text="${mission.discovery()}">Discovery</a></td>
+                <td data-label="Status"><span class="status-label" th:classappend="' status-' + ${mission.statusTone()}" th:text="${mission.status()}">Status</span></td>
+                <td class="ledger-action"><a th:href="${mission.href()}" th:text="${mission.action()}">Open</a></td>
+            </tr></tbody>
+        </table></div>
+    </main>
+</div></body>
+</html>

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Discoveries · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body class="app-body"><div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('discoveries', ${investigator})}"></th:block>
+    <main class="app-main">
+        <header class="workspace-header"><div><h1>Discoveries</h1><p>Longer-lived investigations containing Interview Missions, Evidence, and reviewed findings.</p></div></header>
+        <div class="empty-state" th:if="${#lists.isEmpty(discoveries)}"><h2>No Discoveries yet</h2><p>Your first Discovery is created when your harness submits its first draft Mission.</p><a th:href="@{/oauth/grants}">Manage harness access</a></div>
+        <div class="discovery-index" th:unless="${#lists.isEmpty(discoveries)}">
+            <article class="discovery-entry" th:each="discovery : ${discoveries}">
+                <div><h2><a th:href="@{/app/discoveries/{id}(id=${discovery.id()})}" th:text="${discovery.title()}">Discovery</a></h2><p th:text="${discovery.objective()}">Objective</p></div>
+                <dl><div><dt>Missions</dt><dd th:text="${discovery.missionCount()}">0</dd></div><div><dt>Active Interviews</dt><dd th:text="${discovery.activeInterviewCount()}">0</dd></div><div><dt>Findings ready</dt><dd th:text="${discovery.findingsReadyCount()}">0</dd></div></dl>
+            </article>
+        </div>
+    </main>
+</div></body>
+</html>

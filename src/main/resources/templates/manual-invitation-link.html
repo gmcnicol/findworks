@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Copy invitation link · FindWorks</title>
+    <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <script type="module" th:src="@{/assets/manual-invitation.js}"></script>
+</head>
+<body class="app-body">
+<div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('missions', ${investigator})}"></th:block>
+<main class="app-main centered-content">
+    <section class="panel manual-invitation-panel" aria-labelledby="invitation-heading">
+        <h1 id="invitation-heading">Copy invitation link</h1>
+        <p>Send this link to <strong th:text="${invitation.recipient()}">clare@example.com</strong> using your chosen channel.</p>
+        <div class="copy-field">
+            <label for="invitation-link">Invitation link</label>
+            <div class="copy-row">
+                <input id="invitation-link" type="text" readonly th:value="${invitation.link()}" data-invitation-link>
+                <button class="button" type="button" data-copy-invitation>Copy link</button>
+            </div>
+            <p class="subtle copy-status" role="status" aria-live="polite" data-copy-status>The link expires in seven days and works once.</p>
+        </div>
+        <p class="notice">This link will not be shown again after you leave this page. Generate a new link if you lose it; the previous link will stop working.</p>
+        <a class="button secondary" th:href="@{/app/missions/{id}/review(id=${invitation.missionId()})}">Done</a>
+    </section>
+</main>
+</div>
+</body>
+</html>
