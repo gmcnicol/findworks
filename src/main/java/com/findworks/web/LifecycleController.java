@@ -282,6 +282,8 @@ public class LifecycleController {
         return ResponseEntity.ok(Map.of("pending_email", db.sql("select count(*) from email_outbox where state in ('PENDING','RUNNING')").query(Long.class).single(),
                 "failed_email", db.sql("select count(*) from email_outbox where state='FAILED'").query(Long.class).single(),
                 "running_runtime", db.sql("select count(*) from runtime_runs where state='RUNNING'").query(Long.class).single(),
+                "deferred_runtime_retries", db.sql("select count(*) from runtime_runs where state='PENDING' and available_at>now()").query(Long.class).single(),
+                "runtime_circuit_open", db.sql("select coalesce(open_until>now(),false) from runtime_circuit_breakers where dependency='MODEL_PROVIDER'").query(Boolean.class).single(),
                 "pending_deletions", db.sql("select count(*) from deletion_ledger where purged_at is null").query(Long.class).single(),
                 "overdue_deletions", db.sql("select count(*) from deletion_ledger where purged_at is null and purge_due_at<=now()").query(Long.class).single(),
                 "failed_runtime_runs", db.sql("select count(*) from runtime_runs where state='FAILED'").query(Long.class).single(),

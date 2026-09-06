@@ -108,8 +108,7 @@ test('answer, adaptive structured follow-up, completion, and findings review', a
   await expect(page.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await expect(page.getByRole('complementary').getByText('The finance analyst checks the imported amount')).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${data.session_id}`);
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'What does the finance analyst check in the source ledger?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What does the finance analyst check in the source ledger?' })).toBeVisible({ timeout: 5_000 });
   await page.getByLabel('Partly').check();
   await page.getByLabel('Anything to add?').fill('Only unmatched entries need approval.');
   await page.getByRole('button', { name: 'Submit response' }).click();
@@ -221,8 +220,7 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await begin(pause, pauseData);
   await request.post(`/test/sessions/${pauseData.session_id}/near-limit`);
   await pause.reload();
-  await expect(pause.getByRole('heading', { name: 'Nearly at the expected time' })).toBeVisible();
-  await pause.getByRole('button', { name: 'Keep going for 10 minutes' }).click();
+  await expect(pause.getByRole('heading', { name: 'Walk me through the last mismatch you resolved.' })).toBeVisible();
   await expect(pause.getByRole('heading', { name: 'Nearly at the expected time' })).not.toBeVisible();
   await pause.getByRole('button', { name: 'Pause and leave' }).click();
   await expect(pause.getByRole('heading', { name: 'Your place is saved' })).toBeVisible();
@@ -264,14 +262,12 @@ test('expired and reused invitation plus runtime failure expose safe recovery', 
   await request.post(`/test/runtime/run-once?sessionId=${failed.session_id}`);
   await request.post(`/test/runtime/run-once?sessionId=${failed.session_id}`);
   await request.post(`/test/runtime/run-once?sessionId=${failed.session_id}`);
-  await page.reload();
-  await expect(page.getByText('Your answer is safe')).toBeVisible();
+  await expect(page.getByText('Your answer is safe')).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText('do not need to repeat')).toBeVisible();
   await expect(page.getByText('This accepted answer must remain visible.')).toBeVisible();
   await page.getByRole('button', { name: 'Try again' }).click();
   await request.post(`/test/runtime/run-once?sessionId=${failed.session_id}`);
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'What happens next after that?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What happens next after that?' })).toBeVisible({ timeout: 5_000 });
   await page.close();
 
   const extraction = await fixture(request, 'extraction-failed@example.com');

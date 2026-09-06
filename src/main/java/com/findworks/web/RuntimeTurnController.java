@@ -55,7 +55,19 @@ public class RuntimeTurnController {
         var revision = db.sql("select revision from interview_sessions where id=:session for update")
                 .param("session", authorised.sessionId()).query(Integer.class).single();
         if (revision != authorised.expectedRevision()) throw new IllegalArgumentException("stale_revision");
-        for (var outcome : turn.outcomes() == null ? List.<Outcome>of() : turn.outcomes()) {
+        var outcomes = turn.outcomes() == null ? List.<Outcome>of() : turn.outcomes();
+        for (var outcome : outcomes) {
+            if (!Set.of("UNKNOWN", "CONFLICT", "OWNERSHIP_GAP").contains(outcome.coverage())
+                    || outcome.evidenceIds() == null || outcome.evidenceIds().isEmpty()) continue;
+            var directlyExplored = db.sql("""
+                    select count(*) from evidence e join questions q on q.id=e.question_id
+                    join investigation_results r on r.item_id=q.item_id and r.session_id=e.session_id
+                    where r.id=:result and r.session_id=:session and e.id in (:evidence)
+                    """).param("result", outcome.resultId()).param("session", authorised.sessionId())
+                    .param("evidence", outcome.evidenceIds().stream().distinct().toList()).query(Long.class).single();
+            if (directlyExplored == 0) throw new IllegalArgumentException("unsubstantiated_unresolved_outcome");
+        }
+        for (var outcome : outcomes) {
             if (!Set.of("SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OWNERSHIP_GAP").contains(outcome.coverage())) {
                 throw new IllegalArgumentException("invalid_outcome");
             }
@@ -148,7 +160,7 @@ public class RuntimeTurnController {
             event = "completion_confirmation_ready";
         }
         db.sql("update interview_sessions set revision=revision+1 where id=:session").param("session", authorised.sessionId()).update();
-        db.sql("update runtime_runs set state='COMPLETED',lease_until=null,stable_event=:event where id=:run")
+        db.sql("update runtime_runs set state='COMPLETED',lease_until=null,stable_event=:event,error_code=null where id=:run")
                 .param("event", event).param("run", authorised.id()).update();
         db.sql("update runtime_checkpoints set state='COMMITTED' where run_id=:run").param("run", authorised.id()).update();
         db.sql("update runtime_turn_credentials set used_at=now() where token_hash=:hash").param("hash", tokenHash).update();

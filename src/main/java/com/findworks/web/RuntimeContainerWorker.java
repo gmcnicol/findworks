@@ -22,6 +22,10 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnExpression("'${findworks.process-mode:web}' == 'worker' or '${findworks.process-mode:web}' == 'all'")
 @ConditionalOnProperty(name = "findworks.test-support", havingValue = "false", matchIfMissing = true)
 public class RuntimeContainerWorker {
+    private static final int MAX_ATTEMPTS = 3;
+    private static final int CIRCUIT_FAILURE_THRESHOLD = 3;
+    private static final int CIRCUIT_OPEN_SECONDS = 30;
+
     private final JdbcClient db;
     private final TransactionTemplate transactions;
     private final ObjectMapper mapper;
@@ -77,7 +81,12 @@ public class RuntimeContainerWorker {
             heartbeat.interrupt();
             var committed = db.sql("select state='COMPLETED' from runtime_runs where id=:id")
                     .param("id", claim.runId()).query(Boolean.class).single();
-            if (!committed) fail(claim.runId(), settled ? "RUNTIME_EXIT" : "RUNTIME_TIMEOUT");
+            if (committed) {
+                recordSuccess();
+            } else {
+                var code = settled ? classifyExit(process.exitValue()) : "RUNTIME_TIMEOUT";
+                fail(claim.runId(), code);
+            }
         } catch (Exception exception) {
             fail(claim.runId(), "RUNTIME_START_FAILED");
         } finally {
@@ -94,14 +103,22 @@ public class RuntimeContainerWorker {
                 """).update();
         db.sql("update runtime_runs set state='FAILED',lease_until=null,error_code='PROCESS_DIED',stable_event='runtime_failed' where state='RUNNING' and lease_until<now() and restart_count>=1").update();
         if (db.sql("select count(*) from runtime_runs where state='RUNNING' and lease_until>now()").query(Long.class).single() >= 2) return null;
+        var circuit = db.sql("select consecutive_failures,coalesce(open_until>now(),false) from runtime_circuit_breakers where dependency='MODEL_PROVIDER' for update")
+                .query((rs, row) -> new Circuit(rs.getInt(1), rs.getBoolean(2))).single();
+        if (circuit.open()) return null;
         var run = db.sql("""
                 select r.id,r.organization_id,r.session_id,r.expected_revision,s.mission_version,r.state
                 from runtime_runs r join interview_sessions s on s.id=r.session_id
-                where (r.state='PENDING' or (r.state='RUNNING' and r.lease_until<now() and r.restart_count=0))
-                  and r.attempts<3 order by r.created_at limit 1 for update of r skip locked
-                """).query((rs, row) -> new Claim(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
+                where ((r.state='PENDING' and r.available_at<=now())
+                       or (r.state='RUNNING' and r.lease_until<now() and r.restart_count=0))
+                  and r.attempts<:maxAttempts order by r.created_at limit 1 for update of r skip locked
+                """).param("maxAttempts", MAX_ATTEMPTS).query((rs, row) -> new Claim(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
                 rs.getObject(3, UUID.class), rs.getInt(4), rs.getInt(5), rs.getString(6), null)).optional().orElse(null);
         if (run == null) return null;
+        if (circuit.failures() >= CIRCUIT_FAILURE_THRESHOLD) {
+            db.sql("update runtime_circuit_breakers set open_until=now()+(:seconds||' seconds')::interval,updated_at=now() where dependency='MODEL_PROVIDER'")
+                    .param("seconds", wallSeconds + 30).update();
+        }
         db.sql("update runtime_runs set state='RUNNING',attempts=attempts+1,restart_count=restart_count+:restart,lease_until=now()+(:lease||' seconds')::interval where id=:id")
                 .param("restart", run.previousState().equals("RUNNING") ? 1 : 0).param("lease", wallSeconds + 30).param("id", run.runId()).update();
         var checkpoint = run.sessionId() + ":" + run.missionVersion() + ":" + run.expectedRevision();
@@ -159,13 +176,48 @@ public class RuntimeContainerWorker {
             var attempts = db.sql("select attempts from runtime_runs where id=:id and state='RUNNING' for update")
                     .param("id", runId).query(Integer.class).optional();
             if (attempts.isEmpty()) return;
-            if (attempts.get() < 3) {
-                db.sql("update runtime_runs set state='PENDING',lease_until=null,error_code=:code where id=:id").param("code", code).param("id", runId).update();
+            if (attempts.get() < MAX_ATTEMPTS && RuntimeResiliencePolicy.retryable(code)) {
+                var delay = RuntimeResiliencePolicy.backoffSeconds(attempts.get(), runId);
+                db.sql("update runtime_runs set state='PENDING',available_at=now()+(:delay||' seconds')::interval,lease_until=null,error_code=:code where id=:id")
+                        .param("delay", delay).param("code", code).param("id", runId).update();
             } else {
-                db.sql("update runtime_runs set state='FAILED',lease_until=null,error_code=:code,stable_event='runtime_failed' where id=:id").param("code", code).param("id", runId).update();
-                db.sql("update interview_sessions set state='RUNTIME_FAILED' where id=(select session_id from runtime_runs where id=:id)").param("id", runId).update();
+                db.sql("update runtime_runs set state='FAILED',lease_until=null,error_code=:code,stable_event='runtime_failed' where id=:id")
+                        .param("code", code).param("id", runId).update();
+                db.sql("update interview_sessions set state='RUNTIME_FAILED' where id=(select session_id from runtime_runs where id=:id)")
+                        .param("id", runId).update();
             }
+            recordFailure(code);
         });
+    }
+
+    private String classifyExit(int exitCode) {
+        return switch (exitCode) {
+            case 64, 65 -> "RUNTIME_CONFIGURATION";
+            case 70 -> "NO_SEMANTIC_COMMIT";
+            case 75 -> "MODEL_FAILURE";
+            case 124 -> "RUNTIME_TIMEOUT";
+            default -> "RUNTIME_EXIT";
+        };
+    }
+
+    private void recordFailure(String code) {
+        db.sql("""
+                update runtime_circuit_breakers
+                set consecutive_failures=consecutive_failures+1,
+                    open_until=case when consecutive_failures+1>=:threshold
+                        then now()+(:seconds||' seconds')::interval else open_until end,
+                    last_error_code=:code,updated_at=now()
+                where dependency='MODEL_PROVIDER'
+                """).param("threshold", CIRCUIT_FAILURE_THRESHOLD).param("seconds", CIRCUIT_OPEN_SECONDS)
+                .param("code", code).update();
+    }
+
+    private void recordSuccess() {
+        transactions.executeWithoutResult(status -> db.sql("""
+                update runtime_circuit_breakers
+                set consecutive_failures=0,open_until=null,last_error_code=null,updated_at=now()
+                where dependency='MODEL_PROVIDER'
+                """).update());
     }
 
     private static void drain(java.io.InputStream input) {
@@ -195,4 +247,5 @@ public class RuntimeContainerWorker {
 
     private record Claim(UUID runId, UUID organizationId, UUID sessionId, int expectedRevision,
                          int missionVersion, String previousState, String rawToken) {}
+    private record Circuit(int failures, boolean open) {}
 }

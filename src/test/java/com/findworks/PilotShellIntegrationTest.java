@@ -166,6 +166,8 @@ class PilotShellIntegrationTest {
         mockMvc.perform(get("/operator/status").header("X-Operator-Token", "test-operator-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pending_email").value(1))
+                .andExpect(jsonPath("$.deferred_runtime_retries").value(0))
+                .andExpect(jsonPath("$.runtime_circuit_open").value(false))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"pending_email\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"failed_runtime_runs\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"overdue_deletions\"")))
@@ -549,10 +551,13 @@ class PilotShellIntegrationTest {
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/interview"));
+        var sessionId = jdbcTemplate.queryForObject("select session_id from invitations where recipient_email='clare@example.com'", UUID.class);
+        jdbcTemplate.update("update interview_sessions set started_at=now()-interval '3 hours' where id=?", sessionId);
         mockMvc.perform(get("/interview").session(participantSession).cookie(interviewCookie))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Walk me through the last mismatch you resolved.")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Your answer")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Your answer")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Nearly at the expected time"))));
 
         mockMvc.perform(get(invitationLink))
                 .andExpect(status().isGone())
@@ -648,6 +653,7 @@ class PilotShellIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Answer accepted")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("The finance analyst checks the source ledger")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Preparing your next question")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("http-equiv=\"refresh\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Pi RPC"))));
 
         var persisted = jdbcTemplate.queryForMap("""
@@ -670,7 +676,8 @@ class PilotShellIntegrationTest {
             mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
                     .andExpect(status().isOk())
                     .andExpect(content().string(org.hamcrest.Matchers.containsString("The finance analyst checks the source ledger")))
-                    .andExpect(content().string(org.hamcrest.Matchers.containsString("What does the finance analyst check in the source ledger?")));
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("What does the finance analyst check in the source ledger?")))
+                    .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("http-equiv=\"refresh\""))));
         }
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from questions where session_id=? and active", Integer.class, participant.sessionId())).isEqualTo(1);
@@ -1207,6 +1214,49 @@ class PilotShellIntegrationTest {
     }
 
     @Test
+    void runtime_cannot_close_an_unasked_required_area_as_unresolved_from_unrelated_evidence() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "premature-completion@example.com");
+        var secondItem = UUID.randomUUID();
+        jdbcTemplate.update("insert into investigation_items values(?,?,1,1,'Who approves exceptions?','Ownership must be explicit.','HIGH',true,'An exception exists.','The owner or an explicit unknown')",
+                secondItem, UUID.fromString(missionId));
+        var secondResult = UUID.randomUUID();
+        jdbcTemplate.update("insert into investigation_results values(?,(select organization_id from interview_sessions where id=?),?,?, 'UNADDRESSED')",
+                secondResult, participant.sessionId(), participant.sessionId(), secondItem);
+
+        mockMvc.perform(post("/interview/answer").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("answer", "The finance analyst checks the source ledger."))
+                .andExpect(status().is3xxRedirection());
+        var run = jdbcTemplate.queryForMap("select id,expected_revision from runtime_runs where session_id=?", participant.sessionId());
+        var firstResult = jdbcTemplate.queryForObject(
+                "select id from investigation_results where session_id=? and item_id<>?", UUID.class,
+                participant.sessionId(), secondItem);
+        var evidenceId = jdbcTemplate.queryForObject("select id from evidence where session_id=?", UUID.class, participant.sessionId());
+        var token = "premature-completion-turn-token";
+        jdbcTemplate.update("insert into runtime_turn_credentials values(?,?,now()+interval '5 minutes',null)",
+                com.findworks.platform.Ids.sha(token), run.get("id"));
+
+        mockMvc.perform(post("/internal/runtime/turn").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"runId":"%s","expectedRevision":%s,"outcomes":[
+                                  {"resultId":"%s","coverage":"SUPPORTED","category":"FACT","evidenceIds":["%s"],"summary":"The analyst checks the ledger."},
+                                  {"resultId":"%s","coverage":"UNKNOWN","evidenceIds":["%s"],"summary":"The approver is unknown."}],
+                                  "nextAction":{"type":"PROPOSE_COMPLETION"}}
+                                """.formatted(run.get("id"), run.get("expected_revision"), firstResult, evidenceId,
+                                secondResult, evidenceId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("{\"code\":\"unsubstantiated_unresolved_outcome\"}"));
+
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select state from interview_sessions where id=?", String.class, participant.sessionId())).isEqualTo("ACTIVE");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from result_outcomes where result_id in (?,?)", Integer.class, firstResult, secondResult)).isZero();
+    }
+
+    @Test
     void turn_scoped_runtime_capability_commits_once_and_replays_only_the_stable_event() throws Exception {
         var access = authorizeHarness("findworks:read findworks:write");
         var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
@@ -1217,6 +1267,7 @@ class PilotShellIntegrationTest {
                         .param("answer", "The finance analyst checks the source ledger."))
                 .andExpect(status().is3xxRedirection());
         var run = jdbcTemplate.queryForMap("select id,expected_revision from runtime_runs where session_id=?", participant.sessionId());
+        jdbcTemplate.update("update runtime_runs set error_code='MODEL_FAILURE' where id=?", run.get("id"));
         var resultId = jdbcTemplate.queryForObject("select id from investigation_results where session_id=?", UUID.class, participant.sessionId());
         var evidenceId = jdbcTemplate.queryForObject("select id from evidence where session_id=?", UUID.class, participant.sessionId());
         var token = "turn-scoped-test-token";
@@ -1238,6 +1289,8 @@ class PilotShellIntegrationTest {
         }
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from questions where session_id=? and sequence=2", Integer.class, participant.sessionId())).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select error_code is null from runtime_runs where id=?", Boolean.class, run.get("id"))).isTrue();
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from question_options where question_id=(select id from questions where session_id=? and sequence=2)", Integer.class, participant.sessionId())).isEqualTo(2);
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(

@@ -24,10 +24,10 @@ docker compose --env-file deploy/production.env -f compose.production.yml up -d 
 
 ## Health, outages, and telemetry
 
-`/health` reports process health without content. `/operator/status` reports content-free counts for pending and failed email, running and failed runtime work, failed extraction, pending deletion, and overdue deletion. Alert on unavailable health, database connection failure, email exhaustion, runtime exhaustion, extraction failure, deletion past its seven-day bound, purge failure, and missing telemetry.
+`/health` reports process health without content. `/operator/status` reports content-free counts for pending and failed email, running, deferred, and failed runtime work, model-runtime circuit state, failed extraction, pending deletion, and overdue deletion. Alert on unavailable health, database connection failure, email exhaustion, runtime exhaustion, extraction failure, deletion past its seven-day bound, purge failure, and missing telemetry.
 
 - Database outage: web mutations fail and no answer is acknowledged. Existing pages fail closed. Workers retain no alternative state.
-- Model or runtime outage: accepted Evidence remains committed; bounded retry ends in the participant recovery screen.
+- Model or runtime outage: accepted Evidence remains committed. The worker owns one three-attempt budget (Pi's nested retry loop is disabled), waits 2–4 seconds and then 8–10 seconds with stable jitter, and ends in the participant recovery screen after exhaustion. Three consecutive dependency failures open the shared model-runtime circuit for 30 seconds; one half-open probe then either resets or reopens it. The participant working page refreshes into the next question or recovery state without requiring a manual reload.
 - Email outage: Invitation remains pending or failed and is never labelled delivered.
 - Telemetry outage: application work continues, while a separate host check raises a telemetry-gap alert.
 - Proxy or web outage: no internal service is exposed directly.

@@ -1,0 +1,1 @@
+alter table interview_sessions drop column commitment_extension_minutes;

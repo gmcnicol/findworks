@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { submitTurn } from "./turn-client.mjs";
 
 const url = process.env.FINDWORKS_TURN_URL;
 const token = process.env.FINDWORKS_TURN_TOKEN;
@@ -38,14 +39,7 @@ export default function (pi: ExtensionAPI) {
       }),
     }),
     async execute(_toolCallId, params) {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(params),
-        signal: AbortSignal.timeout(15_000),
-      });
-      const body = await response.text();
-      if (!response.ok) throw new Error(`Turn rejected: ${response.status}`);
+      const body = await submitTurn({ url, token, params });
       return { content: [{ type: "text", text: body }], details: {}, terminate: true };
     },
   });

@@ -221,7 +221,6 @@ public class InvitationController {
         if (view.state().equals("NOT_STARTED")) return "interview-introduction";
         if (view.state().equals("PAUSED")) return "interview-paused";
         if (view.state().equals("ACTIVE")) {
-            if (view.nearCommitment()) return "interview-commitment";
             var question = db.sql("select id,text,response_mode from questions where session_id=:session and active=true")
                     .param("session", view.sessionId()).query((rs, row) -> new ActiveQuestion(
                             rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3))).optional();
@@ -320,15 +319,6 @@ public class InvitationController {
     @PostMapping("/interview/resume")
     String resume(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         changeState(token, "PAUSED", "ACTIVE");
-        return "redirect:/interview";
-    }
-
-    @PostMapping("/interview/continue")
-    String continueInterview(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
-        var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
-        var changed = db.sql("update interview_sessions set commitment_extension_minutes=least(commitment_extension_minutes+10,120) where id=:id and state='ACTIVE'")
-                .param("id", view.sessionId()).update();
-        if (changed != 1) throw new ResponseStatusException(HttpStatus.CONFLICT);
         return "redirect:/interview";
     }
 
@@ -688,8 +678,7 @@ public class InvitationController {
         if (token == null || token.isBlank()) return Optional.empty();
         var result = db.sql("""
                 select s.id,s.organization_id,s.mission_id,s.mission_version,s.state,
-                       u.display_name,o.name,mv.objective,mv.expected_minutes,mv.data_use,o.retention_days,o.contact_email,
-                       s.started_at is not null and now()>=s.started_at+((mv.expected_minutes+s.commitment_extension_minutes-5)||' minutes')::interval
+                       u.display_name,o.name,mv.objective,mv.expected_minutes,mv.data_use,o.retention_days,o.contact_email
                 from access_grants g
                 join interview_sessions s on s.id=g.session_id and s.organization_id=g.organization_id
                 join missions m on m.id=s.mission_id
@@ -703,7 +692,7 @@ public class InvitationController {
                 .query((rs, row) -> new ParticipantView(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class),
                         rs.getInt(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8),
-                        rs.getInt(9), rs.getString(10), rs.getInt(11), rs.getString(12), rs.getBoolean(13)))
+                        rs.getInt(9), rs.getString(10), rs.getInt(11), rs.getString(12)))
                 .optional();
         if (result.isPresent()) {
             db.sql("update access_grants set last_used_at=now() where token_hash=:hash")
@@ -752,6 +741,5 @@ public class InvitationController {
     private record OwnedSession(UUID organizationId, UUID missionId) {}
     public record ParticipantView(UUID sessionId, UUID organizationId, UUID missionId, int missionVersion,
                                   String state, String investigator, String organization, String objective,
-                                  int expectedMinutes, String dataUse, int retentionDays, String contactEmail,
-                                  boolean nearCommitment) {}
+                                  int expectedMinutes, String dataUse, int retentionDays, String contactEmail) {}
 }

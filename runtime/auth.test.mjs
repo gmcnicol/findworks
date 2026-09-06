@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { preparePiEnvironment } from "./auth.mjs";
+
+test("API-key model runs receive a writable Pi configuration directory", () => {
+  const root = mkdtempSync(join(tmpdir(), "findworks-pi-config-"));
+  const directory = join(root, "agent");
+  try {
+    const environment = preparePiEnvironment({ OPENAI_API_KEY: "synthetic" }, directory);
+    assert.equal(environment.PI_CODING_AGENT_DIR, directory);
+    assert.equal(environment.OPENAI_API_KEY, "synthetic");
+    assert.equal(existsSync(directory), true);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
 
 test("OAuth model credential is file-scoped and removed from the Pi environment", () => {
   const directory = mkdtempSync(join(tmpdir(), "findworks-pi-auth-"));

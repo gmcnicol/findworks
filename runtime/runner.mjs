@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { preparePiEnvironment } from "./auth.mjs";
+import { JsonlDecoder, RpcTurnMonitor } from "./rpc-state.mjs";
 
-const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
-const context = await new Promise((resolve) => input.once("line", resolve));
-input.close();
-
+const context = await readContext(process.stdin);
 const piEnv = preparePiEnvironment();
+const monitor = new RpcTurnMonitor();
+const decoder = new JsonlDecoder();
+const deadlineMs = positiveInteger(process.env.FINDWORKS_RUNNER_DEADLINE_MS, 105_000);
 
 const pi = spawn("pi", [
   "--mode", "rpc",
@@ -20,21 +20,66 @@ const pi = spawn("pi", [
   "--offline",
   "--extension", "/runtime/extension.ts",
   "--skill", "/runtime/SKILL.md",
-  "--system-prompt", "Conduct one bounded FindWorks interview turn. Use only supplied context. Call submit_interview_turn exactly once. Never expose internal terms or write prose outside the tool call.",
+  "--system-prompt", "Conduct one bounded FindWorks interview turn. Use only supplied context. Submit one semantic turn. If the server rejects an unsupported unresolved outcome or premature completion, correct it and submit once more. Never expose internal terms or write prose outside tool calls.",
 ], { stdio: ["pipe", "pipe", "pipe"], env: piEnv });
 
-let settled = false;
-const lines = createInterface({ input: pi.stdout, crlfDelay: Infinity });
-lines.on("line", (line) => {
-  let event;
-  try { event = JSON.parse(line); } catch { return; }
-  if (event.type === "agent_settled") {
-    settled = true;
-    pi.kill("SIGTERM");
+let outcome;
+const deadline = setTimeout(() => finish(124), deadlineMs);
+deadline.unref();
+
+pi.stdout.on("data", chunk => {
+  try {
+    for (const event of decoder.push(chunk)) {
+      const observed = monitor.observe(event);
+      if (observed.terminal) finish(observed.exitCode);
+    }
+  } catch {
+    finish(65);
+  }
+});
+pi.stdout.on("end", () => {
+  try {
+    for (const event of decoder.end()) {
+      const observed = monitor.observe(event);
+      if (observed.terminal) finish(observed.exitCode);
+    }
+  } catch {
+    finish(65);
   }
 });
 pi.stderr.resume();
+pi.on("error", () => finish(70));
+pi.on("exit", code => {
+  clearTimeout(deadline);
+  process.exitCode = outcome ?? (code === 0 ? 70 : code || 70);
+});
+
+// The worker owns the three-attempt retry budget and backoff. Disable Pi's nested
+// retry loop so one infrastructure attempt has one bounded provider call.
+pi.stdin.write(`${JSON.stringify({ id: "retry-policy", type: "set_auto_retry", enabled: false })}\n`);
 pi.stdin.write(`${JSON.stringify({ id: "turn", type: "prompt", message: `Follow the interview skill and complete one turn from this authoritative JSON context:\n${context}` })}\n`);
 
-const exit = await new Promise((resolve) => pi.once("exit", resolve));
-process.exitCode = settled ? 0 : (exit || 1);
+function finish(exitCode) {
+  if (outcome !== undefined) return;
+  outcome = exitCode;
+  clearTimeout(deadline);
+  pi.kill("SIGTERM");
+  const kill = setTimeout(() => pi.kill("SIGKILL"), 2_000);
+  kill.unref();
+}
+
+async function readContext(input) {
+  const decoder = new JsonlDecoder();
+  for await (const chunk of input) {
+    const records = decoder.push(chunk);
+    if (records.length > 0) return JSON.stringify(records[0]);
+  }
+  const records = decoder.end();
+  if (records.length > 0) return JSON.stringify(records[0]);
+  throw new Error("Missing runtime context");
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
