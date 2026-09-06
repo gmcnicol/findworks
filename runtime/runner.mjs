@@ -20,7 +20,7 @@ const pi = spawn("pi", [
   "--offline",
   "--extension", "/runtime/extension.ts",
   "--skill", "/runtime/SKILL.md",
-  "--system-prompt", "Conduct one bounded FindWorks interview turn. Use only supplied context. Submit one semantic turn. If the server rejects an unsupported unresolved outcome or premature completion, correct it and submit once more. Never expose internal terms or write prose outside tool calls.",
+  "--system-prompt", "Conduct one bounded FindWorks interview turn using the skill's dependency-aware design-tree grilling method. Recompute the unresolved frontier from explicit Evidence, test the highest-value ready branch against its sufficient-evidence criteria, and ask one respectful non-leading question at a time. Every ASK_QUESTION must include that branch's exact resultId and question text; do not close a branch you are still probing. Submit one semantic turn. If the server returns a correctable rejection code, repair that proposal and submit once more. Never expose internal terms or write prose outside tool calls.",
 ], { stdio: ["pipe", "pipe", "pipe"], env: piEnv });
 
 let outcome;
@@ -57,7 +57,7 @@ pi.on("exit", code => {
 // The worker owns the three-attempt retry budget and backoff. Disable Pi's nested
 // retry loop so one infrastructure attempt has one bounded provider call.
 pi.stdin.write(`${JSON.stringify({ id: "retry-policy", type: "set_auto_retry", enabled: false })}\n`);
-pi.stdin.write(`${JSON.stringify({ id: "turn", type: "prompt", message: `Follow the interview skill and complete one turn from this authoritative JSON context:\n${context}` })}\n`);
+pi.stdin.write(`${JSON.stringify({ id: "turn", type: "prompt", message: `/skill:findworks-interview Complete one bounded turn from this authoritative JSON context:\n${context}` })}\n`);
 
 function finish(exitCode) {
   if (outcome !== undefined) return;

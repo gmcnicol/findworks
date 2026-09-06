@@ -27,16 +27,19 @@ export default function (pi: ExtensionAPI) {
         evidenceIds: Type.Array(Type.String()),
         summary: Type.String(),
       })),
-      nextAction: Type.Object({
-        type: Type.Union([Type.Literal("ASK_QUESTION"), Type.Literal("PROPOSE_COMPLETION")]),
-        resultId: Type.Optional(Type.String()),
-        text: Type.Optional(Type.String()),
-        responseMode: Type.Optional(Type.Union([
-          Type.Literal("FREE_TEXT"), Type.Literal("YES_NO"), Type.Literal("YES_NO_PARTLY"),
-          Type.Literal("PARAPHRASE"), Type.Literal("CHOICE"),
-        ])),
-        options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), label: Type.String() }), { minItems: 2, maxItems: 5 })),
-      }),
+      nextAction: Type.Union([
+        Type.Object({
+          type: Type.Literal("ASK_QUESTION"),
+          resultId: Type.String(),
+          text: Type.String(),
+          responseMode: Type.Optional(Type.Union([
+            Type.Literal("FREE_TEXT"), Type.Literal("YES_NO"), Type.Literal("YES_NO_PARTLY"),
+            Type.Literal("PARAPHRASE"), Type.Literal("CHOICE"),
+          ])),
+          options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), label: Type.String() }), { minItems: 2, maxItems: 5 })),
+        }),
+        Type.Object({ type: Type.Literal("PROPOSE_COMPLETION") }),
+      ]),
     }),
     async execute(_toolCallId, params) {
       const body = await submitTurn({ url, token, params });
