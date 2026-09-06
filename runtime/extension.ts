@@ -26,7 +26,7 @@ export default function (pi: ExtensionAPI) {
         ])),
         evidenceIds: Type.Array(Type.String()),
         summary: Type.String(),
-      })),
+      }), { description: "Only new or materially changed outcomes compared with current_outcomes; not a full snapshot." }),
       nextAction: Type.Union([
         Type.Object({
           type: Type.Literal("ASK_QUESTION"),

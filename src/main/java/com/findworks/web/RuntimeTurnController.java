@@ -88,23 +88,39 @@ public class RuntimeTurnController {
             var changed = db.sql("update investigation_results set coverage=case when coverage in ('SUPPORTED','ASSUMPTION') then coverage else :coverage end where id=:item and session_id=:session")
                     .param("coverage", outcome.coverage()).param("item", outcome.resultId()).param("session", authorised.sessionId()).update();
             if (changed != 1) throw new IllegalArgumentException("invalid_outcome_scope");
-            var outcomeId = Ids.id();
-            db.sql("insert into result_outcomes(id,result_id,coverage,category,summary) values(:id,:result,:coverage,:category,:summary)")
-                    .param("id", outcomeId).param("result", outcome.resultId()).param("coverage", outcome.coverage())
-                    .param("category", category).param("summary", outcome.summary().trim()).update();
+            var summary = outcome.summary().trim();
+            var existingOutcome = db.sql("""
+                    select id from result_outcomes
+                    where result_id=:result and coverage=:coverage and category=:category and summary=:summary
+                    order by created_at,id limit 1
+                    """).param("result", outcome.resultId()).param("coverage", outcome.coverage())
+                    .param("category", category).param("summary", summary).query(UUID.class).optional();
+            var outcomeId = existingOutcome.orElseGet(Ids::id);
+            if (existingOutcome.isEmpty()) {
+                db.sql("insert into result_outcomes(id,result_id,coverage,category,summary) values(:id,:result,:coverage,:category,:summary)")
+                        .param("id", outcomeId).param("result", outcome.resultId()).param("coverage", outcome.coverage())
+                        .param("category", category).param("summary", summary).update();
+            }
             for (var evidenceId : evidenceIds) {
                 db.sql("insert into result_evidence values(:result,:evidence) on conflict do nothing")
                         .param("result", outcome.resultId()).param("evidence", evidenceId).update();
-                db.sql("insert into result_outcome_evidence values(:outcome,:evidence)")
+                db.sql("insert into result_outcome_evidence values(:outcome,:evidence) on conflict do nothing")
                         .param("outcome", outcomeId).param("evidence", evidenceId).update();
             }
             if (Set.of("UNKNOWN", "CONFLICT", "OWNERSHIP_GAP").contains(outcome.coverage())) {
-                var unresolvedId = Ids.id();
-                db.sql("insert into unresolved values(:id,:result,:evidence,:kind,:summary,:reason,null,false)")
-                        .param("id", unresolvedId).param("result", outcome.resultId()).param("evidence", evidenceIds.getFirst())
-                        .param("kind", outcome.coverage()).param("summary", outcome.summary().trim())
-                        .param("reason", outcome.summary().trim()).update();
-                for (var evidenceId : evidenceIds) db.sql("insert into unresolved_evidence values(:unresolved,:evidence)")
+                var existingUnresolved = db.sql("""
+                        select id from unresolved
+                        where result_id=:result and kind=:kind and summary=:summary and reason=:reason
+                        order by id limit 1
+                        """).param("result", outcome.resultId()).param("kind", outcome.coverage())
+                        .param("summary", summary).param("reason", summary).query(UUID.class).optional();
+                var unresolvedId = existingUnresolved.orElseGet(Ids::id);
+                if (existingUnresolved.isEmpty()) {
+                    db.sql("insert into unresolved values(:id,:result,:evidence,:kind,:summary,:reason,null,false)")
+                            .param("id", unresolvedId).param("result", outcome.resultId()).param("evidence", evidenceIds.getFirst())
+                            .param("kind", outcome.coverage()).param("summary", summary).param("reason", summary).update();
+                }
+                for (var evidenceId : evidenceIds) db.sql("insert into unresolved_evidence values(:unresolved,:evidence) on conflict do nothing")
                         .param("unresolved", unresolvedId).param("evidence", evidenceId).update();
             }
         }

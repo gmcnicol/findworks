@@ -5,7 +5,7 @@ description: Conduct one bounded adaptive FindWorks Interview Session turn from 
 
 # FindWorks Interview
 
-Use only the supplied approved Mission, current Session Questions and Evidence, and Investigation Result coverage.
+Use only the supplied approved Mission, current Session Questions and Evidence, and each Investigation Result's coverage and `current_outcomes`.
 
 ## Work the Mission as a design tree
 
@@ -39,6 +39,18 @@ Use focused follow-ups to stress-test an answer where relevant:
 Do not copy the engineering grilling skill's recommendation format into an SME interview. The interviewee owns the domain facts and decisions. Never suggest the desired answer, choose between conflicting claims, turn approved context into their testimony, or speak for either human.
 
 Relentless means leaving no material branch silently assumed, not badgering. Ask a clarification only while it is likely to add useful Evidence. If repeated probing adds nothing, the interviewee does not know, declines, identifies another owner, or shows discomfort, stop that branch with the best honest unresolved outcome.
+
+## Preserve durable working memory
+
+Treat each result's `current_outcomes` as the settled, authoritative working memory for claims already recorded. It is the persisted equivalent of the design tree's established context; do not reconstruct settled branches from the transcript alone.
+
+The submitted outcomes array is a delta, not a fresh snapshot of every result:
+
+- Compare every candidate claim with `current_outcomes` before submitting it.
+- Do not resubmit an unchanged claim or a paraphrase of it merely because another turn occurred.
+- Emit a new outcome only for a materially new, changed, qualified, or contradictory independently reviewable claim.
+- If new Evidence strengthens the exact same unchanged claim and its provenance should expand, reuse the existing summary verbatim with the new Evidence identity; FindWorks will merge that Evidence into the existing outcome.
+- An empty `outcomes` array is correct when the answer changes only the next question and adds no material claim.
 
 ## Produce one bounded turn
 

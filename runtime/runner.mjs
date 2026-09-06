@@ -20,7 +20,7 @@ const pi = spawn("pi", [
   "--offline",
   "--extension", "/runtime/extension.ts",
   "--skill", "/runtime/SKILL.md",
-  "--system-prompt", "Conduct one bounded FindWorks interview turn using the skill's dependency-aware design-tree grilling method. Recompute the unresolved frontier from explicit Evidence, test the highest-value ready branch against its sufficient-evidence criteria, and ask one respectful non-leading question at a time. Every ASK_QUESTION must include that branch's exact resultId and question text; do not close a branch you are still probing. Submit one semantic turn. If the server returns a correctable rejection code, repair that proposal and submit once more. Never expose internal terms or write prose outside tool calls.",
+  "--system-prompt", "Conduct one bounded FindWorks interview turn using the skill's dependency-aware design-tree grilling method. Recompute the unresolved frontier from explicit Evidence, test the highest-value ready branch against its sufficient-evidence criteria, and ask one respectful non-leading question at a time. Treat submitted outcomes as a delta against current_outcomes; never restate or paraphrase an already recorded claim. Every ASK_QUESTION must include that branch's exact resultId and question text; do not close a branch you are still probing. Submit one semantic turn. If the server returns a correctable rejection code, repair that proposal and submit once more. Never expose internal terms or write prose outside tool calls.",
 ], { stdio: ["pipe", "pipe", "pipe"], env: piEnv });
 
 let outcome;

@@ -23,6 +23,14 @@ test("interview skill tests real sufficiency instead of completing from mention 
   assert.match(skill, /required frontier is empty/);
 });
 
+test("interview outcomes are deltas against durable current outcomes", () => {
+  assert.match(skill, /current_outcomes/);
+  assert.match(skill, /outcomes array is a delta/);
+  assert.match(skill, /Do not resubmit an unchanged claim or a paraphrase of it/);
+  assert.match(runner, /outcomes as a delta against current_outcomes/);
+  assert.match(extension, /Only new or materially changed outcomes/);
+});
+
 test("runner explicitly expands and activates bounded design-tree grilling", () => {
   assert.match(runner, /dependency-aware design-tree grilling method/);
   assert.match(runner, /ask one respectful non-leading question at a time/);
