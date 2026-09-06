@@ -2,11 +2,11 @@
 name: FindWorks
 description: A calm operations ledger for knowledge-seeking work.
 colors:
-  action-cobalt: "#2649d8"
-  action-cobalt-deep: "#1f3fbe"
+  action-cobalt: "#2851c5"
+  action-cobalt-deep: "#1f43aa"
   navigation-navy: "#111a2b"
-  navigation-active: "#263755"
-  cool-paper: "#f3f6fb"
+  navigation-active: "#263a59"
+  cool-paper: "#f2f5f9"
   surface-white: "#ffffff"
   primary-ink: "#172033"
   secondary-ink: "#68778e"
@@ -52,13 +52,13 @@ components:
   button-primary:
     backgroundColor: "{colors.action-cobalt}"
     textColor: "{colors.surface-white}"
-    rounded: "{rounded.pill}"
+    rounded: "{rounded.sm}"
     padding: "0 18px"
     height: "44px"
   button-secondary:
-    backgroundColor: "#e8eefc"
+    backgroundColor: "{colors.surface-white}"
     textColor: "{colors.action-cobalt}"
-    rounded: "{rounded.pill}"
+    rounded: "{rounded.sm}"
     padding: "0 18px"
     height: "44px"
   navigation-active:
@@ -121,8 +121,9 @@ The palette is restrained: deep navy framing, cool neutral work surfaces, one co
 
 **Display Font:** Native system sans-serif stack
 **Body Font:** Native system sans-serif stack
+**Interview Question Font:** Iowan Old Style, Palatino Linotype, Georgia, serif
 
-**Character:** Direct and highly legible. Hierarchy comes from scale, weight, spacing, and alignment rather than switching typefaces or using technical-looking monospace.
+**Character:** Investigator surfaces are direct and operational. The Interviewee’s active question uses a restrained editorial serif to slow the reading pace and separate the human prompt from interface controls.
 
 ### Hierarchy
 - **Display** (760, responsive up to 3.2rem, 1.05): Workspace and major detail-page titles.
@@ -137,7 +138,9 @@ The palette is restrained: deep navy framing, cool neutral work surfaces, one co
 
 ## Layout
 
-The authenticated Investigator workspace uses a 248px persistent navigation column and a fluid content region capped at 1240px. Primary workspace content uses 48px desktop insets and a vertical section rhythm around 48–52px. Detail and review work narrows to approximately 960px.
+The authenticated Investigator workspace uses a 236px persistent navigation column and a fluid content region capped at 1260px. Primary workspace content uses 52px desktop insets and a vertical section rhythm around 48–52px. Detail and review work narrows to approximately 1000px.
+
+The Interviewee surface uses a warm paper background, an 820px shell, and a 700px reading column. The active question precedes every control, accepted-answer history stays collapsed, and alternative responses sit below the primary answer.
 
 At 900px, navigation becomes a sticky header. At 640px, all destinations wrap into a visible compact menu, summaries form a two-column grid, and table rows become labelled vertical records. No primary destination may depend on hidden horizontal scrolling.
 
@@ -160,9 +163,9 @@ Working surfaces use gently rounded corners between 9px and 14px. Larger 20px pa
 ## Components
 
 ### Buttons
-- **Shape:** Pill-shaped controls with a 44px minimum target.
+- **Shape:** Compact 9px corners with a 44px minimum target; pills are reserved for statuses.
 - **Primary:** Action Cobalt with white text and medium-heavy weight.
-- **Secondary:** Pale cobalt surface with cobalt text.
+- **Secondary:** White surface, cool border, and cobalt text.
 - **Hover / Focus:** Darker action fill on hover; a visible three-pixel cool-blue focus ring with offset.
 
 ### Status Labels
@@ -190,6 +193,8 @@ Working surfaces use gently rounded corners between 9px and 14px. Larger 20px pa
 - **Do** keep Discovery context visible anywhere Missions or findings are listed.
 - **Do** use flat rows and rules when content needs comparison.
 - **Do** preserve a focused, shell-free experience for external Interviewees.
+- **Do** place each Mission review checkpoint action beside the content it confirms.
+- **Do** keep Interviewee escape routes visible but visually secondary to the active answer.
 
 ### Don't:
 - **Don't** create dead navigation destinations or placeholder dashboard modules.

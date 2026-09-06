@@ -4,7 +4,7 @@
 <body class="app-body"><div class="app-frame">
     <th:block th:replace="~{fragments/app-shell :: sidebar('harnesses', ${investigator})}"></th:block>
     <main class="app-main">
-        <header class="workspace-header"><div><h1>Harness access</h1><p>Project-aware agent harnesses authorised to submit Missions or retrieve reviewed context.</p></div></header>
+        <header class="workspace-header"><div><p class="eyebrow">Connected tools</p><h1>Harness access</h1><p>Project-aware agent harnesses authorised to submit Missions or retrieve reviewed context.</p></div></header>
         <div class="empty-state" th:if="${#lists.isEmpty(grants)}"><h2>No active grants.</h2><p>Your harness will ask you to authorise access when it first connects.</p></div>
         <div class="access-list" th:unless="${#lists.isEmpty(grants)}">
             <article class="access-row" th:each="grant : ${grants}">

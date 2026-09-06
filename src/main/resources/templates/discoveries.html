@@ -4,7 +4,7 @@
 <body class="app-body"><div class="app-frame">
     <th:block th:replace="~{fragments/app-shell :: sidebar('discoveries', ${investigator})}"></th:block>
     <main class="app-main">
-        <header class="workspace-header"><div><h1>Discoveries</h1><p>Longer-lived investigations containing Interview Missions, Evidence, and reviewed findings.</p></div></header>
+        <header class="workspace-header"><div><p class="eyebrow">Research portfolio</p><h1>Discoveries</h1><p>Longer-lived investigations containing Interview Missions, Evidence, and reviewed findings.</p></div></header>
         <div class="empty-state" th:if="${#lists.isEmpty(discoveries)}"><h2>No Discoveries yet</h2><p>Your first Discovery is created when your harness submits its first draft Mission.</p><a th:href="@{/oauth/grants}">Manage harness access</a></div>
         <div class="discovery-index" th:unless="${#lists.isEmpty(discoveries)}">
             <article class="discovery-entry" th:each="discovery : ${discoveries}">

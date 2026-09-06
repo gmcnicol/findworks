@@ -20,8 +20,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <main class="app-main">
         <header class="workspace-header">
             <div>
+                <p class="eyebrow">Investigator workspace</p>
                 <h1>Your work</h1>
-                <p th:if="${attentionCount > 0}"><strong th:text="${attentionCount}">1</strong><span th:text="${attentionCount == 1 ? ' item needs your attention.' : ' items need your attention.'}"> item needs your attention.</span></p>
+                <p class="attention-line" th:if="${attentionCount > 0}"><strong th:text="${attentionCount}">1</strong><span th:text="${attentionCount == 1 ? ' item needs your attention.' : ' items need your attention.'}"> item needs your attention.</span></p>
                 <p th:if="${attentionCount == 0}">Nothing needs your attention right now.</p>
             </div>
             <a class="button secondary compact" th:href="@{/app/discoveries}">View all Discoveries</a>

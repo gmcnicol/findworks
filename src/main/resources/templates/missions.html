@@ -4,7 +4,7 @@
 <body class="app-body"><div class="app-frame">
     <th:block th:replace="~{fragments/app-shell :: sidebar('missions', ${investigator})}"></th:block>
     <main class="app-main">
-        <header class="workspace-header"><div><h1>Interview Missions</h1><p>Every knowledge-seeking handover, its parent Discovery, and the next step.</p></div></header>
+        <header class="workspace-header"><div><p class="eyebrow">Interview operations</p><h1>Interview Missions</h1><p>Every knowledge-seeking handover, its parent Discovery, and the next step.</p></div></header>
         <div class="empty-state" th:if="${#lists.isEmpty(missions)}"><h2>No Missions yet</h2><p>Shape and submit an Interview Mission from your project-aware harness.</p><a th:href="@{/oauth/grants}">Manage harness access</a></div>
         <div class="ledger-wrap" th:unless="${#lists.isEmpty(missions)}"><table class="work-ledger">
             <thead><tr><th scope="col">Mission</th><th scope="col">Discovery</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>

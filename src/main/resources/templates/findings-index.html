@@ -4,7 +4,7 @@
 <body class="app-body"><div class="app-frame">
     <th:block th:replace="~{fragments/app-shell :: sidebar('findings', ${investigator})}"></th:block>
     <main class="app-main">
-        <header class="workspace-header"><div><h1>Findings</h1><p>Completed Interview Sessions moving through extraction and Investigator review.</p></div></header>
+        <header class="workspace-header"><div><p class="eyebrow">Review queue</p><h1>Findings</h1><p>Completed Interview Sessions moving through extraction and Investigator review.</p></div></header>
         <div class="empty-state" th:if="${#lists.isEmpty(findings)}"><h2>No findings yet</h2><p>Completed Interviews will appear here while findings are prepared and reviewed.</p></div>
         <div class="ledger-wrap" th:unless="${#lists.isEmpty(findings)}"><table class="work-ledger">
             <thead><tr><th scope="col">Mission</th><th scope="col">Discovery</th><th scope="col">Interviewee</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>

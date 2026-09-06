@@ -1,5 +1,21 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Before the interview · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
-<body><main class="shell centered"><section class="panel participant-panel"><h1>Before you begin</h1><p><strong th:text="${view.investigator()}">Investigator</strong> from <strong th:text="${view.organization()}">Organisation</strong> invited you to help with:</p><h2 th:text="${view.objective()}">Mission purpose</h2><dl class="review-fields"><div><dt>Typical duration</dt><dd th:text="${view.expectedMinutes()} + ' minutes'">20 minutes</dd></div><div><dt>Retention</dt><dd th:text="${view.retentionDays()} + ' days after findings review'">90 days</dd></div></dl><h3>How your answers will be used</h3><p th:text="${view.dataUse()}">Data use</p><p class="subtle">There is no time limit. Questions adapt to your answers, and you can answer at your own pace, pause, say you do not know, name another owner, or leave.</p><p>Questions about participation? Contact <a th:href="'mailto:' + ${view.contactEmail()}" th:text="${view.contactEmail()}">privacy@example.com</a>.</p><form method="post" th:action="@{/interview/begin}"><button class="button" type="submit">Begin interview</button></form></section></main></body>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Before the interview · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body class="participant-body">
+<main class="interview-shell">
+    <header class="participant-masthead"><span class="participant-brand">FindWorks</span><span class="participant-context">Private, account-free interview</span></header>
+    <section class="participant-intro">
+        <p class="eyebrow">Your invitation</p>
+        <h1>Before you begin</h1>
+        <p><strong th:text="${view.investigator()}">Investigator</strong> from <strong th:text="${view.organization()}">Organisation</strong> invited you to help with:</p>
+        <h2 th:text="${view.objective()}">Mission purpose</h2>
+        <dl class="review-fields"><div><dt>Typical duration</dt><dd th:text="${view.expectedMinutes()} + ' minutes'">20 minutes</dd></div><div><dt>Retention</dt><dd th:text="${view.retentionDays()} + ' days after findings review'">90 days</dd></div></dl>
+        <h3>How your answers will be used</h3>
+        <p th:text="${view.dataUse()}">Data use</p>
+        <p class="subtle">There is no time limit. Questions adapt to your answers, and you can answer at your own pace, pause, say you do not know, name another owner, or leave.</p>
+        <p>Questions about participation? Contact <a th:href="'mailto:' + ${view.contactEmail()}" th:text="${view.contactEmail()}">privacy@example.com</a>.</p>
+        <form method="post" th:action="@{/interview/begin}"><button class="button" type="submit">Begin interview</button></form>
+    </section>
+</main>
+</body>
 </html>

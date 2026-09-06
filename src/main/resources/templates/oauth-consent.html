@@ -1,1 +1,20 @@
-<!doctype html><html xmlns:th="http://www.thymeleaf.org"><head><meta charset="utf-8"><title>Authorise harness</title><link rel="stylesheet" href="/assets/app.css"></head><body><main class="shell"><section class="panel"><h1>Allow this engineer harness?</h1><h2 th:text="${clientName}"></h2><p>List your Discoveries and retrieve reviewed context. Draft submission and reviewed-context retrieval remain subject to your active Membership and Discovery ownership. MCP cannot approve, invite, review, or delete.</p><strong th:text="${scope}"></strong><form method="post" th:action="@{/oauth/authorize}"><input type="hidden" name="client" th:value="${client}"><input type="hidden" name="redirect" th:value="${redirect}"><input type="hidden" name="state" th:value="${state}"><input type="hidden" name="challenge" th:value="${challenge}"><input type="hidden" name="resource" th:value="${resource}"><input type="hidden" name="scope" th:value="${scope}"><button class="button" name="decision" value="approve">Allow access</button><button class="button secondary" name="decision" value="deny">Cancel</button></form></section></main></body></html>
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Authorise harness · FindWorks</title><link rel="stylesheet" href="/assets/app.css"></head>
+<body>
+<main class="shell centered">
+    <section class="panel focus-panel">
+        <p class="eyebrow">Harness access request</p>
+        <h1>Allow this engineer harness?</h1>
+        <h2 th:text="${clientName}">Harness</h2>
+        <p>List your Discoveries and retrieve reviewed context. Draft submission and retrieval remain subject to your active Membership and Discovery ownership.</p>
+        <p class="notice-banner"><strong>MCP cannot approve, invite, review, or delete.</strong></p>
+        <p class="subtle">Requested scope · <strong th:text="${scope}">findworks:read</strong></p>
+        <form class="form-actions" method="post" th:action="@{/oauth/authorize}">
+            <input type="hidden" name="client" th:value="${client}"><input type="hidden" name="redirect" th:value="${redirect}"><input type="hidden" name="state" th:value="${state}"><input type="hidden" name="challenge" th:value="${challenge}"><input type="hidden" name="resource" th:value="${resource}"><input type="hidden" name="scope" th:value="${scope}">
+            <button class="button" name="decision" value="approve">Allow access</button><button class="button secondary" name="decision" value="deny">Cancel</button>
+        </form>
+    </section>
+</main>
+</body>
+</html>

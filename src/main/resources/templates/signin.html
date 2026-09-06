@@ -8,7 +8,7 @@
 </head>
 <body>
 <main class="shell centered">
-    <form class="panel form" method="post" th:action="@{/signin}">
+    <form class="panel form focus-panel" method="post" th:action="@{/signin}">
         <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
         <p class="eyebrow">Pilot Investigator sign in</p>
         <h1>Sign in to FindWorks</h1>
