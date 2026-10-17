@@ -102,7 +102,9 @@ FINDWORKS_RUNTIME_IMAGE=findworks-runtime:periodic-review \
   --output artifacts/periodic-review-evaluation/current
 ```
 
-The paired `result.json` and `summary.md` pin commit, dirty state, image and image ID, Pi runtime, provider/model/reasoning, fixture versions, repeats, token usage and provider-reported cost. They retain the baseline and reviewed synthetic traces, role-specific usage and latency, rejected reviewer proposals, reviewer triggers/cadence, and the predeclared go/no-go decision. The reviewer proposal gate runs before advice enters interviewer context; ordinary Runtime Turn validation remains unchanged and no behavioural assertion is weakened.
+The paired `result.json` and `summary.md` pin commit, dirty state, image and image ID, Pi runtime, configured provider/model/reasoning, fixture versions, repeats, token usage and provider-reported cost. They retain and aggregate separately observed provider/request/response model identities for the baseline interviewer, reviewed interviewer, and reviewer, plus each role's successful-turn count, usage and latency. The evaluator fails closed if any successful role execution lacks identity, differs from its configured provider/request/reasoning, or resolves to a different identity from either other role. It also retains rejected reviewer proposals, reviewer triggers/cadence, and the predeclared go/no-go decision. The reviewer proposal gate runs before advice enters interviewer context; ordinary Runtime Turn validation remains unchanged and no behavioural assertion is weakened.
+
+The retained 2026-10-17 #67 evidence predates this role-specific identity capture. Its configured same-model values and separate model probe do not establish the actual identities used by its three roles; the historical document and machine record mark that comparison as requiring a fresh credentialed rerun. No rerun is claimed by this correction.
 
 ## Extending fixtures
 

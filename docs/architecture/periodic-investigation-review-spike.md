@@ -135,7 +135,7 @@ The first review establishes a coverage check for short fixtures; uncertainty an
 
 ## Evaluation and decision rule
 
-`npm run evaluate:periodic-review` runs the same versioned synthetic fixtures first through the single interviewer and then through interviewer plus reviewer. Both strategies pin the same commit, image, Pi version, provider, model, reasoning effort, fixture versions, and repeat count. Retained traces contain synthetic Evidence only and record role-specific latency and provider-reported usage/cost when available.
+`npm run evaluate:periodic-review` runs the same versioned synthetic fixtures first through the single interviewer and then through interviewer plus reviewer. Both strategies pin the same commit, image, Pi version, provider, model, reasoning effort, fixture versions, and repeat count. For every successful execution, the evaluator also requires and retains the actual provider, requested model, provider-response model, and configured Pi reasoning identity separately for the baseline interviewer, reviewed interviewer, and reviewer. Missing identity, configured-role substitution, or any cross-role response-model drift invalidates the comparison. Retained traces contain synthetic Evidence only and record role-specific identity, latency, and provider-reported usage/cost when available.
 
 The report compares:
 

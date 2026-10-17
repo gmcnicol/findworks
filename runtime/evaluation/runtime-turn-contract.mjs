@@ -15,16 +15,29 @@ export function applyAcceptedRuntimeOutcomes(context, outcomes) {
 
 export function createRuntimeTurnContract(initialContext) {
   let authoritative = structuredClone(initialContext);
+  const settlements = new Map();
   return {
     context: () => structuredClone(authoritative),
     submit(submission) {
+      const settled = settlements.get(submission?.runId);
+      if (settled) {
+        if (settled.submission !== canonicalJson(submission)) {
+          return { accepted: false, code: "run_identity_reused" };
+        }
+        return structuredClone(settled.result);
+      }
       const validation = validate(authoritative, submission);
       if (validation) return { accepted: false, code: validation };
       authoritative = commit(authoritative, submission);
       const event = submission.nextAction.type === "PROPOSE_COMPLETION"
         ? "completion_confirmation_ready"
         : "question_ready";
-      return { accepted: true, event, context: structuredClone(authoritative) };
+      const result = { accepted: true, event, context: structuredClone(authoritative) };
+      settlements.set(submission.runId, {
+        submission: canonicalJson(submission),
+        result: structuredClone(result),
+      });
+      return result;
     },
   };
 }
@@ -92,6 +105,12 @@ function commit(context, submission) {
   const updated = commitOutcomes(context, submission.outcomes ?? []);
   updated.expected_revision += 1;
   return updated;
+}
+
+function canonicalJson(value) {
+  return JSON.stringify(value, (_, candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    ? Object.fromEntries(Object.entries(candidate).sort(([left], [right]) => left.localeCompare(right)))
+    : candidate);
 }
 
 function commitOutcomes(context, outcomes) {

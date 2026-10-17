@@ -1,5 +1,15 @@
 {
   "schemaVersion": 1,
+  "evidenceCorrection": {
+    "status": "historical_trace_fresh_rerun_required",
+    "actualTurnModelIdentity": null,
+    "invalidMetrics": [
+      "requiredCoverageCompletionRate",
+      "usefulEvidencePerQuestion",
+      "turnsToSufficientEvidence"
+    ],
+    "explanation": "No actual provider/request/response identity was retained for these 60 turns, and outcome metrics predate the corrected accepted-outcome gate. Configured model metadata is not execution identity. No rerun was performed; failures remain regression evidence, while corrected quantitative acceptance requires a fresh credentialed run."
+  },
   "metadata": {
     "startedAt": "2026-10-17T13:29:37.823Z",
     "completedAt": "2026-10-17T13:35:30.512Z",
