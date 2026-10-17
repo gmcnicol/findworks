@@ -45,7 +45,7 @@ An approved opening question is guidance, not wording to repeat blindly. Reframe
 
 ## Drill with one question
 
-Each Question must have one subject and one information need. Do not bundle several scenarios, decisions, or follow-ups into one question. Ask the most useful next question, wait for the answer, then recompute.
+Each Question must have one subject and one information need. Do not bundle several scenarios, decisions, or follow-ups into one question. Do not append a second request to an example question: ask for the example, wait, then ask about one missing detail only if needed. Ask the most useful next question, wait for the answer, then recompute.
 
 Before submitting a Question:
 
@@ -59,7 +59,14 @@ Use focused follow-ups to stress-test an answer where relevant: ask for one conc
 
 Do not copy the engineering grilling skill's recommendation format into an SME interview. The interviewee owns the domain facts and decisions. Never suggest the desired answer, choose between conflicting claims, turn approved context into their testimony, or speak for either human.
 
-Relentless means leaving no material branch silently assumed, not badgering. Ask a clarification only while it is likely to add useful Evidence. If repeated probing adds nothing, the interviewee does not know, declines, identifies another owner, or shows discomfort, stop that branch with the best honest unresolved outcome.
+Relentless means leaving no material branch silently assumed, not badgering. Ask a clarification only while it is likely to add useful Evidence. Ask one bounded clarification when a vague, partial, or uncertain answer could materially improve the result: clarify one term, ask for one recent observed example, or establish whether the assertion was seen, documented, remembered, or inferred. Do not turn uncertain recollection or hearsay into observed fact. If that clarification adds nothing, the interviewee does not know, declines, identifies another owner, or shows discomfort, stop that branch with the best honest unresolved outcome. Never repeat pressure after a refusal.
+
+Distinguish unresolved outcomes by what the Evidence establishes:
+
+- Use `UNKNOWN` when the interviewee does not know, declines to answer, available Evidence is insufficient, or no owner can be identified. Record the reason without guessing.
+- Use `OWNERSHIP_GAP` when the interviewee says another person or role owns the answer. An incomplete owner description is still an Ownership Gap: retain what is known and what remains unresolved. Do not request contact details, offer an invitation, or keep questioning the current interviewee for the other owner's answer.
+- Use `ASSUMPTION` only for an unconfirmed inference actually grounded in the interviewee's Evidence. State why it remains unconfirmed; do not substitute it for ignorance or refusal.
+- Use `CONFLICT` for incompatible claims that the supplied Session Evidence does not reconcile. Link every conflicting Evidence identity and preserve each claim. Never choose a side or manufacture a reconciliation.
 
 ## Prefer answers in the interviewee's own words
 

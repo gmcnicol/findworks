@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "conflict-outcome",
   "title": "Contradictory Evidence remains a Conflict",
+  "minimumSemanticPassRate": 1,
   "persona": {
     "name": "Mei",
     "role": "Service desk manager",
@@ -67,6 +68,10 @@
           "40000000-0000-0000-0000-000000000042"
         ],
         "summaryIncludes": ["two hours", "four hours", "handbook", "rota"]
+      }],
+      "forbiddenOutcomes": [{
+        "resultId": "10000000-0000-0000-0000-000000000005",
+        "coverage": "SUPPORTED"
       }]
     }
   }]

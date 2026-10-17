@@ -161,6 +161,27 @@ test("repeated questions and premature completion are deterministic violations",
   assert.ok(evaluation.contractViolations.some(item => item.rule === "premature-completion"));
 });
 
+test("fixture-defined focus and pressure checks make bounded follow-ups reviewable", () => {
+  const scenario = fixture();
+  scenario.turns[0].expected.semantic.focusAnchors = ["what makes", "example"];
+  scenario.turns[0].expected.semantic.pressureTerms = ["guess", "email", "invite"];
+  const focused = evaluateSubmission({
+    fixture: scenario, turnIndex: 0, context: context(), submission: validSubmission(), previousQuestions: [],
+  });
+  assert.equal(focused.semanticQuality.checks.find(check => check.rule === "useful-follow-up-focus").passed, true);
+  assert.equal(focused.semanticQuality.checks.find(check => check.rule === "no-pressure-or-recruitment").passed, true);
+
+  const pressured = validSubmission();
+  pressured.nextAction.text = "Could you guess Maya's email so I can invite her?";
+  const evaluation = evaluateSubmission({
+    fixture: scenario, turnIndex: 0, context: context(), submission: pressured, previousQuestions: [],
+  });
+  assert.equal(evaluation.semanticQuality.checks.find(check => check.rule === "useful-follow-up-focus").passed, false);
+  const pressure = evaluation.semanticQuality.checks.find(check => check.rule === "no-pressure-or-recruitment");
+  assert.equal(pressure.passed, false);
+  assert.match(pressure.detail, /guess, email, invite/);
+});
+
 test("a terminal outcome may close the current thread and ask the next result in one turn", () => {
   const suppliedContext = context();
   suppliedContext.investigation_results.push({
@@ -182,6 +203,70 @@ test("a terminal outcome may close the current thread and ask the next result in
     fixture: scenario, turnIndex: 0, context: suppliedContext, submission, previousQuestions: [],
   });
   assert.ok(!evaluation.contractViolations.some(item => item.rule === "current-thread"));
+});
+
+test("outcome summaries can require every evidence-critical qualifier", () => {
+  const scenario = fixture();
+  scenario.turns[0].expected.outcomes = [{
+    resultId,
+    coverage: "SUPPORTED",
+    evidenceIds: [evidenceId],
+    summaryIncludesAll: ["morning sort", "unconfirmed"],
+  }];
+
+  const evaluation = evaluateSubmission({
+    fixture: scenario, turnIndex: 0, context: context(), submission: validSubmission(), previousQuestions: [],
+  });
+
+  const summary = evaluation.semanticQuality.checks.find(check => check.rule === "expected-summary-all:SUPPORTED");
+  assert.equal(summary.passed, false);
+  assert.match(summary.detail, /unconfirmed/);
+});
+
+test("outcome summaries accept reviewed wording alternatives without dropping required concepts", () => {
+  const scenario = fixture();
+  scenario.turns[0].expected.outcomes = [{
+    resultId,
+    coverage: "SUPPORTED",
+    evidenceIds: [evidenceId],
+    summaryAnchorGroups: [["morning sort"], ["unconfirmed", "not confirmed"]],
+  }];
+
+  const evaluation = evaluateSubmission({
+    fixture: scenario, turnIndex: 0, context: context(), submission: validSubmission(), previousQuestions: [],
+  });
+
+  const summary = evaluation.semanticQuality.checks.find(check => check.rule === "expected-summary-groups:SUPPORTED");
+  assert.equal(summary.passed, false);
+  assert.match(summary.detail, /unconfirmed \| not confirmed/);
+});
+
+test("unsupported outcome kinds fail semantic grading without weakening contract checks", () => {
+  const scenario = fixture();
+  scenario.turns[0].expected.outcomes = [{
+    resultId,
+    coverage: "ASSUMPTION",
+    category: "ASSUMPTION",
+    evidenceIds: [evidenceId],
+  }];
+  scenario.turns[0].expected.forbiddenOutcomes = [{ resultId, coverage: "SUPPORTED" }];
+  const submission = validSubmission();
+  submission.outcomes.push({
+    resultId,
+    coverage: "ASSUMPTION",
+    category: "ASSUMPTION",
+    evidenceIds: [evidenceId],
+    summary: "The supposed rule is unconfirmed.",
+  });
+
+  const evaluation = evaluateSubmission({
+    fixture: scenario, turnIndex: 0, context: context(), submission, previousQuestions: [],
+  });
+
+  assert.deepEqual(evaluation.contractViolations, []);
+  const distinction = evaluation.semanticQuality.checks.find(check => check.rule === "forbidden-outcome:SUPPORTED");
+  assert.equal(distinction.passed, false);
+  assert.match(distinction.detail, /Unexpected SUPPORTED outcome/);
 });
 
 test("expected final outcomes are graded from cumulative result state, not only the turn delta", () => {
@@ -212,6 +297,49 @@ test("expected final outcomes are graded from cumulative result state, not only 
   assert.equal(evaluation.semanticQuality.passed, evaluation.semanticQuality.total);
 });
 
+test("new contradictory Evidence moves a supported result to Conflict without erasing prior provenance", () => {
+  const suppliedContext = context();
+  suppliedContext.investigation_results[0].coverage = "SUPPORTED";
+  suppliedContext.investigation_results[0].current_outcomes = [{
+    coverage: "SUPPORTED",
+    category: "RULE",
+    summary: "The handbook states four hours.",
+    evidence_ids: [evidenceId],
+  }];
+  const contradictionId = "40000000-0000-0000-0000-000000000002";
+  suppliedContext.questions_and_evidence.push({
+    question_id: "50000000-0000-0000-0000-000000000002",
+    evidence_id: contradictionId,
+    exact_text: "The current rota states two hours.",
+  });
+  const submission = {
+    runId: suppliedContext.run_id,
+    expectedRevision: suppliedContext.expected_revision,
+    outcomes: [{
+      resultId,
+      coverage: "CONFLICT",
+      evidenceIds: [evidenceId, contradictionId],
+      summary: "The handbook states four hours while the current rota states two hours.",
+    }],
+    nextAction: { type: "PROPOSE_COMPLETION" },
+  };
+
+  const evaluation = evaluateSubmission({
+    fixture: fixture(), turnIndex: 0, context: suppliedContext, submission, previousQuestions: [],
+  });
+  const updated = applySubmission(suppliedContext, submission);
+
+  assert.deepEqual(evaluation.coverageChanges, [{
+    resultId,
+    from: "SUPPORTED",
+    to: "CONFLICT",
+    evidenceIds: [evidenceId, contradictionId],
+  }]);
+  assert.equal(updated.investigation_results[0].coverage, "CONFLICT");
+  assert.equal(updated.investigation_results[0].current_outcomes[0].coverage, "SUPPORTED");
+  assert.equal(updated.investigation_results[0].current_outcomes[1].coverage, "CONFLICT");
+});
+
 test("applying a submission retains immutable provenance and records coverage changes", () => {
   const updated = applySubmission(context(), validSubmission());
   assert.equal(updated.investigation_results[0].coverage, "SUPPORTED");
@@ -226,6 +354,46 @@ test("fixture discovery is versioned and does not require harness edits", async 
 
   const fixtures = await loadFixtures(directory);
   assert.deepEqual(fixtures.map(value => value.id), ["a", "b"]);
+});
+
+test("the ambiguity portfolio covers bounded clarification and every honest unresolved outcome", async () => {
+  const fixtures = await loadFixtures(new URL("./fixtures/v1", import.meta.url).pathname);
+  const byId = new Map(fixtures.map(value => [value.id, value]));
+  const required = [
+    "vague-partial-answer",
+    "uncertain-recollection",
+    "assumption-outcome",
+    "contradiction-within-interview",
+    "conflict-outcome",
+    "disputed-terminology",
+    "ownership-gap",
+    "incomplete-owner-referral",
+    "unknown-outcome",
+    "refusal-to-answer",
+  ];
+  assert.deepEqual(required.filter(id => !byId.has(id)), []);
+  for (const id of required) assert.equal(byId.get(id).minimumSemanticPassRate, 1);
+
+  assert.equal(byId.get("vague-partial-answer").turns[0].expected.action, "ASK_QUESTION");
+  assert.equal(byId.get("disputed-terminology").turns[0].expected.action, "ASK_QUESTION");
+  assert.deepEqual(
+    byId.get("contradiction-within-interview").turns.at(-1).expected.outcomes.map(value => value.coverage),
+    ["CONFLICT"],
+  );
+  assert.deepEqual(
+    byId.get("incomplete-owner-referral").turns[0].expected.outcomes.map(value => value.coverage),
+    ["OWNERSHIP_GAP"],
+  );
+  assert.deepEqual(
+    byId.get("refusal-to-answer").turns[0].expected.outcomes.map(value => value.coverage),
+    ["UNKNOWN"],
+  );
+});
+
+test("the refund completion fixture resolves the exact five-hundred-pound boundary", async () => {
+  const fixtures = await loadFixtures(new URL("./fixtures/v1", import.meta.url).pathname);
+  const refund = fixtures.find(value => value.id === "refund-completion");
+  assert.match(refund.turns[1].answer.text, /five hundred pounds (?:or (?:more|above)|and above)/i);
 });
 
 test("a scenario drives every answer through the Runtime Turn seam and records available usage", async () => {

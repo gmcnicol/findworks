@@ -45,7 +45,7 @@ Every turn records the source Question and answer, submitted action, outcome sum
 Deterministic contract checks are reported separately from graded semantic checks:
 
 - **Contract:** run/revision identity, result and Evidence scope, supported coverage/category/mode, one next action, current thread, one Question, repeat detection, and no premature completion.
-- **Semantic quality:** interviewee vocabulary, private Mission language, own-words response, one information need, non-leading wording, concision, expected outcome kind, and provenance/summary expectations.
+- **Semantic quality:** interviewee vocabulary, private Mission language, own-words response where an open answer is required, one information need, non-leading wording, concision, expected outcome kind, forbidden unsupported outcome kinds, and provenance/summary expectations. Fixtures may score a useful follow-up focus, pressure or owner-recruitment language, every required summary qualifier, or reviewed wording alternatives; each result remains visible in the turn trace.
 
 The checked-in baseline is an explicit quality floor for `openai/gpt-5.4-mini` at low reasoning. Replace it with a reviewed `result.json`, or pass any prior result with `--baseline`, after a credentialed full-suite run. Baseline comparison never changes the individual behavioural checks.
 
@@ -59,4 +59,6 @@ Fixtures live in `runtime/evaluation/fixtures/v1/`. Add another `.json` file; ha
 - an ordered answer sequence with a distinct Runtime Turn run identity, immutable Evidence identities, and source types;
 - expected action, result, semantic qualities, and Evidence-linked outcomes.
 
-The current set covers adaptive follow-ups, successful completion, Unknown, Ownership Gap, Conflict, and unconfirmed Assumption outcomes. Advance the fixture directory/schema only for an incompatible fixture contract; increment an individual fixture version when its Mission, persona, answers, or expectations change.
+The current set covers adaptive follow-ups, successful completion, Unknown, Ownership Gap, Conflict, and unconfirmed Assumption outcomes. The ambiguity portfolio additionally covers vague and partial answers, uncertain recollection, contradictions both within the scripted interview and against already collected Evidence, disputed terminology, incomplete owner details, explicit `I don't know`, and refusal. These scenarios require a 100% semantic gate as well as the ordinary deterministic contract checks.
+
+Advance the fixture directory/schema only for an incompatible fixture contract; increment an individual fixture version when its Mission, persona, answers, or expectations change.

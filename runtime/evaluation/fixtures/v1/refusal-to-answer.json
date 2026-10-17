@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "refusal-to-answer",
+  "title": "A refusal is recorded as Unknown without repeated pressure",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Tara",
+    "role": "People operations manager",
+    "brief": "Decline to discuss the requested disciplinary case."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000151",
+    "session_id": "30000000-0000-0000-0000-000000000151",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Learn what triggers escalation of a disciplinary case.",
+      "desired_outcome": "A supported escalation rule or an honest unresolved outcome.",
+      "data_use": "The Investigator will review the finding for case-routing design."
+    },
+    "shared_mission_entries": [{
+      "kind": "BOUNDARY",
+      "position": 0,
+      "value": "Respect an interviewee's refusal to discuss individual cases.",
+      "detail": "Do not press for confidential case details after a refusal."
+    }],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000151",
+      "knowledge_gap": "What triggered escalation in the most recent disciplinary case?",
+      "why_it_matters": "The routing design needs a grounded trigger without overriding confidentiality.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "The interviewee may decline to discuss individual cases.",
+      "sufficient_evidence": "The trigger is supported, or refusal is recorded without repeated pressure.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [{
+    "runId": "20000000-0000-0000-0000-000000000151",
+    "sourceQuestion": "What triggered escalation in the most recent disciplinary case?",
+    "answer": {
+      "evidenceId": "40000000-0000-0000-0000-000000000151",
+      "sourceType": "DECLINED",
+      "text": "I am not willing to discuss that case or answer questions about it."
+    },
+    "expected": {
+      "action": "PROPOSE_COMPLETION",
+      "outcomes": [{
+        "resultId": "10000000-0000-0000-0000-000000000151",
+        "coverage": "UNKNOWN",
+        "evidenceIds": ["40000000-0000-0000-0000-000000000151"],
+        "summaryAnchorGroups": [
+          ["declined", "refused", "not willing"],
+          ["case"]
+        ]
+      }],
+      "forbiddenOutcomes": [
+        { "resultId": "10000000-0000-0000-0000-000000000151", "coverage": "SUPPORTED" },
+        { "resultId": "10000000-0000-0000-0000-000000000151", "coverage": "ASSUMPTION" },
+        { "resultId": "10000000-0000-0000-0000-000000000151", "coverage": "OWNERSHIP_GAP" }
+      ]
+    }
+  }]
+}

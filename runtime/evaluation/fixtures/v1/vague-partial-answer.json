@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "vague-partial-answer",
+  "title": "A vague partial answer gets one focused request for an observed example",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Rosa",
+    "role": "Repairs dispatcher",
+    "brief": "Start with the shorthand the team uses, then describe one recent job when asked."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000101",
+    "session_id": "30000000-0000-0000-0000-000000000101",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Learn how urgent repair jobs move ahead of the normal queue.",
+      "desired_outcome": "A grounded example showing the trigger and dispatcher action without turning one example into a universal rule.",
+      "data_use": "The Investigator will review the finding before changing repair routing."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000101",
+      "knowledge_gap": "What makes an urgent repair move ahead of the normal queue?",
+      "why_it_matters": "Routing must not encode vague urgency as a precise rule.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "Dispatchers use informal terms when prioritising repairs.",
+      "sufficient_evidence": "One recent observed example identifies the team's term, the situation, and what the dispatcher did; any wider rule remains scoped to the Evidence.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "20000000-0000-0000-0000-000000000101",
+      "sourceQuestion": "What makes a repair move ahead of the normal queue?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000101",
+        "sourceType": "ANSWER",
+        "text": "We usually pull hot jobs forward when they have been waiting a while, but it depends."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "10000000-0000-0000-0000-000000000101",
+        "semantic": {
+          "vocabularyAnchors": ["hot job", "hot jobs", "waiting"],
+          "focusAnchors": ["recent", "last", "example", "what made", "how did you tell"],
+          "pressureTerms": ["guess", "must be", "surely", "just tell me"],
+          "forbiddenTerms": ["sufficient evidence", "investigation item", "urgency taxonomy"],
+          "ownWords": true,
+          "maxQuestionLength": 220
+        },
+        "forbiddenOutcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000101",
+          "coverage": "SUPPORTED",
+          "category": "RULE"
+        }]
+      }
+    },
+    {
+      "runId": "20000000-0000-0000-0000-000000000102",
+      "sourceQuestion": "Can you give me a recent example of a hot job?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000102",
+        "sourceType": "ANSWER",
+        "text": "Yesterday a boiler repair was hot because the tenant had no heating. Leah moved that job above the routine tap repairs. That is the example I saw; I cannot say every dispatcher uses a fixed rule."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000101",
+          "coverage": "SUPPORTED",
+          "evidenceIds": ["40000000-0000-0000-0000-000000000102"],
+          "summaryAnchorGroups": [
+            ["boiler"],
+            ["no heating", "without heating"],
+            ["Leah"]
+          ]
+        }],
+        "forbiddenOutcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000101",
+          "coverage": "ASSUMPTION"
+        }]
+      }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "refund-completion",
   "title": "A complete Mission reaches confirmation only after sufficient coverage",
   "persona": {
@@ -61,7 +61,7 @@
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000012",
         "sourceType": "ANSWER",
-        "text": "Above five hundred pounds, Priya in finance must approve it. Once Stripe shows sent and the ticket has the refund reference, we close the ticket. There are no other approval exceptions."
+        "text": "At five hundred pounds or above, Priya in finance must approve it. Once Stripe shows sent and the ticket has the refund reference, we close the ticket. There are no other approval exceptions."
       },
       "expected": {
         "action": "PROPOSE_COMPLETION",

@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "unknown-outcome",
   "title": "An honest unknown terminates the explored branch",
+  "minimumSemanticPassRate": 1,
   "persona": {
     "name": "Nadia",
     "role": "Warehouse coordinator",
@@ -48,7 +49,12 @@
         "coverage": "UNKNOWN",
         "evidenceIds": ["40000000-0000-0000-0000-000000000021"],
         "summaryIncludes": ["don't know", "unknown", "never seen", "owner"]
-      }]
+      }],
+      "forbiddenOutcomes": [
+        { "resultId": "10000000-0000-0000-0000-000000000003", "coverage": "SUPPORTED" },
+        { "resultId": "10000000-0000-0000-0000-000000000003", "coverage": "ASSUMPTION" },
+        { "resultId": "10000000-0000-0000-0000-000000000003", "coverage": "OWNERSHIP_GAP" }
+      ]
     }
   }]
 }

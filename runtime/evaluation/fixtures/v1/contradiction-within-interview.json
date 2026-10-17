@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "contradiction-within-interview",
+  "title": "Contradictory statements in one Interview Session remain a Conflict",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Iris",
+    "role": "On-call coordinator",
+    "brief": "Report both current-looking deadlines and do not choose between them."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000121",
+    "session_id": "30000000-0000-0000-0000-000000000121",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Establish the acknowledgement deadline for amber alerts.",
+      "desired_outcome": "A supported deadline or an explicit unresolved conflict.",
+      "data_use": "The Investigator will review the finding before changing alert automation."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000121",
+      "knowledge_gap": "What is the acknowledgement deadline for an amber alert?",
+      "why_it_matters": "The alert timer needs one approved deadline.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "The coordinator uses both the team briefing and the on-call rota.",
+      "sufficient_evidence": "The current deadline is supported, or incompatible current sources are retained as a Conflict.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "20000000-0000-0000-0000-000000000121",
+      "sourceQuestion": "How quickly does an amber alert need to be acknowledged?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000121",
+        "sourceType": "ANSWER",
+        "text": "The team briefing this week said within four hours."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "10000000-0000-0000-0000-000000000121",
+        "semantic": {
+          "vocabularyAnchors": ["team briefing", "four hours", "amber"],
+          "focusAnchors": ["rota", "follow", "current", "used", "happens"],
+          "pressureTerms": ["so it is settled", "must be four", "just confirm"],
+          "ownWords": true,
+          "maxQuestionLength": 220
+        }
+      }
+    },
+    {
+      "runId": "20000000-0000-0000-0000-000000000122",
+      "sourceQuestion": "What deadline does the on-call rota use for amber alerts?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000122",
+        "sourceType": "ANSWER",
+        "text": "The on-call rota I used today says two hours. Both the rota and this week's team briefing look current, and I cannot reconcile two hours with four."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000121",
+          "coverage": "CONFLICT",
+          "evidenceIds": [
+            "40000000-0000-0000-0000-000000000121",
+            "40000000-0000-0000-0000-000000000122"
+          ],
+          "summaryAnchorGroups": [
+            ["four hours"],
+            ["two hours"],
+            ["rota"],
+            ["briefing"]
+          ]
+        }],
+        "forbiddenOutcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000121",
+          "coverage": "SUPPORTED"
+        }]
+      }
+    }
+  ]
+}

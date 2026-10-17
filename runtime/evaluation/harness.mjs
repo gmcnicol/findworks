@@ -119,6 +119,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
   }
 
   gradeExpectedOutcomes(context, submission?.outcomes ?? [], expected.outcomes ?? [], grade);
+  gradeForbiddenOutcomes(submission?.outcomes ?? [], expected.forbiddenOutcomes ?? [], grade);
   const coverageChanges = calculateCoverageChanges(context, submission?.outcomes ?? []);
   const repeatedQuestion = action?.type === "ASK_QUESTION"
     && previousQuestions.some(question => normaliseQuestion(question) === normaliseQuestion(action.text));
@@ -196,6 +197,16 @@ function evaluateQuestion(action, { context, projectedCoverage, previousQuestion
       exposed.length === 0 ? "No private planning terms exposed" : `Exposed: ${exposed.join(", ")}`);
   }
   if (semantic.ownWords) grade("own-words-response", mode === "FREE_TEXT", `Response mode: ${mode}`);
+  if (semantic.focusAnchors?.length) {
+    const matched = semantic.focusAnchors.filter(anchor => lower.includes(anchor.toLowerCase()));
+    grade("useful-follow-up-focus", matched.length > 0,
+      matched.length > 0 ? `Focused on: ${matched.join(", ")}` : `Expected one of: ${semantic.focusAnchors.join(", ")}`);
+  }
+  if (semantic.pressureTerms?.length) {
+    const exposed = semantic.pressureTerms.filter(term => lower.includes(term.toLowerCase()));
+    grade("no-pressure-or-recruitment", exposed.length === 0,
+      exposed.length === 0 ? "No pressure or owner-recruitment language" : `Exposed: ${exposed.join(", ")}`);
+  }
   const bundled = /\b(?:and|or)\s+(?:what|who|when|where|why|how|does|do|is|are|should|would|can)\b/i.test(action.text);
   grade("one-information-need", !bundled, bundled ? "Question contains a second interrogative frame" : "No second interrogative frame detected");
   const latestAnswer = String(context.conversation_state?.latest_interviewee_wording ?? "").toLowerCase();
@@ -232,6 +243,31 @@ function gradeExpectedOutcomes(context, actual, expected, grade) {
       grade(`expected-summary:${wanted.coverage}`, found,
         found ? "Summary contains expected domain language" : `Expected one of: ${wanted.summaryIncludes.join(", ")}`);
     }
+    if (present && wanted.summaryIncludesAll?.length) {
+      const missing = wanted.summaryIncludesAll.filter(term => !matching.some(outcome => outcome.summary?.toLowerCase().includes(term.toLowerCase())));
+      grade(`expected-summary-all:${wanted.coverage}`, missing.length === 0,
+        missing.length === 0 ? "Summary contains every evidence-critical qualifier" : `Missing: ${missing.join(", ")}`);
+    }
+    if (present && wanted.summaryAnchorGroups?.length) {
+      const missing = wanted.summaryAnchorGroups.filter(group => !group.some(term => matching
+        .some(outcome => outcome.summary?.toLowerCase().includes(term.toLowerCase()))));
+      grade(`expected-summary-groups:${wanted.coverage}`, missing.length === 0,
+        missing.length === 0
+          ? "Summary represents every evidence-critical concept"
+          : `Missing one of each group: ${missing.map(group => group.join(" | ")).join(", ")}`);
+    }
+  }
+}
+
+function gradeForbiddenOutcomes(actual, forbidden, grade) {
+  for (const unwanted of forbidden) {
+    const present = actual.some(outcome => outcome.resultId === unwanted.resultId
+      && outcome.coverage === unwanted.coverage
+      && (!unwanted.category || outcome.category === unwanted.category));
+    grade(`forbidden-outcome:${unwanted.coverage}`, !present,
+      present
+        ? `Unexpected ${unwanted.coverage} outcome for ${unwanted.resultId}`
+        : `No ${unwanted.coverage} outcome proposed for ${unwanted.resultId}`);
   }
 }
 
@@ -240,7 +276,8 @@ export function applySubmission(context, submission) {
   for (const outcome of submission.outcomes ?? []) {
     const result = updated.investigation_results.find(candidate => candidate.result_id === outcome.resultId);
     if (!result) continue;
-    if (!new Set(["SUPPORTED", "ASSUMPTION"]).has(result.coverage)) result.coverage = outcome.coverage;
+    if (!new Set(["SUPPORTED", "ASSUMPTION", "CONFLICT"]).has(result.coverage)
+        || outcome.coverage === "CONFLICT") result.coverage = outcome.coverage;
     result.current_outcomes ??= [];
     const existing = result.current_outcomes.find(candidate => candidate.coverage === outcome.coverage
       && (candidate.category ?? null) === (outcome.category ?? null) && candidate.summary === outcome.summary);
@@ -262,7 +299,9 @@ function projectCoverage(context, outcomes) {
   const projected = new Map(context.investigation_results.map(result => [result.result_id, result.coverage]));
   for (const outcome of outcomes) {
     const current = projected.get(outcome.resultId);
-    if (current && !new Set(["SUPPORTED", "ASSUMPTION"]).has(current) && COVERAGES.has(outcome.coverage)) {
+    if (current && COVERAGES.has(outcome.coverage)
+        && (!new Set(["SUPPORTED", "ASSUMPTION", "CONFLICT"]).has(current)
+          || outcome.coverage === "CONFLICT")) {
       projected.set(outcome.resultId, outcome.coverage);
     }
   }

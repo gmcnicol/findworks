@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "incomplete-owner-referral",
+  "title": "An incomplete referral stops with an Ownership Gap and no recruitment",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Morgan",
+    "role": "Customer operations adviser",
+    "brief": "Explain that risk owns the block rule but that you do not know the person's name or contact details."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000141",
+    "session_id": "30000000-0000-0000-0000-000000000141",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Learn who decides whether a high-risk account block can be removed.",
+      "desired_outcome": "Identify the decision rule and owner, or preserve the ownership gap honestly.",
+      "data_use": "The Investigator will review the finding before changing account-block handling."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000141",
+      "knowledge_gap": "Who owns removal of a high-risk account block and what rule do they use?",
+      "why_it_matters": "Customer operations must not invent or bypass a risk decision.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "Customer operations can see blocks but cannot remove them.",
+      "sufficient_evidence": "The owner and rule are supported, or what remains unresolved and the best available owner description are explicit.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [{
+    "runId": "20000000-0000-0000-0000-000000000141",
+    "sourceQuestion": "How do you decide whether a high-risk account block can be removed?",
+    "answer": {
+      "evidenceId": "40000000-0000-0000-0000-000000000141",
+      "sourceType": "OWNER_GAP",
+      "text": "That decision belongs to someone in risk, not customer operations. I do not know their name, contact details, or the rule they use."
+    },
+    "expected": {
+      "action": "PROPOSE_COMPLETION",
+      "outcomes": [{
+        "resultId": "10000000-0000-0000-0000-000000000141",
+        "coverage": "OWNERSHIP_GAP",
+        "evidenceIds": ["40000000-0000-0000-0000-000000000141"],
+        "summaryAnchorGroups": [
+          ["risk"],
+          ["name", "identity", "specific person", "specific owner"],
+          ["rule"]
+        ]
+      }],
+      "forbiddenOutcomes": [
+        { "resultId": "10000000-0000-0000-0000-000000000141", "coverage": "SUPPORTED" },
+        { "resultId": "10000000-0000-0000-0000-000000000141", "coverage": "UNKNOWN" }
+      ]
+    }
+  }]
+}
