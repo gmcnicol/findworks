@@ -3,6 +3,7 @@
   "fixtureVersion": "1.1.0",
   "id": "ownership-gap",
   "title": "Another owner becomes an Ownership Gap without badgering",
+  "minimumSemanticPassRate": 1,
   "persona": {
     "name": "Sam",
     "role": "Billing support specialist",
@@ -49,7 +50,11 @@
         "coverage": "OWNERSHIP_GAP",
         "evidenceIds": ["40000000-0000-0000-0000-000000000031"],
         "summaryIncludes": ["Amina", "tax adviser", "exemption rule"]
-      }]
+      }],
+      "forbiddenOutcomes": [
+        { "resultId": "10000000-0000-0000-0000-000000000004", "coverage": "SUPPORTED" },
+        { "resultId": "10000000-0000-0000-0000-000000000004", "coverage": "UNKNOWN" }
+      ]
     }
   }]
 }

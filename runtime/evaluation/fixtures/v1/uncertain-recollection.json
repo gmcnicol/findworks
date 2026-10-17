@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.1.0",
+  "id": "uncertain-recollection",
+  "title": "Uncertain recollection is checked once then retained as an Assumption",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Dev",
+    "role": "Accounts assistant",
+    "brief": "Be clear that your recollection is second-hand and not something you observed."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000111",
+    "session_id": "30000000-0000-0000-0000-000000000111",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Learn whether month-end invoices wait for a manager before being sent.",
+      "desired_outcome": "Distinguish an observed approval rule from an unconfirmed recollection.",
+      "data_use": "The Investigator will review the finding before changing invoice automation."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000111",
+      "knowledge_gap": "Do month-end invoices wait for manager approval?",
+      "why_it_matters": "Automation must not treat remembered hearsay as an approved rule.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "No approval policy is present in the supplied Mission context.",
+      "sufficient_evidence": "The interviewee's basis is established and any unsupported inference is explicitly unconfirmed.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "20000000-0000-0000-0000-000000000111",
+      "sourceResultId": "10000000-0000-0000-0000-000000000111",
+      "sourceQuestion": "What happens before month-end invoices are sent?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000111",
+        "sourceType": "ANSWER",
+        "text": "I think they probably wait for a manager. That is how I vaguely remember it from when I joined."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "10000000-0000-0000-0000-000000000111",
+        "semantic": {
+          "vocabularyAnchors": ["manager", "remember", "joined"],
+          "focusAnchors": ["seen", "seeing", "observed", "handled", "written", "source", "where did", "remember", "hearing", "based on"],
+          "pressureTerms": ["guess", "must", "probably means", "just confirm"],
+          "maxQuestionLength": 220
+        },
+        "forbiddenOutcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000111",
+          "coverage": "SUPPORTED"
+        }]
+      }
+    },
+    {
+      "runId": "20000000-0000-0000-0000-000000000112",
+      "sourceResultId": "10000000-0000-0000-0000-000000000111",
+      "sourceQuestion": "Have you seen that manager check happen yourself?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000112",
+        "sourceType": "ANSWER",
+        "text": "No. I have never seen the check or found it written down. It is only something I half remember a colleague saying."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000111",
+          "coverage": "ASSUMPTION",
+          "category": "ASSUMPTION",
+          "evidenceIds": [
+            "40000000-0000-0000-0000-000000000111",
+            "40000000-0000-0000-0000-000000000112"
+          ],
+          "summaryAnchorGroups": [
+            ["manager"],
+            ["never seen", "not seen", "personally seen", "neither seen", "seen the check"],
+            ["not written", "written down", "documented"]
+          ]
+        }],
+        "forbiddenOutcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000111",
+          "coverage": "SUPPORTED"
+        }]
+      }
+    }
+  ]
+}
