@@ -4,7 +4,9 @@ import { JsonlDecoder, RpcTurnMonitor } from "./rpc-state.mjs";
 
 const context = await readContext(process.stdin);
 const piEnv = preparePiEnvironment();
-const monitor = new RpcTurnMonitor();
+const monitor = new RpcTurnMonitor("submit_interview_turn", {
+  reasoningEffort: process.env.FINDWORKS_REASONING_EFFORT || "low",
+});
 const decoder = new JsonlDecoder();
 const deadlineMs = positiveInteger(process.env.FINDWORKS_RUNNER_DEADLINE_MS, 105_000);
 

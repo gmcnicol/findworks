@@ -301,7 +301,6 @@ async function executeModelEvaluation(configuration, options, env, probe) {
     "--model", configuration.model,
     "--reasoning", configuration.reasoningEffort,
     "--resolved-model", probe.resolvedModel,
-    "--provider-reasoning", configuration.reasoningEffort,
     "--repeats", String(options.repeats),
     "--fixtures", options.fixturesDirectory,
     "--commit", options.commit,
@@ -349,7 +348,7 @@ function git(root, args) {
 function evaluationMetadata(metadata) {
   return Object.fromEntries([
     "startedAt", "completedAt", "commit", "workingTreeDirty", "provider", "model", "resolvedModel", "reasoningEffort",
-    "providerReasoningEffort", "credentialKind", "credentialEnvironment", "runtimeVersion", "runtimeImage",
+    "credentialKind", "credentialEnvironment", "runtimeVersion", "runtimeImage",
     "runtimeImageId", "runtimeCommit", "fixtureSchemaVersion", "repeats", "tokenUsage", "costUsd",
   ].map(key => [key, metadata[key] ?? null]));
 }
@@ -358,8 +357,8 @@ function matchesPreflightIdentity(configuration, probe, metadata) {
   return metadata.provider === configuration.provider
     && metadata.model === `${configuration.provider}/${configuration.model}`
     && metadata.resolvedModel === probe.resolvedModel
+    && metadata.reasoningEffort === probe.reasoningEffort
     && metadata.reasoningEffort === configuration.reasoningEffort
-    && metadata.providerReasoningEffort === configuration.reasoningEffort
     && metadata.credentialKind === probe.credentialKind
     && metadata.credentialEnvironment === probe.credentialEnvironment;
 }

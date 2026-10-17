@@ -26,8 +26,8 @@ test("prompt rejection terminates immediately instead of waiting for agent_settl
   });
 });
 
-test("assistant usage retains exact provider model and reasoning identity without message content", () => {
-  const monitor = new RpcTurnMonitor();
+test("assistant usage retains provider model identity and configured Pi reasoning without message content", () => {
+  const monitor = new RpcTurnMonitor("submit_interview_turn", { reasoningEffort: "low" });
   monitor.observe({
     type: "message_end",
     message: {
@@ -36,8 +36,6 @@ test("assistant usage retains exact provider model and reasoning identity withou
       provider: "openai",
       model: "gpt-5.4-mini",
       responseModel: "gpt-5.4-mini-2026-03-17",
-      thinkingLevel: "low",
-      providerThinkingLevel: "low",
       usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 2, cost: { total: 0.004 } },
       stopReason: "toolUse",
     },
@@ -52,7 +50,6 @@ test("assistant usage retains exact provider model and reasoning identity withou
       requestedModel: "gpt-5.4-mini",
       responseModel: "gpt-5.4-mini-2026-03-17",
       reasoningEffort: "low",
-      providerReasoningEffort: "low",
     },
   });
   assert.doesNotMatch(JSON.stringify(monitor.usage()), /sensitive/);

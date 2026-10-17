@@ -38,9 +38,11 @@ export class RpcTurnMonitor {
   #usage;
   #modelIdentity;
   #modelIdentityMismatch = false;
+  #reasoningEffort;
 
-  constructor(semanticToolName = "submit_interview_turn") {
+  constructor(semanticToolName = "submit_interview_turn", { reasoningEffort } = {}) {
     this.semanticToolName = semanticToolName;
+    this.#reasoningEffort = reasoningEffort ?? null;
   }
 
   observe(event) {
@@ -78,8 +80,7 @@ export class RpcTurnMonitor {
       provider: message.provider ?? null,
       requestedModel: message.model ?? null,
       responseModel: message.responseModel ?? message.model ?? null,
-      reasoningEffort: message.thinkingLevel ?? null,
-      providerReasoningEffort: message.providerThinkingLevel ?? null,
+      reasoningEffort: this.#reasoningEffort,
     };
     if (!this.#modelIdentity) this.#modelIdentity = identity;
     else if (JSON.stringify(this.#modelIdentity) !== JSON.stringify(identity)) this.#modelIdentityMismatch = true;

@@ -67,7 +67,7 @@ test("evaluation containers receive only the selected provider credential", () =
 });
 
 test("runtime metrics parser accepts only the content-free metrics envelope", () => {
-  assert.deepEqual(parseRuntimeMetrics('{"findworksRuntimeMetrics":{"inputTokens":10,"outputTokens":2,"cacheWriteTokens":1,"costUsd":0.01,"modelIdentity":{"provider":"openai","requestedModel":"gpt-5.4-mini","responseModel":"gpt-5.4-mini-2026-03-17","reasoningEffort":"low","providerReasoningEffort":"low"}}}\n'), {
+  assert.deepEqual(parseRuntimeMetrics('{"findworksRuntimeMetrics":{"inputTokens":10,"outputTokens":2,"cacheWriteTokens":1,"costUsd":0.01,"modelIdentity":{"provider":"openai","requestedModel":"gpt-5.4-mini","responseModel":"gpt-5.4-mini-2026-03-17","reasoningEffort":"low"}}}\n'), {
     inputTokens: 10,
     outputTokens: 2,
     cacheWriteTokens: 1,
@@ -77,7 +77,6 @@ test("runtime metrics parser accepts only the content-free metrics envelope", ()
       requestedModel: "gpt-5.4-mini",
       responseModel: "gpt-5.4-mini-2026-03-17",
       reasoningEffort: "low",
-      providerReasoningEffort: "low",
     },
   });
   assert.equal(parseRuntimeMetrics('{"message":"interview content"}\n'), null);
@@ -91,7 +90,6 @@ test("baseline compatibility pins schema, fixtures, runtime, and exact model con
     model: "openai/gpt-5.4-mini",
     resolvedModel: "gpt-5.4-mini-2026-03-17",
     reasoningEffort: "low",
-    providerReasoningEffort: "low",
     credentialKind: "api-key",
     credentialEnvironment: "OPENAI_API_KEY",
     runtimeVersion: "0.84.4",
@@ -123,7 +121,6 @@ test("checked-in baseline is retained credentialed evidence for the current fixt
     model: "openai/gpt-5.4-mini",
     resolvedModel: "gpt-5.4-mini-2026-03-17",
     reasoningEffort: "low",
-    providerReasoningEffort: "low",
     credentialKind: "api-key",
     credentialEnvironment: "OPENAI_API_KEY",
     runtimeVersion: "0.84.4",
@@ -134,13 +131,12 @@ test("checked-in baseline is retained credentialed evidence for the current fixt
   assert.doesNotMatch(baseline.metadata.limitations, /replace/i);
 });
 
-test("actual Runtime Turns must retain the exact preflight model and reasoning identity", () => {
+test("actual Runtime Turns retain exact model identity and configured Pi reasoning", () => {
   const identity = {
     provider: "openai",
     requestedModel: "gpt-5.4-mini",
     responseModel: "gpt-5.4-mini-2026-03-17",
     reasoningEffort: "low",
-    providerReasoningEffort: "low",
   };
   const runs = [{ turns: [{ usage: { modelIdentity: identity } }, { usage: { modelIdentity: identity } }] }];
   assert.deepEqual(validateRunModelIdentity(runs, identity), identity);

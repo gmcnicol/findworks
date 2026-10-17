@@ -222,7 +222,6 @@ function evaluationReport({
       model: `openai/${model}`,
       resolvedModel,
       reasoningEffort,
-      providerReasoningEffort: reasoningEffort,
       credentialKind: "api-key",
       credentialEnvironment: "OPENAI_API_KEY",
       runtimeVersion: "0.84.4",

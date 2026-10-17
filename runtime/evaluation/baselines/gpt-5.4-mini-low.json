@@ -9,7 +9,6 @@
     "model": "openai/gpt-5.4-mini",
     "resolvedModel": "gpt-5.4-mini-2026-03-17",
     "reasoningEffort": "low",
-    "providerReasoningEffort": "low",
     "credentialKind": "api-key",
     "credentialEnvironment": "OPENAI_API_KEY",
     "runtimeVersion": "0.84.4",
@@ -36,7 +35,7 @@
       "unknown-outcome": "1.1.0",
       "vague-partial-answer": "1.1.0"
     },
-    "limitations": "Retains only the semantic pass rate and deterministic-failure floor supported by the archived report. Coverage, useful-Evidence, sufficiency, and cost trade-offs require a fresh run under the corrected harness."
+    "limitations": "Retains only the semantic pass rate and deterministic-failure floor supported by the archived report. The historical run recorded its resolved model through a minimal live probe, not actual-turn identity capture. Coverage, useful-Evidence, sufficiency, model-identity confirmation, and cost trade-offs require a fresh run under the corrected harness."
   },
   "summary": {
     "semanticPassRate": 0.8789144050104384,

@@ -3,7 +3,9 @@ import { preparePiEnvironment } from "./auth.mjs";
 import { JsonlDecoder, RpcTurnMonitor } from "./rpc-state.mjs";
 
 const request = await readRequest(process.stdin);
-const monitor = new RpcTurnMonitor("submit_investigation_review");
+const monitor = new RpcTurnMonitor("submit_investigation_review", {
+  reasoningEffort: process.env.FINDWORKS_REASONING_EFFORT || "low",
+});
 const decoder = new JsonlDecoder();
 const deadlineMs = positiveInteger(process.env.FINDWORKS_RUNNER_DEADLINE_MS, 105_000);
 

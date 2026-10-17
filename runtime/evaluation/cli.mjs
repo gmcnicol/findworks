@@ -23,7 +23,6 @@ export function parseOptions(argv, env = process.env, root = defaultRoot) {
     model: env.FINDWORKS_MODEL || "gpt-5.4-mini",
     reasoningEffort: env.FINDWORKS_REASONING_EFFORT || "low",
     resolvedModel: env.FINDWORKS_RESOLVED_MODEL,
-    providerReasoningEffort: env.FINDWORKS_PROVIDER_REASONING_EFFORT,
     repeats: positiveInteger(env.FINDWORKS_EVALUATION_REPEATS, 1),
     fixturesDirectory: join(root, "runtime/evaluation/fixtures/v1"),
     baselinePath: join(root, "runtime/evaluation/baselines/gpt-5.4-mini-low.json"),
@@ -46,7 +45,6 @@ export function parseOptions(argv, env = process.env, root = defaultRoot) {
       case "--model": options.model = value; break;
       case "--reasoning": options.reasoningEffort = value; break;
       case "--resolved-model": options.resolvedModel = value; break;
-      case "--provider-reasoning": options.providerReasoningEffort = value; break;
       case "--repeats": options.repeats = positiveInteger(value); break;
       case "--fixtures": options.fixturesDirectory = resolve(value); break;
       case "--baseline": options.baselinePath = resolve(value); options.baselineExplicit = true; break;
@@ -100,7 +98,6 @@ export async function runCli(argv = process.argv.slice(2), env = process.env) {
     requestedModel: options.model,
     responseModel: options.resolvedModel,
     reasoningEffort: options.reasoningEffort,
-    providerReasoningEffort: options.providerReasoningEffort,
   });
   const compatibilityMetadata = {
     commit,
@@ -108,8 +105,7 @@ export async function runCli(argv = process.argv.slice(2), env = process.env) {
     provider: options.provider,
     model: `${options.provider}/${options.model}`,
     resolvedModel: modelIdentity.responseModel,
-    reasoningEffort: options.reasoningEffort,
-    providerReasoningEffort: modelIdentity.providerReasoningEffort,
+    reasoningEffort: modelIdentity.reasoningEffort,
     credentialKind: credential.kind,
     credentialEnvironment: credential.name,
     runtimeVersion: options.runtimeVersion ?? image.labels["io.findworks.pi.version"] ?? null,
@@ -136,8 +132,7 @@ export async function runCli(argv = process.argv.slice(2), env = process.env) {
       provider: options.provider,
       model: `${options.provider}/${options.model}`,
       resolvedModel: modelIdentity.responseModel,
-      reasoningEffort: options.reasoningEffort,
-      providerReasoningEffort: modelIdentity.providerReasoningEffort,
+      reasoningEffort: modelIdentity.reasoningEffort,
       credentialKind: credential.kind,
       credentialEnvironment: credential.name,
       runtimeVersion: options.runtimeVersion ?? image.labels["io.findworks.pi.version"] ?? null,
@@ -332,7 +327,7 @@ export function validateBaselineCompatibility(baseline, current) {
     throw new Error("Current commit and runtime image identity are missing or inconsistent with the baseline contract");
   }
   const fields = [
-    "provider", "model", "resolvedModel", "reasoningEffort", "providerReasoningEffort",
+    "provider", "model", "resolvedModel", "reasoningEffort",
     "credentialKind", "credentialEnvironment", "runtimeVersion", "fixtureSchemaVersion",
   ];
   for (const field of fields) {
@@ -363,9 +358,6 @@ export function validateRunModelIdentity(runs, expected) {
   }
   if (expected.responseModel && actual.responseModel !== expected.responseModel) {
     throw new Error(`Actual Runtime Turn responseModel ${actual.responseModel} does not match preflight ${expected.responseModel}`);
-  }
-  if (expected.providerReasoningEffort && actual.providerReasoningEffort !== expected.providerReasoningEffort) {
-    throw new Error(`Actual Runtime Turn provider reasoning ${actual.providerReasoningEffort} does not match preflight ${expected.providerReasoningEffort}`);
   }
   return structuredClone(actual);
 }
@@ -405,15 +397,12 @@ export function parseRuntimeMetrics(output) {
         const identity = metrics.modelIdentity;
         if (!identity || typeof identity !== "object"
             || ["provider", "requestedModel", "responseModel", "reasoningEffort"]
-              .some(field => typeof identity[field] !== "string" || identity[field] === "")
-            || (identity.providerReasoningEffort !== null
-              && typeof identity.providerReasoningEffort !== "string")) return null;
+              .some(field => typeof identity[field] !== "string" || identity[field] === "")) return null;
         value.modelIdentity = {
           provider: identity.provider,
           requestedModel: identity.requestedModel,
           responseModel: identity.responseModel,
           reasoningEffort: identity.reasoningEffort,
-          providerReasoningEffort: identity.providerReasoningEffort ?? null,
         };
       }
       return Object.keys(value).length > 0 ? value : null;
@@ -489,9 +478,8 @@ function help() {
     `  --commit REV           Require HEAD to resolve to REV\n` +
     `  --provider NAME        Model provider (default: openai)\n` +
     `  --model NAME           Model name (default: gpt-5.4-mini)\n` +
-    `  --reasoning LEVEL      Reasoning effort (default: low)\n` +
+    `  --reasoning LEVEL      Pi reasoning effort (default: low)\n` +
     `  --resolved-model ID    Require actual provider response model from preflight\n` +
-    `  --provider-reasoning LEVEL  Require actual provider reasoning control\n` +
     `  --repeats N            Repeat every scenario N times\n` +
     `  --scenario ID          Run one scenario; repeat to select several\n` +
     `  --fixtures DIRECTORY   Versioned fixture directory\n` +
