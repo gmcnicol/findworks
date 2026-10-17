@@ -26,6 +26,26 @@ test("prompt rejection terminates immediately instead of waiting for agent_settl
   });
 });
 
+test("assistant usage is aggregated without retaining message content", () => {
+  const monitor = new RpcTurnMonitor();
+  monitor.observe({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "sensitive interview content" }],
+      usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 2, cost: { total: 0.004 } },
+      stopReason: "toolUse",
+    },
+  });
+  assert.deepEqual(monitor.usage(), {
+    inputTokens: 105,
+    outputTokens: 20,
+    cacheWriteTokens: 2,
+    costUsd: 0.004,
+  });
+  assert.doesNotMatch(JSON.stringify(monitor.usage()), /sensitive/);
+});
+
 test("a settled run succeeds only after the semantic tool commits", () => {
   const monitor = new RpcTurnMonitor();
   assert.equal(monitor.observe({ type: "response", command: "prompt", success: true }).terminal, false);

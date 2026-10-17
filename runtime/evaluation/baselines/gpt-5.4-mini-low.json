@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "kind": "quality-floor",
+    "model": "openai/gpt-5.4-mini",
+    "reasoningEffort": "low",
+    "fixtureSchemaVersion": 1,
+    "note": "Replace with a reviewed result.json after the first credentialed full-suite run."
+  },
+  "summary": {
+    "semanticPassRate": 0.8,
+    "deterministicFailures": 0
+  }
+}

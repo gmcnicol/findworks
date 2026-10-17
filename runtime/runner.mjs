@@ -12,7 +12,7 @@ const pi = spawn("pi", [
   "--mode", "rpc",
   "--provider", process.env.FINDWORKS_MODEL_PROVIDER || "openai",
   "--model", process.env.FINDWORKS_MODEL || "gpt-5.4-mini",
-  "--thinking", "low",
+  "--thinking", process.env.FINDWORKS_REASONING_EFFORT || "low",
   "--session-dir", "/tmp/session",
   "--no-builtin-tools",
   "--tools", "submit_interview_turn",
@@ -51,6 +51,8 @@ pi.stderr.resume();
 pi.on("error", () => finish(70));
 pi.on("exit", code => {
   clearTimeout(deadline);
+  const usage = monitor.usage();
+  if (usage) process.stdout.write(`${JSON.stringify({ findworksRuntimeMetrics: usage })}\n`);
   process.exitCode = outcome ?? (code === 0 ? 70 : code || 70);
 });
 

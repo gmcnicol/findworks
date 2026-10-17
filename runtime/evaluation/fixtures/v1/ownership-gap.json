@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "ownership-gap",
+  "title": "Another owner becomes an Ownership Gap without badgering",
+  "persona": {
+    "name": "Sam",
+    "role": "Billing support specialist",
+    "brief": "Redirect tax-policy questions to the person who actually owns them."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000004",
+    "session_id": "30000000-0000-0000-0000-000000000004",
+    "mission_version": 2,
+    "expected_revision": 3,
+    "mission": {
+      "objective": "Learn who decides whether an invoice is tax exempt.",
+      "desired_outcome": "Identify the decision rule and its owner, or preserve an ownership gap.",
+      "data_use": "The Investigator will review the answer for billing changes."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000004",
+      "knowledge_gap": "Who owns tax-exemption decisions and what rule do they use?",
+      "why_it_matters": "Billing must not invent tax policy.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "Support receives exemption requests but does not define tax policy.",
+      "sufficient_evidence": "The rule and owner are known, or the identified external ownership is explicit.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [{
+    "runId": "20000000-0000-0000-0000-000000000004",
+    "sourceQuestion": "How do you decide whether a customer should be marked tax exempt?",
+    "answer": {
+      "evidenceId": "40000000-0000-0000-0000-000000000031",
+      "sourceType": "OWNER_GAP",
+      "text": "That is not my decision. Amina, our tax adviser, owns the exemption rule; I only apply the code she sends us."
+    },
+    "expected": {
+      "action": "PROPOSE_COMPLETION",
+      "outcomes": [{
+        "resultId": "10000000-0000-0000-0000-000000000004",
+        "coverage": "OWNERSHIP_GAP",
+        "evidenceIds": ["40000000-0000-0000-0000-000000000031"],
+        "summaryIncludes": ["Amina", "tax adviser", "exemption rule"]
+      }]
+    }
+  }]
+}

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "assumption-outcome",
+  "title": "Unsupported hearsay is marked as an Assumption",
+  "persona": {
+    "name": "Owen",
+    "role": "Returns coordinator",
+    "brief": "Distinguish what you have observed from what you have only heard."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000006",
+    "session_id": "30000000-0000-0000-0000-000000000006",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Learn whether opened packages are automatically rejected for return.",
+      "desired_outcome": "A supported return rule or a clearly unconfirmed assumption.",
+      "data_use": "The Investigator will review the finding before changing the returns flow."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000006",
+      "knowledge_gap": "Are opened packages automatically rejected for return?",
+      "why_it_matters": "The return flow must not present an unconfirmed policy as fact.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "No written policy was supplied to the Interview Session.",
+      "sufficient_evidence": "Observed or documented policy supports the rule, or the unsupported inference is explicitly an Assumption.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [{
+    "runId": "20000000-0000-0000-0000-000000000006",
+    "sourceQuestion": "What happens when a customer returns an opened package?",
+    "answer": {
+      "evidenceId": "40000000-0000-0000-0000-000000000051",
+      "sourceType": "ANSWER",
+      "text": "I assume we reject it because someone told me that when I started, but I have never handled one and I cannot find that rule in our guide."
+    },
+    "expected": {
+      "action": "PROPOSE_COMPLETION",
+      "outcomes": [{
+        "resultId": "10000000-0000-0000-0000-000000000006",
+        "coverage": "ASSUMPTION",
+        "category": "ASSUMPTION",
+        "evidenceIds": ["40000000-0000-0000-0000-000000000051"],
+        "summaryIncludes": ["assume", "unconfirmed", "never handled", "not documented"]
+      }]
+    }
+  }]
+}

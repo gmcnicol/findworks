@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "refund-completion",
+  "title": "A complete Mission reaches confirmation only after sufficient coverage",
+  "persona": {
+    "name": "Luis",
+    "role": "Customer support lead",
+    "brief": "Describe the real refund approval rule, including its exception and completion signal."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000002",
+    "session_id": "30000000-0000-0000-0000-000000000002",
+    "mission_version": 3,
+    "expected_revision": 4,
+    "mission": {
+      "objective": "Learn how support approves and completes customer refunds.",
+      "desired_outcome": "A clear refund rule with ownership, exception handling, and a completion signal.",
+      "data_use": "The Investigator will use reviewed findings to change the support workflow."
+    },
+    "shared_mission_entries": [
+      { "kind": "TERM", "position": 0, "value": "Refund ready", "detail": "Support's term for a refund that can be sent." },
+      { "kind": "COMPLETION_CRITERION", "position": 0, "value": "The trigger, approver, exception, and observable completion signal are understood." }
+    ],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000002",
+      "knowledge_gap": "What rule governs refund approval and completion?",
+      "why_it_matters": "The support workflow must route each refund correctly.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "Support handles ordinary and high-value refunds.",
+      "sufficient_evidence": "The trigger, approver, high-value exception, and observable completion signal are explicit.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "20000000-0000-0000-0000-000000000002",
+      "sourceQuestion": "Think of the last customer refund you handled. What happened first?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000011",
+        "sourceType": "ANSWER",
+        "text": "I mark it refund ready after I confirm the duplicate charge. Any support lead can approve it when it is under five hundred pounds."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "10000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": ["refund ready", "duplicate charge", "support lead", "five hundred"],
+          "forbiddenTerms": ["investigation item", "completion criterion", "workflow architecture"],
+          "ownWords": true
+        }
+      }
+    },
+    {
+      "runId": "20000000-0000-0000-0000-000000000021",
+      "sourceQuestion": "What happens when a refund is above five hundred pounds?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000012",
+        "sourceType": "ANSWER",
+        "text": "Above five hundred pounds, Priya in finance must approve it. Once Stripe shows sent and the ticket has the refund reference, we close the ticket. There are no other approval exceptions."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [{
+          "resultId": "10000000-0000-0000-0000-000000000002",
+          "coverage": "SUPPORTED",
+          "evidenceIds": [
+            "40000000-0000-0000-0000-000000000011",
+            "40000000-0000-0000-0000-000000000012"
+          ],
+          "summaryIncludes": ["five hundred", "Priya", "Stripe", "refund reference"]
+        }]
+      }
+    }
+  ]
+}

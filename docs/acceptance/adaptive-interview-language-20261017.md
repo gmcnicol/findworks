@@ -39,7 +39,7 @@ With model credentials available to the Docker process:
 ```bash
 FINDWORKS_RUNTIME_IMAGE=findworks-runtime:adaptive-conversation-20261017 \
 FINDWORKS_MODEL=gpt-5.4-mini \
-npm run test:adaptive-interview
+npm run test:adaptive-interview -- --scenario morning-sort
 ```
 
 When credentials are held by the deployed worker rather than the host shell, add:
@@ -48,4 +48,4 @@ When credentials are held by the deployed worker rather than the host shell, add
 FINDWORKS_DOCKER_HOST_CONTAINER=findworks-pilot-worker-1
 ```
 
-This is model-backed acceptance evidence, not a deterministic unit test. Run it when the runtime skill, model, thinking level, or question contract changes.
+This is model-backed acceptance evidence, not a deterministic unit test. Run it when the runtime skill, model, thinking level, or question contract changes. The evolved complete-Mission suite and report format are documented in [`adaptive-interview-evaluation.md`](./adaptive-interview-evaluation.md).
