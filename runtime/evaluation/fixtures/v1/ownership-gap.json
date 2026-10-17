@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "ownership-gap",
   "title": "Another owner becomes an Ownership Gap without badgering",
   "persona": {
@@ -35,6 +35,7 @@
   },
   "turns": [{
     "runId": "20000000-0000-0000-0000-000000000004",
+    "sourceResultId": "10000000-0000-0000-0000-000000000004",
     "sourceQuestion": "How do you decide whether a customer should be marked tax exempt?",
     "answer": {
       "evidenceId": "40000000-0000-0000-0000-000000000031",

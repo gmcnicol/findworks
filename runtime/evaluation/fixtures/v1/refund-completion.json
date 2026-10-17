@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.2.0",
   "id": "refund-completion",
   "title": "A complete Mission reaches confirmation only after sufficient coverage",
   "persona": {
@@ -39,11 +39,12 @@
   "turns": [
     {
       "runId": "20000000-0000-0000-0000-000000000002",
+      "sourceResultId": "10000000-0000-0000-0000-000000000002",
       "sourceQuestion": "Think of the last customer refund you handled. What happened first?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000011",
         "sourceType": "ANSWER",
-        "text": "I mark it refund ready after I confirm the duplicate charge. Any support lead can approve it when it is under five hundred pounds."
+        "text": "I mark it refund ready after I confirm the duplicate charge. Any support lead can approve it when it is five hundred pounds or less."
       },
       "expected": {
         "action": "ASK_QUESTION",
@@ -57,11 +58,12 @@
     },
     {
       "runId": "20000000-0000-0000-0000-000000000021",
+      "sourceResultId": "10000000-0000-0000-0000-000000000002",
       "sourceQuestion": "What happens when a refund is above five hundred pounds?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000012",
         "sourceType": "ANSWER",
-        "text": "Above five hundred pounds, Priya in finance must approve it. Once Stripe shows sent and the ticket has the refund reference, we close the ticket. There are no other approval exceptions."
+        "text": "More than five hundred pounds requires Priya in finance to approve it. Once Stripe shows sent and the ticket has the refund reference, we close the ticket. There are no other approval exceptions."
       },
       "expected": {
         "action": "PROPOSE_COMPLETION",

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "mention-is-not-sufficient",
+  "title": "A mentioned process stays open until its exit conditions are supported",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Iris",
+    "role": "Stockroom supervisor",
+    "brief": "Start with only the name and cadence of the check, then give the operational detail when asked."
+  },
+  "context": {
+    "run_id": "21000000-0000-0000-0000-000000000001",
+    "session_id": "31000000-0000-0000-0000-000000000001",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Understand how the weekly stock check is completed.",
+      "desired_outcome": "A supported stock-check rule including trigger, owner, exception and completion signal.",
+      "data_use": "The Investigator will review the finding for an inventory workflow change."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [{
+      "result_id": "11000000-0000-0000-0000-000000000001",
+      "knowledge_gap": "How does the weekly stock check work?",
+      "why_it_matters": "The workflow must not infer operating detail from the name of a process.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "The team has said that a stock check exists.",
+      "sufficient_evidence": "The trigger, person responsible, handling of a mismatch, and observable completion signal are explicit.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "21000000-0000-0000-0000-000000000001",
+      "sourceResultId": "11000000-0000-0000-0000-000000000001",
+      "sourceQuestion": "What routine do you use to check the stockroom?",
+      "answer": {
+        "evidenceId": "41000000-0000-0000-0000-000000000001",
+        "sourceType": "ANSWER",
+        "text": "We do a stock check every Friday."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "openResultIds": ["11000000-0000-0000-0000-000000000001"],
+        "semantic": {
+          "vocabularyAnchors": ["stock check", "Friday"],
+          "ownWords": true,
+          "maxQuestionLength": 220
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000002",
+      "sourceResultId": "11000000-0000-0000-0000-000000000001",
+      "sourceQuestion": "Who does the Friday stock check, and how do they know it is complete?",
+      "answer": {
+        "evidenceId": "41000000-0000-0000-0000-000000000002",
+        "sourceType": "ANSWER",
+        "text": "At closing time every Friday, I compare each shelf count with the stock sheet. If a count differs, I recount it and write the correction on the sheet. The check is complete when every shelf has my initials; there are no other exceptions."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [{
+          "resultId": "11000000-0000-0000-0000-000000000001",
+          "coverage": "SUPPORTED",
+          "category": "RULE",
+          "evidenceIds": [
+            "41000000-0000-0000-0000-000000000001",
+            "41000000-0000-0000-0000-000000000002"
+          ],
+          "summaryIncludes": ["Friday", "shelf", "recount", "initials"]
+        }]
+      }
+    }
+  ]
+}

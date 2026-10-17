@@ -45,6 +45,7 @@ function fixture(overrides = {}) {
     },
     turns: [{
       runId: "20000000-0000-0000-0000-000000000001",
+      sourceResultId: resultId,
       sourceQuestion: "Walk me through the last mismatch you handled.",
       answer: {
         evidenceId,
@@ -88,13 +89,7 @@ function validSubmission() {
   return {
     runId: fixture().context.run_id,
     expectedRevision: 2,
-    outcomes: [{
-      resultId,
-      coverage: "SUPPORTED",
-      category: "TERM",
-      evidenceIds: [evidenceId],
-      summary: "The team calls the daily prioritisation activity the morning sort.",
-    }],
+    outcomes: [],
     nextAction: {
       type: "ASK_QUESTION",
       resultId,
@@ -104,26 +99,33 @@ function validSubmission() {
   };
 }
 
-test("a valid Runtime Turn is traced with provenance and separate semantic grades", () => {
+function terminalSubmission() {
+  const submission = validSubmission();
+  submission.outcomes = [{
+    resultId,
+    coverage: "SUPPORTED",
+    category: "TERM",
+    evidenceIds: [evidenceId],
+    summary: "The team calls the daily prioritisation activity the morning sort.",
+  }];
+  return submission;
+}
+
+test("a valid Runtime Turn is traced with separate semantic grades", () => {
   const evaluation = evaluateSubmission({
     fixture: fixture(), turnIndex: 0, context: context(), submission: validSubmission(), previousQuestions: [],
   });
 
   assert.deepEqual(evaluation.contractViolations, []);
   assert.equal(evaluation.semanticQuality.passed, evaluation.semanticQuality.total);
-  assert.deepEqual(evaluation.coverageChanges, [{
-    resultId,
-    from: "EXPLORING",
-    to: "SUPPORTED",
-    evidenceIds: [evidenceId],
-  }]);
+  assert.deepEqual(evaluation.coverageChanges, []);
   assert.equal(evaluation.trace.sourceAnswer.text, fixture().turns[0].answer.text);
-  assert.deepEqual(evaluation.trace.outcomeProvenance[0].evidenceIds, [evidenceId]);
+  assert.deepEqual(evaluation.trace.outcomeProvenance, []);
   assert.equal(evaluation.trace.repeatedQuestion, false);
 });
 
 test("contract failure identifies turn, rule, source answer, and offending action", () => {
-  const submission = validSubmission();
+  const submission = terminalSubmission();
   submission.expectedRevision = 99;
   submission.outcomes[0].resultId = otherResultId;
   submission.outcomes[0].evidenceIds = ["unknown-evidence"];
@@ -204,7 +206,7 @@ test("long-scenario assertions reject planning leaks, fabricated specifics, and 
   assert.ok(!groundedEvaluation.contractViolations.some(item => item.rule === "unsupported-specific"));
 });
 
-test("a terminal outcome may close the current thread and ask the next result in one turn", () => {
+test("a terminal outcome may close the current thread and ask the next result in one explained transition", () => {
   const suppliedContext = context();
   suppliedContext.investigation_results.push({
     result_id: otherResultId,
@@ -212,7 +214,7 @@ test("a terminal outcome may close the current thread and ask the next result in
     coverage: "UNADDRESSED",
     current_outcomes: [],
   });
-  const submission = validSubmission();
+  const submission = terminalSubmission();
   submission.nextAction = {
     type: "ASK_QUESTION",
     resultId: otherResultId,
@@ -225,6 +227,87 @@ test("a terminal outcome may close the current thread and ask the next result in
     fixture: scenario, turnIndex: 0, context: suppliedContext, submission, previousQuestions: [],
   });
   assert.ok(!evaluation.contractViolations.some(item => item.rule === "current-thread"));
+  assert.deepEqual(evaluation.trace.threadTransition, {
+    fromResultId: resultId,
+    toResultId: otherResultId,
+    reason: "SUPPORTED",
+    evidenceIds: [evidenceId],
+  });
+});
+
+test("a Question cannot continue a thread made terminal in the same turn", () => {
+  const submission = terminalSubmission();
+  const evaluation = evaluateSubmission({
+    fixture: fixture(), turnIndex: 0, context: context(), submission, previousQuestions: [],
+  });
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "terminal-thread-continued"));
+});
+
+test("finished threads stay finished and required results precede optional ones", () => {
+  const suppliedContext = context();
+  suppliedContext.investigation_results[0].coverage = "SUPPORTED";
+  suppliedContext.investigation_results.push({
+    result_id: otherResultId,
+    required: true,
+    coverage: "UNADDRESSED",
+    current_outcomes: [],
+  });
+  suppliedContext.conversation_state.current_thread_result_id = otherResultId;
+  const reopened = validSubmission();
+  reopened.outcomes = [];
+  reopened.nextAction.resultId = resultId;
+  let evaluation = evaluateSubmission({
+    fixture: fixture(), turnIndex: 0, context: suppliedContext, submission: reopened, previousQuestions: [],
+  });
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "finished-thread-reopened"));
+
+  const optionalResultId = "10000000-0000-0000-0000-000000000003";
+  suppliedContext.investigation_results.push({
+    result_id: optionalResultId,
+    required: false,
+    coverage: "UNADDRESSED",
+    current_outcomes: [],
+  });
+  const skippedRequired = validSubmission();
+  skippedRequired.outcomes = [];
+  skippedRequired.nextAction.resultId = optionalResultId;
+  evaluation = evaluateSubmission({
+    fixture: fixture(), turnIndex: 0, context: suppliedContext, submission: skippedRequired, previousQuestions: [],
+  });
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "required-result-priority"));
+});
+
+test("an optional thread already in progress stays coherent before required work resumes", () => {
+  const optionalResultId = "10000000-0000-0000-0000-000000000003";
+  const suppliedContext = context();
+  suppliedContext.investigation_results.push({
+    result_id: optionalResultId,
+    required: false,
+    coverage: "EXPLORING",
+    current_outcomes: [],
+  }, {
+    result_id: otherResultId,
+    required: true,
+    coverage: "UNADDRESSED",
+    current_outcomes: [],
+  });
+  suppliedContext.conversation_state.current_thread_result_id = optionalResultId;
+  const submission = validSubmission();
+  submission.nextAction.resultId = optionalResultId;
+  const evaluation = evaluateSubmission({
+    fixture: fixture(), turnIndex: 0, context: suppliedContext, submission, previousQuestions: [],
+  });
+  assert.ok(!evaluation.contractViolations.some(item => item.rule === "required-result-priority"));
+});
+
+test("explicit open-state expectations distinguish a mention from sufficient Evidence", () => {
+  const scenario = fixture();
+  scenario.turns[0].expected.openResultIds = [resultId];
+  const submission = terminalSubmission();
+  const evaluation = evaluateSubmission({
+    fixture: scenario, turnIndex: 0, context: context(), submission, previousQuestions: [],
+  });
+  assert.ok(evaluation.semanticQuality.checks.some(check => check.rule === `expected-open:${resultId}` && !check.passed));
 });
 
 test("expected final outcomes are graded from cumulative result state, not only the turn delta", () => {
@@ -256,7 +339,7 @@ test("expected final outcomes are graded from cumulative result state, not only 
 });
 
 test("applying a submission retains immutable provenance and records coverage changes", () => {
-  const updated = applySubmission(context(), validSubmission());
+  const updated = applySubmission(context(), terminalSubmission());
   assert.equal(updated.investigation_results[0].coverage, "SUPPORTED");
   assert.deepEqual(updated.investigation_results[0].current_outcomes[0].evidence_ids, [evidenceId]);
   assert.equal(updated.questions_and_evidence[0].exact_text, fixture().turns[0].answer.text);
@@ -269,6 +352,27 @@ test("fixture discovery is versioned and does not require harness edits", async 
 
   const fixtures = await loadFixtures(directory);
   assert.deepEqual(fixtures.map(value => value.id), ["a", "b"]);
+});
+
+test("the shared suite covers thread transitions, mentions, required priority, and Evidence reuse", async () => {
+  const fixtures = await loadFixtures(new URL("./fixtures/v1", import.meta.url).pathname);
+  const byId = new Map(fixtures.map(value => [value.id, value]));
+  assert.ok(byId.has("mention-is-not-sufficient"));
+  assert.ok(byId.has("parked-thread-transition"));
+  assert.ok(byId.has("required-before-optional"));
+  assert.ok(byId.has("shared-evidence-multiple-results"));
+  for (const id of [
+    "mention-is-not-sufficient", "parked-thread-transition", "required-before-optional", "shared-evidence-multiple-results",
+  ]) {
+    assert.equal(byId.get(id).minimumSemanticPassRate, 1);
+    assert.ok(byId.get(id).turns.every(turn => typeof turn.sourceResultId === "string"));
+  }
+  assert.ok(byId.get("mention-is-not-sufficient").turns[0].expected.openResultIds.length > 0);
+  assert.equal(byId.get("parked-thread-transition").turns[1].expected.resultId,
+    byId.get("parked-thread-transition").context.investigation_results[1].result_id);
+  const sharedEvidence = byId.get("shared-evidence-multiple-results").turns[0].answer.evidenceId;
+  assert.ok(byId.get("shared-evidence-multiple-results").turns[0].expected.outcomes
+    .every(outcome => outcome.evidenceIds.includes(sharedEvidence)));
 });
 
 test("versioned long fixtures cover 20 and 40 turns plus continuity stressors", async () => {
@@ -291,9 +395,11 @@ test("versioned long fixtures cover 20 and 40 turns plus continuity stressors", 
 
 test("a scenario drives every answer through the Runtime Turn seam and records available usage", async () => {
   const submissions = [];
+  const observedContexts = [];
   const scenario = fixture({
     turns: [fixture().turns[0], {
       runId: "20000000-0000-0000-0000-000000000002",
+      sourceResultId: resultId,
       sourceQuestion: "Fallback source question",
       answer: {
         evidenceId: "40000000-0000-0000-0000-000000000002",
@@ -310,6 +416,7 @@ test("a scenario drives every answer through the Runtime Turn seam and records a
     fixture: scenario,
     repeat: 2,
     executeRuntime: async suppliedContext => {
+      observedContexts.push(suppliedContext);
       const turn = submissions.length;
       const submission = turn === 0 ? validSubmission() : {
         runId: suppliedContext.run_id,
@@ -330,6 +437,7 @@ test("a scenario drives every answer through the Runtime Turn seam and records a
   assert.equal(submissions.length, 2);
   assert.notEqual(submissions[0].runId, submissions[1].runId);
   assert.equal(run.turns[1].trace.sourceQuestion, validSubmission().nextAction.text);
+  assert.equal(observedContexts[1].conversation_state.current_thread_result_id, validSubmission().nextAction.resultId);
   assert.equal(run.turns[1].trace.sourceAnswer.sourceType, "DONT_KNOW");
   assert.equal(run.turns[1].contractViolations.length, 0);
   assert.deepEqual(run.usage, {
@@ -341,6 +449,58 @@ test("a scenario drives every answer through the Runtime Turn seam and records a
   });
   assert.equal(run.durationMs, 50);
   assert.equal(run.semanticGatePassed, true);
+});
+
+test("a scenario uses the source Question result rather than leaking the expected next result", async () => {
+  const scenario = fixture();
+  scenario.context.investigation_results.push({
+    result_id: otherResultId,
+    required: true,
+    coverage: "UNADDRESSED",
+    current_outcomes: [],
+  });
+  scenario.turns[0].sourceResultId = resultId;
+  scenario.turns[0].expected.resultId = otherResultId;
+  let observedContext;
+  await runScenario({
+    fixture: scenario,
+    repeat: 1,
+    executeRuntime: async suppliedContext => {
+      observedContext = suppliedContext;
+      const submission = terminalSubmission();
+      submission.nextAction.resultId = otherResultId;
+      return { submission, durationMs: 1, usage: null };
+    },
+  });
+  assert.equal(observedContext.conversation_state.current_thread_result_id, resultId);
+});
+
+test("a premature completion stops the scenario instead of fabricating another Question", async () => {
+  const secondTurn = structuredClone(fixture().turns[0]);
+  secondTurn.runId = "20000000-0000-0000-0000-000000000099";
+  secondTurn.answer.evidenceId = "40000000-0000-0000-0000-000000000099";
+  const scenario = fixture({ turns: [fixture().turns[0], secondTurn] });
+  let executions = 0;
+  const run = await runScenario({
+    fixture: scenario,
+    repeat: 1,
+    executeRuntime: async suppliedContext => {
+      executions += 1;
+      return {
+        submission: {
+          runId: suppliedContext.run_id,
+          expectedRevision: suppliedContext.expected_revision,
+          outcomes: [],
+          nextAction: { type: "PROPOSE_COMPLETION" },
+        },
+        durationMs: 1,
+        usage: null,
+      };
+    },
+  });
+  assert.equal(executions, 1);
+  assert.equal(run.turns.length, 1);
+  assert.ok(run.turns[0].contractViolations.some(item => item.rule === "premature-completion"));
 });
 
 test("a fixture can preserve hard semantic acceptance without reclassifying it as contract", async () => {
@@ -426,6 +586,33 @@ test("long runs measure continuity, compaction, coverage, evidence yield, phases
   assert.equal(run.metrics.qualityByPhase.length, 3);
   assert.equal(run.continuityGatePassed, true);
   assert.ok(run.turns.some(value => value.trace.compactedEvidenceIds.length > 0));
+});
+
+test("an unaddressed optional result does not fail continuity after required completion", async () => {
+  const optionalResultId = "10000000-0000-0000-0000-000000000003";
+  const scenario = fixture();
+  scenario.context.investigation_results.push({
+    result_id: optionalResultId,
+    required: false,
+    coverage: "UNADDRESSED",
+    current_outcomes: [],
+  });
+  scenario.turns[0].expected = {
+    action: "PROPOSE_COMPLETION",
+    outcomes: [{ resultId, coverage: "SUPPORTED", evidenceIds: [evidenceId] }],
+  };
+  const run = await runScenario({
+    fixture: scenario,
+    repeat: 1,
+    executeRuntime: async suppliedContext => {
+      const submission = terminalSubmission();
+      submission.runId = suppliedContext.run_id;
+      submission.nextAction = { type: "PROPOSE_COMPLETION" };
+      return { submission, durationMs: 1, usage: null };
+    },
+  });
+  assert.equal(run.metrics.continuity.allInvestigatedItemsTraceable, true);
+  assert.equal(run.continuityGatePassed, true);
 });
 
 test("runtime failures remain reviewable and stop only the affected scenario", async () => {

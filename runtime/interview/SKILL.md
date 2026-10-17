@@ -31,9 +31,11 @@ The **frontier** is the set of unresolved branches whose prerequisites are alrea
 
 A mention is not sufficient exploration. Silence, omission, and the absence of extra detail prove nothing. One rich answer may support several results only when it explicitly satisfies each affected branch; do not stretch one quotation across areas it merely implies.
 
-`conversation_state.current_thread_result_id` identifies the thread the interviewee is currently discussing. Stay on that thread until its exit conditions are met or it reaches an honest unresolved outcome. Do not jump to another ready branch merely because it is interesting. Mission-relevant information volunteered during the thread may become a child follow-up; park unrelated useful information for a later thread.
+`conversation_state.current_thread_result_id` identifies the thread the interviewee is currently discussing. Stay on that thread until its exit conditions are met or it reaches an honest unresolved outcome. Do not jump to another ready branch merely because it is interesting. Mission-relevant information volunteered during the thread may become a child follow-up; park unrelated useful information for a later thread. Retain its exact Evidence identity and revisit it after the current thread closes rather than silently losing it or switching early.
 
-After the current thread ends, prioritise unresolved required branches, then choose the branch with the highest value for reducing material uncertainty. Consider optional branches only after required coverage.
+When the current thread reaches an exit condition, submit its Evidence-linked terminal outcome in the same turn that asks the first Question for the next thread. That durable outcome explains the transition. Do not ask another Question for a terminal result unless later Evidence has directly reopened it with a material contradiction.
+
+After the current thread ends, prioritise unresolved required branches, then choose the branch with the highest value for reducing material uncertainty. Consider optional branches only after required coverage. Unaddressed optional results do not block Mission completion.
 
 ## Keep Mission planning private
 
@@ -67,19 +69,22 @@ FREE_TEXT is the default response mode. Never invent alternatives or possible an
 
 ## Preserve durable working memory
 
-Treat each result's `current_outcomes` as the settled, authoritative working memory for claims already recorded. It is the persisted equivalent of the design tree's established context; do not reconstruct settled branches from the transcript alone.
+Treat each result's `current_outcomes` as settled, authoritative working memory for terminal claims already recorded. While a result remains open, its accepted Questions and Evidence are the working memory for partial support.
 
 The submitted outcomes array is a delta, not a fresh snapshot of every result:
 
-- Compare every candidate claim with `current_outcomes` before submitting it.
-- Do not resubmit an unchanged claim or a paraphrase of it merely because another turn occurred.
-- Emit a new outcome only for a materially new, changed, qualified, or contradictory independently reviewable claim.
+- Do not emit terminal coverage for a useful partial claim. `SUPPORTED`, `ASSUMPTION`, `UNKNOWN`, `CONFLICT`, and `OWNERSHIP_GAP` make that result terminal; keep `outcomes` empty for that result while any exit condition still needs questioning.
+- Once the branch reaches an exit condition, emit every independently reviewable terminal claim it supports and link all exact Evidence identities needed to support it.
+- One explicit answer may close several results and reuse its Evidence identity only when it really satisfies each result's own exit conditions.
+- Compare every terminal candidate with `current_outcomes` before submitting it. Do not resubmit an unchanged claim or a paraphrase of it merely because another turn occurred.
+- If later Evidence materially qualifies or contradicts a settled claim, emit only the changed or contradictory outcome and preserve both Evidence sources.
 - If new Evidence strengthens the exact same unchanged claim and its provenance should expand, reuse the existing summary verbatim with the new Evidence identity; FindWorks will merge that Evidence into the existing outcome.
-- An empty `outcomes` array is correct when the answer changes only the next question and adds no material claim.
+- An empty `outcomes` array is correct whenever the current result remains open.
 
 ## Produce one bounded turn
 
 - Use `UNKNOWN`, `CONFLICT`, `ASSUMPTION`, or `OWNERSHIP_GAP` honestly. Never invent a domain answer.
+- Use `OWNERSHIP_GAP` only when the Evidence identifies another owner or an owner description. If the interviewee cannot identify who owns the required answer, use `UNKNOWN` when the required owner remains unidentified.
 - Every unresolved terminal outcome must come from Evidence gathered while directly exploring that result.
 - Do not propose a terminal outcome for a branch you are continuing to probe in the same turn. Leave its outcomes unchanged and ask the focused follow-up.
 - Categorise supported Knowledge as `FACT`, `RULE`, `DECISION`, `TERM`, or `EXCEPTION`; use `ASSUMPTION` only for an Evidence-linked unconfirmed inference.
