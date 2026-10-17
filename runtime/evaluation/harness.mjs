@@ -647,6 +647,26 @@ export function summariseRuns(runs) {
   const coverage = runs.map(run => run.metrics?.requiredCoverage?.completionRate).filter(value => typeof value === "number");
   const evidenceYield = runs.map(run => run.metrics?.usefulEvidence?.perQuestion).filter(value => typeof value === "number");
   const durations = turns.map(turn => turn.durationMs).filter(value => typeof value === "number");
+  const semanticRates = runs.map(run => {
+    const passed = (run.turns ?? []).reduce((total, turn) => total + (turn.semanticQuality?.passed ?? 0), 0);
+    const total = (run.turns ?? []).reduce((sum, turn) => sum + (turn.semanticQuality?.total ?? 0), 0);
+    return total === 0 ? 1 : passed / total;
+  });
+  const turnsToSufficientEvidence = runs.map(run => run.metrics?.requiredCoverageProgress
+    ?.find(progress => progress.total > 0 && progress.terminal === progress.total)?.turn)
+    .filter(value => typeof value === "number");
+  const costs = runs.map(run => run.usage?.costUsd).filter(value => typeof value === "number");
+  const costsPerQuestion = runs.map(run => {
+    const cost = run.usage?.costUsd;
+    const questionCount = run.turns?.length ?? 0;
+    return typeof cost === "number" && questionCount > 0 ? cost / questionCount : null;
+  }).filter(value => typeof value === "number");
+  const repeatedQuestions = turns.filter(turn => turn.trace?.repeatedQuestion
+    || turn.contractViolations?.some(violation => ["repeated-question", "semantically-repeated-question"].includes(violation.rule))).length;
+  const earlyCompletions = turns.filter(turn => turn.contractViolations
+    ?.some(violation => violation.rule === "premature-completion")).length;
+  const contradictionsMissed = turns.reduce((total, turn) => total + (turn.semanticQuality?.checks ?? [])
+    .filter(check => check.rule === "expected-outcome:CONFLICT" && !check.passed).length, 0);
   return {
     scenarios: new Set(runs.map(run => run.scenarioId)).size,
     runs: runs.length,
@@ -662,6 +682,17 @@ export function summariseRuns(runs) {
     usefulEvidencePerQuestion: averageOrNull(evidenceYield),
     latencyMs: { p50: percentile(durations, 0.5), p95: percentile(durations, 0.95) },
     durationMs: runs.reduce((total, run) => total + (run.durationMs ?? 0), 0),
+    distributions: {
+      semanticPassRate: distribution(semanticRates),
+      requiredCoverageCompletionRate: distribution(coverage),
+      usefulEvidencePerQuestion: distribution(evidenceYield),
+      turnsToSufficientEvidence: distribution(turnsToSufficientEvidence),
+      latencyMs: distribution(durations),
+      costUsdPerRun: distribution(costs),
+      costUsdPerQuestion: distribution(costsPerQuestion),
+    },
+    runsWithoutSufficientEvidence: runs.length - turnsToSufficientEvidence.length,
+    failureCounts: { contradictionsMissed, repeatedQuestions, earlyCompletions },
   };
 }
 
@@ -798,6 +829,22 @@ function rate(numerator, denominator) {
 
 function averageOrNull(values) {
   return values.length === 0 ? null : values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function distribution(values) {
+  if (values.length === 0) {
+    return { count: 0, min: null, p25: null, p50: null, p75: null, p95: null, max: null, mean: null };
+  }
+  return {
+    count: values.length,
+    min: Math.min(...values),
+    p25: percentile(values, 0.25),
+    p50: percentile(values, 0.5),
+    p75: percentile(values, 0.75),
+    p95: percentile(values, 0.95),
+    max: Math.max(...values),
+    mean: averageOrNull(values),
+  };
 }
 
 function percentile(values, quantile) {

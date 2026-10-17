@@ -55,6 +55,23 @@ A runtime `PROPOSE_COMPLETION` ends that scenario immediately, just as it ends l
 
 The checked-in baseline is an explicit quality floor for `openai/gpt-5.4-mini` at low reasoning. Replace it with a reviewed `result.json`, or pass any prior result with `--baseline`, after a credentialed full-suite run. Baseline comparison never changes the individual behavioural checks.
 
+## Reproducible model benchmark
+
+The benchmark command runs the same fixture versions and repeat count through every configuration in `runtime/evaluation/benchmark-configurations.v1.json`:
+
+```bash
+FINDWORKS_RUNTIME_IMAGE=findworks-runtime:evaluation npm run benchmark:adaptive-interview -- \
+  --commit "$(git rev-parse HEAD)" \
+  --repeats 3 \
+  --output artifacts/adaptive-interview-model-benchmark/current
+```
+
+The versioned portfolio requires `openai/gpt-5.4-mini` at low reasoning and `openai/gpt-5.4` at medium reasoning, and also explores mini at medium reasoning. Before spending the benchmark budget, the command queries the provider's model list and makes a minimal Responses API request with every exact model/reasoning pair. The safe preflight record retains the requested and provider-resolved model IDs, HTTP status, and error code/type, but never the credential, provider project identity, or raw error message. A configuration without verified access and reasoning support is marked blocked rather than silently substituted. Provider capability documentation is pinned in the configuration manifest; the live probe is the authority for the configured credential.
+
+The combined `benchmark.json` and `summary.md` retain aggregate distributions for semantic quality, required coverage, useful Evidence per Question, turns to sufficient Evidence, latency, cost per run, and cost per Question. They separately count missed contradictions, repeated Questions, and early completion and retain each sanitised synthetic contract or semantic failure. Per-configuration raw traces remain under the benchmark output directory. Do not put real Interview Session content or provider payloads there.
+
+The baseline remains mini/low unless a candidate has no deterministic, required semantic, continuity, missed-contradiction, repeated-Question, or early-completion failures; improves lower-quartile semantic quality by at least five percentage points; loses no more than two points of median useful Evidence per Question; costs no more than twice as much per useful Evidence; and has no more than twice the p95 latency. This is a benchmark decision only. It does not add production routing or model switching.
+
 ## Extending fixtures
 
 Fixtures live in `runtime/evaluation/fixtures/v1/`. Add another `.json` file; harness logic and scenario registration do not change. Each fixture contains:
