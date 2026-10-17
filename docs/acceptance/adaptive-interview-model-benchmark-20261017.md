@@ -2,81 +2,58 @@
 
 ## Decision
 
-Retain `openai/gpt-5.4-mini` with low reasoning as the default. Do not add production model routing.
+Retain `openai/gpt-5.4-mini` with low reasoning as the default, but treat this only as a conservative no-change decision. The fresh corrected credentialed gate produced no model-backed interview trials because neither required configuration passed exact-model preflight. It does not establish that mini/low is better, cheaper, or acceptable.
 
-`gpt-5.4-mini` at medium reasoning improved some quality and coverage measures, but did not meet the predeclared promotion criterion. The required `gpt-5.4` medium comparison is blocked because the configured OpenAI project does not currently have access to that model. Retaining the current default is therefore a conservative recommendation, not evidence that the full model is inferior.
+Do not add production model routing and do not promote a candidate. Rerun the same pinned gate only after the configured OpenAI project can request both exact provider-resolved required models.
 
-The sanitised machine-readable report, including every individual contract and semantic failure, is [issue-66-model-benchmark-6a66aeb.json](./traces/issue-66-model-benchmark-6a66aeb.json).
+The sanitised machine-readable evidence is [`issue-62-66-credentialed-gate-8579e0c.json`](./traces/issue-62-66-credentialed-gate-8579e0c.json). The earlier benchmark remains archived as [`issue-66-model-benchmark-6a66aeb.json`](./traces/issue-66-model-benchmark-6a66aeb.json), with its affected outcome metrics explicitly invalidated.
 
-## Final-review correction
+## Fresh corrected gate
 
-The retained run predates four material harness corrections: the HTTP seam accepted every proposal before grading it, rejected proposals could enter simulated state, coverage/Evidence-yield/sufficiency metrics counted semantically unsupported outcomes, and cost percentiles were rounded before ratios. Its preflight also used a separate API probe instead of verifying the identity reported by every actual Pi Runtime Turn. Therefore the retained required-coverage, useful-Evidence, turns-to-sufficiency, per-Question cost percentiles, and derived cost ratios are historical observations only and are marked invalid in the machine evidence. A fresh credentialed run is required to republish those measures or make a promotion decision.
-
-No candidate is promoted from this corrected record. That preserves the conservative retain-mini/low decision because both completed configurations had deterministic, semantic-gate, and continuity failures, while the required full-model comparison remained blocked. It does **not** preserve the old numerical cost/quality claim as valid evidence.
-
-## Reproducibility and provider verification
-
-- Evaluated commit: `6a66aebe46761bcec07cff5bb2a284023f598fc8`.
-- Runtime: Pi `0.84.4`; pinned image commit matched the evaluated commit.
+- Evaluated clean commit: `8579e0c46569b1c3a36fd4833386544bb2b664da`.
+- Runtime: Pi `0.84.4`.
+- Runtime image: `findworks-runtime:credentialed-rerun-8579e0c`.
+- Image ID: `sha256:61c4519566d248ab57095226bf86be281583d7207ef9a2dd5a4b6d0bb6e1ca5b`.
 - Configuration manifest: `runtime/evaluation/benchmark-configurations.v1.json` version `1.0.0`.
-- Fixture suite: all 18 versioned synthetic scenarios from `runtime/evaluation/fixtures/v1`, three trials per accessible configuration.
-- The run used synthetic people and operations only. The retained comparison omits credentials, provider project identity, raw provider errors, and absolute host paths.
-- OpenAI's model documentation identifies `gpt-5.4-mini` and `gpt-5.4` as exact API model IDs and documents low and medium reasoning support for both. The benchmark then checked the configured credential rather than relying on that documentation or Pi's catalogue.
-- Live model discovery listed `gpt-5.4-mini` but not `gpt-5.4`. Minimal live reasoning probes for mini/low and mini/medium both succeeded and resolved to `gpt-5.4-mini-2026-03-17`. The full-model medium probe returned HTTP 403, `model_not_found`; no substitute model was run.
+- Fixture portfolio: all 18 versioned synthetic scenarios in `runtime/evaluation/fixtures/v1` (exact versions are retained in the machine record).
+- Requested repeats: three per accessible configuration.
+- Credential path: `OPENAI_API_KEY`, obtained from `findworks-pilot-worker-1` only inside command environments and passed to both preflight and Pi through the same API-key path. It was not printed, logged, written to evidence, or persisted.
+- Execution: serial foreground benchmark processes only; no detached, background, duplicate, or concurrent process was used. Earlier attempts stopped when they exposed exact-model and blocked-evidence harness defects. After each defect was test-driven, committed, and rebuilt, only the rerun required to restore evidence integrity was performed. The retained attempt is the final corrected gate.
 
-Reproduce with configured OpenAI credentials:
+## Exact configurations and trials
 
-```bash
-docker build \
-  --build-arg VCS_REF="$(git rev-parse HEAD)" \
-  -t findworks-runtime:evaluation \
-  runtime
+| Configuration | Required | Manifest model | Reasoning | Alias listed | Alias resolved to | Exact resolved-model probe | Fixture trials |
+| --- | --- | --- | --- | --- | --- | --- | ---: |
+| `gpt-5.4-mini-low` | yes | `gpt-5.4-mini` | low | yes | `gpt-5.4-mini-2026-03-17` | blocked: HTTP 403 `model_not_found` | 0 |
+| `gpt-5.4-medium` | yes | `gpt-5.4` | medium | no | unavailable | blocked: HTTP 403 `model_not_found` | 0 |
+| `gpt-5.4-mini-medium` | no | `gpt-5.4-mini` | medium | yes | `gpt-5.4-mini-2026-03-17` | blocked: HTTP 403 `model_not_found` | 0 |
 
-FINDWORKS_RUNTIME_IMAGE=findworks-runtime:evaluation \
-  npm run benchmark:adaptive-interview -- \
-  --commit "$(git rev-parse HEAD)" \
-  --repeats 3 \
-  --output artifacts/adaptive-interview-model-benchmark/current
-```
+The manifest alias probe and exact resolved-model probe used the same credential. The harness did not run Pi against an alias after the exact snapshot failed, and it did not substitute another model. The required full-model configuration was recorded as blocked as required.
 
-## Aggregate distributions
+## Corrected accepted-outcome metrics and aggregate distributions
 
-| Measure | Mini / low | Mini / medium | Medium change |
+No Runtime Turn was executed in the retained gate, so there were no server-accepted outcomes. These measures are **unavailable**, not measured zero:
+
+| Measure | Mini / low | GPT-5.4 / medium | Mini / medium |
 | --- | ---: | ---: | ---: |
-| Scenario runs | 54 | 54 | — |
-| Runtime Turns | 259 | 257 | -2 |
-| Semantic pass rate, pooled | 88.55% | 89.16% | +0.61 points |
-| Semantic pass rate, p25 / p50 across runs | 86.3% / 92.6% | 88.0% / 100.0% | +1.7 / +7.4 points |
-| Required coverage, mean | 83.80% | 88.89% | +5.09 points |
-| Runs without sufficient Evidence | 11 | 7 | -4 |
-| Useful Evidence per Question, mean | 0.567 | 0.617 | +0.050 |
-| Useful Evidence per Question, p50 | 0.500 | 0.500 | no change |
-| Turns to sufficient Evidence, p50 / p95 | 2 / 19 | 2 / 33 | no change / +14 |
-| Turn latency, p50 / p95 | 5.16 s / 6.68 s | 6.46 s / 9.62 s | +25.3% / +43.9% |
-| Cost per run, p50 / p95 | $0.004 / $0.091 | $0.005 / $0.138 | +25% / +51.6% |
-| Cost per Question, p50 | $0.002 | $0.003 | +50% |
-| Total provider-reported cost | $0.776247 | $1.126387 | +45.1% |
-| Input / output tokens | 1,216,640 / 68,414 | 1,212,018 / 129,790 | -0.4% / +89.7% |
+| Scenario trials | 0 (blocked) | 0 (blocked) | 0 (blocked) |
+| Runtime Turns | unavailable | unavailable | unavailable |
+| Semantic pass distribution | unavailable | unavailable | unavailable |
+| Required accepted-outcome coverage distribution | unavailable | unavailable | unavailable |
+| Useful accepted Evidence / Question distribution | unavailable | unavailable | unavailable |
+| Turns to sufficient accepted Evidence distribution | unavailable | unavailable | unavailable |
+| Contradictions missed / repetitions / early completions | unavailable | unavailable | unavailable |
+| Latency distribution | unavailable | unavailable | unavailable |
+| Provider-reported evaluation tokens and cost | unavailable | unavailable | unavailable |
+| Cost / Question and cost / useful Evidence | unavailable | unavailable | unavailable |
 
-Provider costs are reported in USD. Total provider-reported costs and token totals remain exact retained observations. The displayed per-run and per-Question percentiles were rounded by the old harness, so the former 1.5× median cost-per-useful-Evidence ratio cannot be recovered exactly from this sanitised aggregate and is withdrawn pending a fresh credentialed rerun. Semantic checks per provider-reported dollar remain 1,704 for low and 1,168 for medium, but they do not repair the invalid outcome-based metrics.
+There are consequently no unrounded percentile, delta, or ratio calculations to publish. The machine record uses blocked statuses and absent summaries rather than fabricated numeric values. Preflight requests were made, but this harness does not receive provider-reported token usage or cost for them; no preflight cost is estimated.
 
-## Failures and safety signals
+## Cost/quality trade-off
 
-| Signal | Mini / low | Mini / medium |
-| --- | ---: | ---: |
-| Runs with deterministic violations | 18 | 19 |
-| Required semantic-gate failures | 27 | 23 |
-| Continuity-gate failures | 13 | 12 |
-| Missed expected Conflicts | 0 | 0 |
-| Repeated Questions | 46 | 35 |
-| Early completions | 0 | 0 |
-| Retained individual failures | 259 | 228 |
+No cost/quality comparison is possible. The corrected harness did not accept an outcome, receive Runtime Turn usage, or produce a quality distribution for any configuration. Historical totals from the 2026-10-17 archived run remain observations of that older run only and cannot repair this gate.
 
-The most frequent degradation is repetition and loss of fixture-expected vocabulary or thread progression in the 20- and 40-turn scenarios. Medium reasoning reduced repetitions and incomplete coverage, but still produced deterministic, required semantic, and continuity failures. Individual failures remain in the linked JSON with configuration, scenario, repeat, turn, stable rule, synthetic source answer, and offending action.
-
-The evaluated report predates the subsequently integrated correction that stops sentence-opening transition words such as “Once” from being classified as unsupported names. Those observed failures remain retained rather than rewritten. Post-merge deterministic tests cover that correction.
-
-## Promotion criterion and outcome
+## Promotion criterion and recommendation
 
 A candidate promotes only if it has:
 
@@ -86,4 +63,8 @@ A candidate promotes only if it has:
 4. no more than 2× median cost per useful Evidence; and
 5. no more than 2× p95 latency.
 
-Mini/medium stayed inside the cost, Evidence-yield, and latency ceilings, but its lower-quartile semantic gain was only 1.7 points and it did not clear the zero-failure gates. It is not promoted. `gpt-5.4` medium cannot be assessed until provider access is granted and the same pinned three-trial suite is rerun; that is the sole benchmark blocker.
+No candidate was eligible to evaluate against those gates. The recommendation is therefore **retain mini/low without claiming validation**. Promotion remains blocked until both required exact configurations complete all 18 fixture versions for three trials through the corrected Runtime Turn seam.
+
+## Historical evidence status
+
+The archived `6a66aeb` run used three repeats and reported quality/cost observations for mini/low and mini/medium while full/medium was blocked. It predates production-equivalent Runtime Turn rejection, accepted-outcome qualification, exact actual-turn model pinning, and full-precision cost ratios. Its required coverage, useful Evidence, turns-to-sufficiency, per-Question cost percentiles, and derived ratios remain invalid for promotion. The fresh gate did not republish or supersede them.
