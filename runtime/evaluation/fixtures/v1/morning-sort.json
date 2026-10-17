@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "morning-sort",
   "title": "Adaptive follow-ups use interviewee language",
   "minimumSemanticPassRate": 1,
@@ -40,6 +40,7 @@
   "turns": [
     {
       "runId": "20000000-0000-0000-0000-000000000001",
+      "sourceResultId": "10000000-0000-0000-0000-000000000001",
       "sourceQuestion": "Walk me through the last imported transaction problem you dealt with.",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000001",
@@ -59,6 +60,7 @@
     },
     {
       "runId": "20000000-0000-0000-0000-000000000011",
+      "sourceResultId": "10000000-0000-0000-0000-000000000001",
       "sourceQuestion": "What makes one red job go ahead of another?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000002",
@@ -78,6 +80,7 @@
     },
     {
       "runId": "20000000-0000-0000-0000-000000000012",
+      "sourceResultId": "10000000-0000-0000-0000-000000000001",
       "sourceQuestion": "What happens when the cashbook does not explain the gap?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000003",

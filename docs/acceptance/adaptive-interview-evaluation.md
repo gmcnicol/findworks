@@ -44,8 +44,10 @@ Every turn records the source Question and answer, submitted action, outcome sum
 
 Deterministic contract checks are reported separately from graded semantic checks:
 
-- **Contract:** run/revision identity, result and Evidence scope, supported coverage/category/mode, one next action, current thread, one Question, repeat detection, and no premature completion.
-- **Semantic quality:** interviewee vocabulary, private Mission language, own-words response, one information need, non-leading wording, concision, expected outcome kind, and provenance/summary expectations.
+- **Contract:** run/revision identity, result and Evidence scope, supported coverage/category/mode, one next action, current-thread continuity, Evidence-backed thread transitions, required-before-optional priority, no continuation or reopening of terminal threads, one Question, repeat detection, and no premature completion.
+- **Semantic quality:** interviewee vocabulary, private Mission language, own-words response, one information need, non-leading wording, concision, explicit expected-open coverage, expected outcome kind, and provenance/summary expectations.
+
+A runtime `PROPOSE_COMPLETION` ends that scenario immediately, just as it ends live questioning. If fixture turns remain, the existing expected-action or premature-completion violation is retained; the harness never fabricates a later Question after completion.
 
 The checked-in baseline is an explicit quality floor for `openai/gpt-5.4-mini` at low reasoning. Replace it with a reviewed `result.json`, or pass any prior result with `--baseline`, after a credentialed full-suite run. Baseline comparison never changes the individual behavioural checks.
 
@@ -56,7 +58,7 @@ Fixtures live in `runtime/evaluation/fixtures/v1/`. Add another `.json` file; ha
 - `schemaVersion`, independently reviewable `fixtureVersion`, and an optional `minimumSemanticPassRate`;
 - a synthetic Interview Mission, Investigation Results, and authoritative Runtime Turn context;
 - an interviewee persona;
-- an ordered answer sequence with a distinct Runtime Turn run identity, immutable Evidence identities, and source types;
-- expected action, result, semantic qualities, and Evidence-linked outcomes.
+- an ordered answer sequence with a distinct Runtime Turn run identity, the `sourceResultId` of the Question being answered, immutable Evidence identities, and source types;
+- expected action, result, semantic qualities, explicit results that must remain open, and Evidence-linked outcomes.
 
-The current set covers adaptive follow-ups, successful completion, Unknown, Ownership Gap, Conflict, and unconfirmed Assumption outcomes. Advance the fixture directory/schema only for an incompatible fixture contract; increment an individual fixture version when its Mission, persona, answers, or expectations change.
+The current set covers adaptive follow-ups, successful completion, Unknown, Ownership Gap, Conflict, unconfirmed Assumption, mere mention without sufficiency, parked information and later thread transition, required-before-optional priority, and explicit reuse of one rich Evidence item across multiple results. Advance the fixture directory/schema only for an incompatible fixture contract; increment an individual fixture version when its Mission, persona, answers, or expectations change.
