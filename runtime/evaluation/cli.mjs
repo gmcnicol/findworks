@@ -10,6 +10,7 @@ import {
   runScenario,
   summariseRuns,
 } from "./harness.mjs";
+import { validateModelIdentityObservations } from "./model-identity.mjs";
 import { createRuntimeTurnContract } from "./runtime-turn-contract.mjs";
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
@@ -342,24 +343,14 @@ export function validateBaselineCompatibility(baseline, current) {
 }
 
 export function validateRunModelIdentity(runs, expected) {
-  const identities = runs.flatMap(run => run.turns ?? [])
-    .map(turn => turn.usage?.modelIdentity).filter(Boolean);
-  const turnCount = runs.reduce((total, run) => total + (run.turns?.filter(turn => turn.usage).length ?? 0), 0);
-  if (identities.length !== turnCount || identities.length === 0) {
-    throw new Error("Actual Runtime Turn model identity was not captured for every provider call");
-  }
-  const unique = new Map(identities.map(identity => [JSON.stringify(identity), identity]));
-  if (unique.size !== 1) throw new Error("Actual Runtime Turns used more than one model or reasoning identity");
-  const actual = identities[0];
-  for (const field of ["provider", "requestedModel", "reasoningEffort"]) {
-    if (expected[field] && actual[field] !== expected[field]) {
-      throw new Error(`Actual Runtime Turn ${field} ${actual[field]} does not match preflight ${expected[field]}`);
-    }
-  }
-  if (expected.responseModel && actual.responseModel !== expected.responseModel) {
-    throw new Error(`Actual Runtime Turn responseModel ${actual.responseModel} does not match preflight ${expected.responseModel}`);
-  }
-  return structuredClone(actual);
+  const successfulTurns = runs.flatMap(run => run.turns ?? [])
+    .filter(turn => !turn.executionError);
+  return validateModelIdentityObservations(
+    successfulTurns.map(turn => turn.usage?.modelIdentity),
+    expected,
+    "actual Runtime Turn",
+    "preflight",
+  );
 }
 
 export function selectedProviderCredential(provider, env) {

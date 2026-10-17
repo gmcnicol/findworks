@@ -146,6 +146,49 @@ test("actual Runtime Turns retain exact model identity and configured Pi reasoni
   ], identity), /more than one model or reasoning identity/);
 });
 
+test("model identity completeness counts successful turns even when usage is missing", () => {
+  const identity = {
+    provider: "openai",
+    requestedModel: "gpt-5.4-mini",
+    responseModel: "gpt-5.4-mini-2026-03-17",
+    reasoningEffort: "low",
+  };
+
+  assert.throws(() => validateRunModelIdentity([{
+    turns: [{ usage: { modelIdentity: identity } }, { usage: null }],
+  }], identity), /not captured for every successful actual Runtime Turn/);
+  assert.throws(() => validateRunModelIdentity([{
+    turns: [{ usage: { modelIdentity: identity } }, { usage: { inputTokens: 12 } }],
+  }], identity), /not captured for every successful actual Runtime Turn/);
+
+  assert.deepEqual(validateRunModelIdentity([{
+    turns: [
+      { usage: { modelIdentity: identity } },
+      { usage: null, executionError: "provider failed before a successful Runtime Turn" },
+    ],
+  }], identity), identity);
+});
+
+test("model identity completeness rejects missing and mismatched provider request and response identity", () => {
+  const identity = {
+    provider: "openai",
+    requestedModel: "gpt-5.4-mini",
+    responseModel: "gpt-5.4-mini-2026-03-17",
+    reasoningEffort: "low",
+  };
+  for (const field of ["provider", "requestedModel", "responseModel"]) {
+    const missing = { ...identity };
+    delete missing[field];
+    assert.throws(() => validateRunModelIdentity([
+      { turns: [{ usage: { modelIdentity: identity } }, { usage: { modelIdentity: missing } }] },
+    ], identity), /incomplete|not captured/);
+
+    assert.throws(() => validateRunModelIdentity([
+      { turns: [{ usage: { modelIdentity: identity } }, { usage: { modelIdentity: { ...identity, [field]: "substituted" } } }] },
+    ], identity), /more than one model or reasoning identity|does not match preflight/);
+  }
+});
+
 test("report writer always emits machine-readable JSON and readable Markdown", async () => {
   const directory = await mkdtemp(join(tmpdir(), "findworks-report-"));
   const report = {

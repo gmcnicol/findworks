@@ -14,6 +14,8 @@
 - Turn latency: p50 5663.7 ms, p95 8020.8 ms
 - Duration: 352600.90375399997 ms
 
+> Historical correction — no rerun: the model value above is configuration; this trace retained no actual provider/request/response identity for its 60 turns. Required-coverage, useful-Evidence, and turns-to-sufficiency values also predate the corrected accepted-outcome gate. Keep the failures as regression evidence, but do not use these figures as corrected #63 acceptance evidence.
+
 ## claims-routing-20-turn-continuity — repeat 1
 - Contract: 9 violation(s)
 - Semantic: 98/114; required 90.0% — fail

@@ -4,8 +4,8 @@
 
 - Commit: `c6197f6a0860471c0e113078d6488d9c3f886ba6`
 - Runtime: Pi `0.84.4`
-- Model: `openai/gpt-5.4-mini`
-- Reasoning effort: `low`
+- Configured model: `openai/gpt-5.4-mini`
+- Configured reasoning effort: `low`
 - Fixtures: `claims-routing-20-turn-continuity@1.0.0`, `permit-handover-40-turn-compaction@1.0.0`
 - Synthetic Runtime Turns: 60
 - Input/output tokens: 300,658 / 19,440
@@ -15,6 +15,8 @@
 - Readable trace: [`traces/issue-63-gpt-5.4-mini-low-c6197f6.md`](./traces/issue-63-gpt-5.4-mini-low-c6197f6.md)
 
 No production Interview Session, credential, provider payload, or Pi session file is retained.
+
+**Historical-evidence correction (no rerun):** this run predates per-turn provider/request/response identity capture, so the configured model above is not proof of the actual model snapshot used on all 60 turns. It also predates the corrected accepted-outcome metric gate. Required-coverage and Evidence-yield values below remain historical observations and do not establish #63's corrected quantitative acceptance. The retained failures and synthetic traces remain regression evidence; a fresh credentialed run is required for corrected model-identity and outcome metrics.
 
 ## Result
 

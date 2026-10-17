@@ -14,7 +14,12 @@
       "costPerQuestionRatio"
     ],
     "exactCostPerQuestionRatio": 2.4381363244176022,
-    "decisionEffect": "NO_GO is unchanged: exact cost remains above 2x, latency remains above 2x, and safety regressed. Outcome-based gains require a fresh credentialed rerun under the corrected harness."
+    "invalidEvidence": [
+      "same-model comparison across baseline interviewer, reviewed interviewer, and reviewer"
+    ],
+    "actualRoleModelIdentities": null,
+    "modelIdentityCorrection": "No actual provider/request/response identity was retained for any of the three execution roles. Configured model fields and the separate live probe cannot prove same-model execution. No rerun was performed; a fresh credentialed run through the corrected evaluator is required.",
+    "decisionEffect": "NO_GO is unchanged as a conservative product decision: exact cost remains above 2x, latency remains above 2x, and safety regressed. It is not a verified same-model quality comparison. Outcome-based gains and role-model isolation require a fresh credentialed rerun under the corrected harness."
   },
   "metadata": {
     "schemaVersion": 1,

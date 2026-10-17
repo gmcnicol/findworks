@@ -5,6 +5,12 @@ import { createReviewedExecutor, compareReviewStrategies } from "./reviewed-exec
 
 const resultId = "10000000-0000-0000-0000-000000000001";
 const evidenceId = "40000000-0000-0000-0000-000000000001";
+const modelIdentity = {
+  provider: "openai",
+  requestedModel: "gpt-5.4-mini",
+  responseModel: "gpt-5.4-mini-2026-03-17",
+  reasoningEffort: "low",
+};
 
 function context() {
   return {
@@ -57,7 +63,11 @@ test("a scheduled review is validated before advisory guidance reaches the inter
     gate: new ReviewerProposalGate(),
     executeReviewer: async request => {
       reviewerRequest = request;
-      return { proposal: reviewProposal(request), durationMs: 30, usage: { inputTokens: 70, outputTokens: 10, costUsd: 0.002 } };
+      return {
+        proposal: reviewProposal(request),
+        durationMs: 30,
+        usage: { inputTokens: 70, outputTokens: 10, costUsd: 0.002, modelIdentity },
+      };
     },
     executeInterviewer: async supplied => {
       interviewerContext = supplied;
@@ -70,7 +80,7 @@ test("a scheduled review is validated before advisory guidance reaches the inter
         },
         event: "question_ready",
         durationMs: 50,
-        usage: { inputTokens: 100, outputTokens: 20, costUsd: 0.003 },
+        usage: { inputTokens: 100, outputTokens: 20, costUsd: 0.003, modelIdentity },
       };
     },
   });
@@ -80,8 +90,15 @@ test("a scheduled review is validated before advisory guidance reaches the inter
   assert.equal(reviewerRequest.trigger, "INITIAL_EVIDENCE");
   assert.equal(interviewerContext.reviewer_guidance.proposal_id, "proposal-2");
   assert.equal(result.durationMs, 80);
-  assert.deepEqual(result.usage, { inputTokens: 170, outputTokens: 30, cacheWriteTokens: null, costUsd: 0.005 });
+  assert.deepEqual(result.usage, {
+    inputTokens: 170,
+    outputTokens: 30,
+    cacheWriteTokens: null,
+    costUsd: 0.005,
+    modelIdentity,
+  });
   assert.equal(result.review.accepted, true);
+  assert.equal(result.review.executionSucceeded, true);
   assert.equal(result.review.trigger, "INITIAL_EVIDENCE");
   assert.equal(result.interviewerDurationMs, 50);
   assert.equal(result.reviewerDurationMs, 30);
@@ -106,6 +123,7 @@ test("an invalid review never reaches interviewer context and remains visible in
 
   assert.equal(interviewerContext.reviewer_guidance, undefined);
   assert.equal(result.review.accepted, false);
+  assert.equal(result.review.executionSucceeded, true);
   assert.match(result.review.rejection, /reviewer_revision_stale/);
   assert.equal(result.durationMs, 60);
 });

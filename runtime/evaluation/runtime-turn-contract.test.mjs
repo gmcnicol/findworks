@@ -86,6 +86,50 @@ test("a repaired Runtime Turn commits only the accepted proposal", () => {
   }]);
 });
 
+test("an identical replay returns the stable accepted state without a second semantic commit", () => {
+  const contract = createRuntimeTurnContract(context());
+  const submission = validSubmission();
+  submission.outcomes = [{
+    resultId,
+    coverage: "SUPPORTED",
+    category: "RULE",
+    evidenceIds: [evidenceId],
+    summary: "The analyst checks the source ledger.",
+  }];
+
+  const accepted = contract.submit(submission);
+  const replayed = contract.submit(structuredClone(submission));
+
+  assert.deepEqual(replayed, accepted);
+  assert.equal(contract.context().expected_revision, 3);
+  assert.equal(contract.context().investigation_results[0].current_outcomes.length, 1);
+});
+
+test("changed reuse of a committed run identity is rejected without mutation", () => {
+  const contract = createRuntimeTurnContract(context());
+  const submission = validSubmission();
+  const accepted = contract.submit(submission);
+  for (const expectedRevision of [submission.expectedRevision, accepted.context.expected_revision]) {
+    const changed = structuredClone(submission);
+    changed.expectedRevision = expectedRevision;
+    changed.nextAction.text = "A changed question must not commit.";
+    assert.deepEqual(contract.submit(changed), { accepted: false, code: "run_identity_reused" });
+  }
+  assert.deepEqual(contract.context(), accepted.context);
+});
+
+test("an unrelated run with a stale or current revision remains rejected after settlement", () => {
+  const contract = createRuntimeTurnContract(context());
+  const accepted = contract.submit(validSubmission());
+  for (const expectedRevision of [2, accepted.context.expected_revision]) {
+    const unrelated = validSubmission();
+    unrelated.runId = "20000000-0000-0000-0000-000000000099";
+    unrelated.expectedRevision = expectedRevision;
+    assert.deepEqual(contract.submit(unrelated), { accepted: false, code: "stale_revision" });
+  }
+  assert.deepEqual(contract.context(), accepted.context);
+});
+
 test("unresolved outcomes require Evidence from a Question for the same Investigation Result", () => {
   const supplied = context();
   supplied.investigation_results.push({

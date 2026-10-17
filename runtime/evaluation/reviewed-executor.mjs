@@ -1,3 +1,4 @@
+import { modelIdentityKey } from "./model-identity.mjs";
 import { createReviewerRequest, reviewerCadence } from "./review-contract.mjs";
 
 export function createReviewedExecutor({ executeReviewer, executeInterviewer, gate }) {
@@ -8,12 +9,14 @@ export function createReviewedExecutor({ executeReviewer, executeInterviewer, ga
     let review = null;
     let reviewerDurationMs = 0;
     let reviewerUsage = null;
+    let reviewerExecutionSucceeded = false;
 
     if (cadence) {
       const request = createReviewerRequest({ context, trigger: cadence.trigger });
       let proposed;
       try {
         const executed = await executeReviewer(request);
+        reviewerExecutionSucceeded = true;
         reviewerDurationMs = executed.durationMs ?? 0;
         reviewerUsage = executed.usage ?? null;
         const proposal = executed.proposal ?? executed.submission;
@@ -27,6 +30,7 @@ export function createReviewedExecutor({ executeReviewer, executeInterviewer, ga
         });
         review = {
           accepted: true,
+          executionSucceeded: true,
           replayed: accepted.replayed,
           trigger: cadence.trigger,
           requestId: request.requestId,
@@ -37,6 +41,7 @@ export function createReviewedExecutor({ executeReviewer, executeInterviewer, ga
       } catch (error) {
         review = {
           accepted: false,
+          executionSucceeded: reviewerExecutionSucceeded,
           replayed: false,
           trigger: cadence.trigger,
           requestId: request.requestId,
@@ -120,6 +125,12 @@ function mergeUsage(...values) {
   for (const field of ["inputTokens", "outputTokens", "cacheWriteTokens", "costUsd"]) {
     const available = values.map(value => value?.[field]).filter(value => typeof value === "number");
     result[field] = available.length === 0 ? null : available.reduce((total, value) => total + value, 0);
+  }
+  const supplied = values.filter(Boolean);
+  const identities = supplied.map(value => value.modelIdentity);
+  if (identities.every(Boolean)) {
+    const unique = new Map(identities.map(identity => [modelIdentityKey(identity), identity]));
+    result.modelIdentity = unique.size === 1 ? structuredClone(identities[0]) : null;
   }
   return result;
 }

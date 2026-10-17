@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createDockerRuntimeExecutor, inspectImage } from "./cli.mjs";
 import { loadFixtures, runScenario, summariseRuns } from "./harness.mjs";
+import { modelIdentityKey, validateModelIdentityObservations } from "./model-identity.mjs";
 import { ReviewerProposalGate } from "./review-contract.mjs";
 import { compareReviewStrategies, createReviewedExecutor } from "./reviewed-executor.mjs";
 
@@ -97,6 +98,7 @@ export async function runPeriodicReviewCli(argv = process.argv.slice(2), env = p
   const sharedMetadata = {
     provider: options.provider,
     model: `${options.provider}/${options.model}`,
+    requestedModel: options.model,
     reasoningEffort: options.reasoningEffort,
     runtimeVersion: options.runtimeVersion ?? image.labels["io.findworks.pi.version"] ?? null,
     runtimeImage: options.image,
@@ -132,9 +134,10 @@ export function buildPeriodicReviewReport({ metadata, baseline, reviewed }) {
       || baseline.metadata?.reasoningEffort !== reviewed.metadata?.reasoningEffort) {
     throw new Error("Baseline and reviewed strategies must use the same model and reasoning effort");
   }
+  const actualModelIdentities = validatePeriodicReviewModelIdentities({ metadata, baseline, reviewed });
   return {
     schemaVersion: 1,
-    metadata,
+    metadata: { ...metadata, actualModelIdentities },
     contractVersion: "periodic-investigation-review/1.0.0",
     cadencePolicy: {
       initialEvidence: true,
@@ -150,8 +153,23 @@ export function buildPeriodicReviewReport({ metadata, baseline, reviewed }) {
       maximumMedianCostPerQuestionRatio: 2,
       maximumP95LatencyRatio: 2,
     },
-    baseline,
-    reviewed,
+    baseline: {
+      ...baseline,
+      metadata: {
+        ...baseline.metadata,
+        actualModelIdentities: { interviewer: actualModelIdentities.baselineInterviewer },
+      },
+    },
+    reviewed: {
+      ...reviewed,
+      metadata: {
+        ...reviewed.metadata,
+        actualModelIdentities: {
+          interviewer: actualModelIdentities.reviewedInterviewer,
+          reviewer: actualModelIdentities.reviewer,
+        },
+      },
+    },
     comparison: compareReviewStrategies({ baseline: baseline.summary, reviewed: reviewed.summary }),
   };
 }
@@ -165,7 +183,8 @@ export function formatPeriodicReviewSummary(report) {
     "",
     `- Decision: **${comparison.decision}** — ${comparison.rationale}`,
     `- Commit: \`${report.metadata.commit}\``,
-    `- Model/reasoning: \`${report.baseline.metadata.model}\` / \`${report.baseline.metadata.reasoningEffort}\``,
+    `- Requested model/reasoning: \`${report.baseline.metadata.model}\` / \`${report.baseline.metadata.reasoningEffort}\``,
+    `- Observed model identities: baseline interviewer \`${identityText(report.metadata.actualModelIdentities?.baselineInterviewer)}\`; reviewed interviewer \`${identityText(report.metadata.actualModelIdentities?.reviewedInterviewer)}\`; reviewer \`${identityText(report.metadata.actualModelIdentities?.reviewer)}\``,
     `- Runtime: Pi \`${report.metadata.runtimeVersion ?? "unavailable"}\`, image \`${report.metadata.runtimeImageId ?? "unavailable"}\``,
     `- Fixture versions: ${Object.entries(report.metadata.fixtureVersions ?? {}).map(([id, version]) => `${id}@${version}`).join(", ")}`,
     `- Repeats: ${report.metadata.repeats}`,
@@ -196,10 +215,62 @@ export function formatPeriodicReviewSummary(report) {
   return `${lines.join("\n")}\n`;
 }
 
+export function validatePeriodicReviewModelIdentities({ metadata, baseline, reviewed }) {
+  const expected = {
+    provider: metadata.provider,
+    requestedModel: metadata.requestedModel,
+    reasoningEffort: metadata.reasoningEffort,
+  };
+  const baselineTurns = successfulTurns(baseline.runs);
+  const reviewedTurns = successfulTurns(reviewed.runs);
+  const reviewerTurns = reviewedTurns.filter(turn => turn.trace?.review?.executionSucceeded);
+  const observed = {
+    baselineInterviewer: {
+      successfulTurns: baselineTurns.length,
+      identity: validateModelIdentityObservations(
+        baselineTurns.map(turn => turn.usage?.modelIdentity),
+        expected,
+        "Baseline interviewer Runtime Turn",
+      ),
+    },
+    reviewedInterviewer: {
+      successfulTurns: reviewedTurns.length,
+      identity: validateModelIdentityObservations(
+        reviewedTurns.map(turn => turn.interviewerUsage?.modelIdentity),
+        expected,
+        "Reviewed interviewer Runtime Turn",
+      ),
+    },
+    reviewer: {
+      successfulTurns: reviewerTurns.length,
+      identity: validateModelIdentityObservations(
+        reviewerTurns.map(turn => turn.reviewerUsage?.modelIdentity),
+        expected,
+        "Reviewer execution",
+      ),
+    },
+  };
+  const identities = Object.values(observed).map(value => modelIdentityKey(value.identity));
+  if (new Set(identities).size !== 1) {
+    throw new Error("Baseline interviewer, reviewed interviewer, and reviewer must use the same observed model identity");
+  }
+  return observed;
+}
+
 export async function writePeriodicReviewReport(report, outputDirectory) {
   await mkdir(outputDirectory, { recursive: true });
   await writeFile(join(outputDirectory, "result.json"), `${JSON.stringify(report, null, 2)}\n`);
   await writeFile(join(outputDirectory, "summary.md"), formatPeriodicReviewSummary(report));
+}
+
+function successfulTurns(runs = []) {
+  return runs.flatMap(run => run.turns ?? []).filter(turn => !turn.executionError);
+}
+
+function identityText(observed) {
+  const identity = observed?.identity;
+  if (!identity) return "unavailable";
+  return `${identity.provider}/${identity.requestedModel} -> ${identity.responseModel} (${identity.reasoningEffort}; ${observed.successfulTurns} turns)`;
 }
 
 function strategyReport(metadata, runs) {
