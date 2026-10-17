@@ -83,6 +83,7 @@ test("interview outcomes are deltas against durable current outcomes", () => {
   assert.match(runner, /outcomes as a delta against current_outcomes/);
   assert.match(runner, /When asking a follow-up, do not submit a terminal outcome for that result/);
   assert.match(extension, /Only new or materially changed outcomes/);
+  assert.match(extension, /Omit terminal outcomes for a result when nextAction asks a follow-up on that result/);
 });
 
 test("runner explicitly expands and activates bounded design-tree grilling", () => {

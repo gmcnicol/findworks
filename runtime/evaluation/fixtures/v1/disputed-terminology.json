@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "disputed-terminology",
   "title": "Ambiguous Mission language is clarified in the interviewee's terminology",
   "minimumSemanticPassRate": 1,
@@ -19,12 +19,20 @@
       "desired_outcome": "Clarify the Mission term released against the interviewee's operational vocabulary.",
       "data_use": "The Investigator will review the terminology before changing payment status labels."
     },
-    "shared_mission_entries": [{
-      "kind": "TERM",
-      "position": 0,
-      "value": "Released",
-      "detail": "The Investigator's current label for a payment that has passed checking."
-    }],
+    "shared_mission_entries": [
+      {
+        "kind": "TERM",
+        "position": 0,
+        "value": "Released",
+        "detail": "The Investigator's current label for a payment that has passed checking."
+      },
+      {
+        "kind": "BOUNDARY",
+        "position": 0,
+        "value": "Distinguish status events only.",
+        "detail": "The checker's decision criteria are outside this Mission."
+      }
+    ],
     "investigation_results": [{
       "result_id": "10000000-0000-0000-0000-000000000131",
       "knowledge_gap": "Does released mean the same thing as the team's payment status?",
@@ -32,7 +40,7 @@
       "priority": "HIGH",
       "required": true,
       "relevant_context": "The Mission uses released; the payments team may use another term.",
-      "sufficient_evidence": "The meanings of the Mission term and the team's terms are explicitly distinguished or aligned.",
+      "sufficient_evidence": "It is enough to distinguish whether each label means checking has finished or funds have left; the checker's criteria are outside this Mission.",
       "coverage": "EXPLORING",
       "current_outcomes": []
     }],
@@ -46,14 +54,14 @@
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000131",
         "sourceType": "ANSWER",
-        "text": "We call a checked payment green. I am not sure what you mean by released."
+        "text": "We call that green. I am not sure what you mean by released."
       },
       "expected": {
         "action": "ASK_QUESTION",
         "resultId": "10000000-0000-0000-0000-000000000131",
         "semantic": {
           "vocabularyAnchors": ["green", "released"],
-          "focusAnchors": ["released", "after", "cleared", "what happens", "happened", "when you call", "operationally"],
+          "focusAnchors": ["released", "green", "mean", "after", "cleared", "what happens", "happened", "when you call", "operationally"],
           "pressureTerms": ["correct term", "you should call", "must mean", "just agree"],
           "forbiddenTerms": ["terminology mapping", "investigation item"],
           "maxQuestionLength": 220
@@ -74,10 +82,7 @@
           "resultId": "10000000-0000-0000-0000-000000000131",
           "coverage": "SUPPORTED",
           "category": "TERM",
-          "evidenceIds": [
-            "40000000-0000-0000-0000-000000000131",
-            "40000000-0000-0000-0000-000000000132"
-          ],
+          "evidenceIds": ["40000000-0000-0000-0000-000000000132"],
           "summaryAnchorGroups": [
             ["green"],
             ["checker", "checking"],
