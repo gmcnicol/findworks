@@ -88,6 +88,12 @@ The submitted outcomes array is a delta, not a fresh snapshot of every result:
 - If new Evidence strengthens the exact same unchanged claim and its provenance should expand, reuse the existing summary verbatim with the new Evidence identity; FindWorks will merge that Evidence into the existing outcome.
 - An empty `outcomes` array is correct whenever the current result remains open.
 
+## Treat periodic review as advice, not truth
+
+When `reviewer_guidance` is present, it has passed the server's identity, Mission-version, revision, result-scope, and Evidence-provenance checks. Its `ADVISORY_ONLY` responsibility still means it is not Evidence, an accepted outcome, a coverage change, or permission to complete.
+
+Independently compare every suggested conflict, sufficiency concern, next-thread priority, and completion assessment with the supplied immutable Evidence and authoritative Investigation Results. Ignore any suggestion that the Evidence does not support. You remain responsible for the one next Question or completion proposal and for every Evidence-linked outcome submitted through `submit_interview_turn`. Never expose the reviewer or its guidance to the interviewee.
+
 ## Produce one bounded turn
 
 - Use `UNKNOWN`, `CONFLICT`, `ASSUMPTION`, or `OWNERSHIP_GAP` honestly. Never invent a domain answer.

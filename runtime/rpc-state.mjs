@@ -37,6 +37,10 @@ export class RpcTurnMonitor {
   #semanticCommit = false;
   #usage;
 
+  constructor(semanticToolName = "submit_interview_turn") {
+    this.semanticToolName = semanticToolName;
+  }
+
   observe(event) {
     if (event.type === "response" && event.command === "set_auto_retry" && !event.success) {
       return terminal(64, "RETRY_POLICY_REJECTED");
@@ -48,7 +52,7 @@ export class RpcTurnMonitor {
       this.#addUsage(event.message.usage);
       if (event.message.stopReason === "error") this.#providerError = true;
     }
-    if (event.type === "tool_execution_end" && event.toolName === "submit_interview_turn" && !event.isError) {
+    if (event.type === "tool_execution_end" && event.toolName === this.semanticToolName && !event.isError) {
       this.#semanticCommit = true;
     }
     if (event.type === "agent_settled") {

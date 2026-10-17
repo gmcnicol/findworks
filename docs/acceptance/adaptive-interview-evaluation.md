@@ -72,6 +72,28 @@ The combined `benchmark.json` and `summary.md` retain aggregate distributions fo
 
 The baseline remains mini/low unless a candidate has no deterministic, required semantic, continuity, missed-contradiction, repeated-Question, or early-completion failures; improves lower-quartile semantic quality by at least five percentage points; loses no more than two points of median useful Evidence per Question; costs no more than twice as much per useful Evidence; and has no more than twice the p95 latency. This is a benchmark decision only. It does not add production routing or model switching.
 
+## Periodic investigation review spike
+
+Issue #67 reuses this exact fixture suite to compare the single interviewer with the same interviewer receiving occasional, separately generated review advice. The architecture and versioned request/response proposal contract are documented in [`../architecture/periodic-investigation-review-spike.md`](../architecture/periodic-investigation-review-spike.md).
+
+Build the evaluated image, then run the paired strategies with the same model and reasoning effort:
+
+```bash
+docker build \
+  --build-arg VCS_REF="$(git rev-parse HEAD)" \
+  -t findworks-runtime:periodic-review \
+  runtime
+
+FINDWORKS_RUNTIME_IMAGE=findworks-runtime:periodic-review \
+  npm run evaluate:periodic-review -- \
+  --commit "$(git rev-parse HEAD)" \
+  --model gpt-5.4-mini \
+  --reasoning low \
+  --output artifacts/periodic-review-evaluation/current
+```
+
+The paired `result.json` and `summary.md` pin commit, dirty state, image and image ID, Pi runtime, provider/model/reasoning, fixture versions, repeats, token usage and provider-reported cost. They retain the baseline and reviewed synthetic traces, role-specific usage and latency, rejected reviewer proposals, reviewer triggers/cadence, and the predeclared go/no-go decision. The reviewer proposal gate runs before advice enters interviewer context; ordinary Runtime Turn validation remains unchanged and no behavioural assertion is weakened.
+
 ## Extending fixtures
 
 Fixtures live in `runtime/evaluation/fixtures/v1/`. Add another `.json` file; harness logic and scenario registration do not change. Each fixture contains:

@@ -180,6 +180,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
       submittedRevision: submission?.expectedRevision ?? null,
       sourceQuestion: fixture.turns[turnIndex]?.sourceQuestion,
       sourceAnswer,
+      expectedAction: expected.action ?? null,
       stressor: fixture.turns[turnIndex]?.stressor ?? null,
       action: action ?? null,
       threadTransition,
@@ -498,8 +499,22 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
       previousQuestions,
     });
     evaluation.durationMs = executed.durationMs ?? null;
+    evaluation.interviewerDurationMs = executed.interviewerDurationMs ?? executed.durationMs ?? null;
+    evaluation.reviewerDurationMs = executed.reviewerDurationMs ?? null;
     evaluation.usage = executed.usage ?? null;
+    evaluation.interviewerUsage = executed.interviewerUsage ?? executed.usage ?? null;
+    evaluation.reviewerUsage = executed.reviewerUsage ?? null;
     evaluation.runtimeEvent = executed.event ?? null;
+    evaluation.trace.review = executed.review ?? null;
+    if (executed.review?.accepted === false) {
+      evaluation.contractViolations.push({
+        turn: turnIndex + 1,
+        rule: "reviewer-proposal-rejected",
+        message: executed.review.rejection ?? "Reviewer proposal was rejected",
+        sourceAnswer: fixtureTurn.answer.text,
+        offendingAction: null,
+      });
+    }
     evaluation.trace.compactedEvidenceIds = compactedEvidenceIds;
     evaluation.trace.contextEvidenceRecords = context.questions_and_evidence.length;
     turns.push(evaluation);
@@ -600,6 +615,25 @@ function scenarioMetrics({ fixture, context, turns, acceptedEvidenceIds, coverag
     },
     qualityByPhase: qualityByPhase(turns),
     qualityDegradation: qualityDegradation(turns),
+    reviewer: reviewerMetrics(turns),
+  };
+}
+
+function reviewerMetrics(turns) {
+  const reviews = turns.map(turn => ({
+    review: turn.trace?.review,
+    durationMs: turn.reviewerDurationMs,
+  })).filter(value => value.review);
+  const triggers = {};
+  for (const { review } of reviews) triggers[review.trigger] = (triggers[review.trigger] ?? 0) + 1;
+  const durations = reviews.map(value => value.durationMs).filter(value => typeof value === "number");
+  return {
+    invocations: reviews.length,
+    accepted: reviews.filter(value => value.review.accepted).length,
+    rejected: reviews.filter(value => !value.review.accepted).length,
+    cadence: rate(reviews.length, turns.length),
+    triggers,
+    latencyMs: { p50: percentile(durations, 0.5), p95: percentile(durations, 0.95) },
   };
 }
 
@@ -665,8 +699,18 @@ export function summariseRuns(runs) {
     || turn.contractViolations?.some(violation => ["repeated-question", "semantically-repeated-question"].includes(violation.rule))).length;
   const earlyCompletions = turns.filter(turn => turn.contractViolations
     ?.some(violation => violation.rule === "premature-completion")).length;
+  const completionErrors = turns.filter(turn => turn.contractViolations
+    ?.some(violation => ["premature-completion", "expected-action"].includes(violation.rule))).length;
   const contradictionsMissed = turns.reduce((total, turn) => total + (turn.semanticQuality?.checks ?? [])
     .filter(check => check.rule === "expected-outcome:CONFLICT" && !check.passed).length, 0);
+  const reviewInvocations = turns.filter(turn => turn.trace?.review).length;
+  const reviewDurations = turns.filter(turn => turn.trace?.review)
+    .map(turn => turn.reviewerDurationMs).filter(value => typeof value === "number");
+  const reviewTriggers = {};
+  for (const turn of turns.filter(value => value.trace?.review)) {
+    const trigger = turn.trace.review.trigger;
+    reviewTriggers[trigger] = (reviewTriggers[trigger] ?? 0) + 1;
+  }
   return {
     scenarios: new Set(runs.map(run => run.scenarioId)).size,
     runs: runs.length,
@@ -692,7 +736,16 @@ export function summariseRuns(runs) {
       costUsdPerQuestion: distribution(costsPerQuestion),
     },
     runsWithoutSufficientEvidence: runs.length - turnsToSufficientEvidence.length,
-    failureCounts: { contradictionsMissed, repeatedQuestions, earlyCompletions },
+    failureCounts: { contradictionsMissed, repeatedQuestions, earlyCompletions, completionErrors },
+    reviewer: {
+      invocations: reviewInvocations,
+      accepted: turns.filter(turn => turn.trace?.review?.accepted).length,
+      rejected: turns.filter(turn => turn.trace?.review?.accepted === false).length,
+      eligibleTurns: turns.length,
+      cadence: rate(reviewInvocations, turns.length),
+      triggers: reviewTriggers,
+      latencyMs: distribution(reviewDurations),
+    },
   };
 }
 
