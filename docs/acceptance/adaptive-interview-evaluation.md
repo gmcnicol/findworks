@@ -2,6 +2,8 @@
 
 The model-backed harness exercises the production Pi image, `submit_interview_turn` tool, and HTTP Runtime Turn submission seam. It does not replace deterministic Runtime Turn controller tests. It evaluates complete synthetic Interview Missions and preserves the original three-answer morning-sort sequence as the `morning-sort` fixture.
 
+Two continuity fixtures extend that seam: `claims-routing-20-turn-continuity` runs 20 turns without compaction, while `permit-handover-40-turn-compaction` runs 40 turns with the visible Question/Evidence window capped at 12 records. Both include long answers, vocabulary changes, interruptions, volunteered cross-thread details, and explicit revisions of earlier statements. The compacted fixture requires critical earlier Evidence to remain represented by durable `current_outcomes`; silently dropping it fails the continuity gate.
+
 ## Run locally
 
 Build the image from the commit being evaluated:
@@ -25,7 +27,7 @@ FINDWORKS_RUNTIME_IMAGE=findworks-runtime:evaluation npm run test:adaptive-inter
 
 `OPENAI_API_KEY` or `FINDWORKS_MODEL_OAUTH_B64` must be set for the baseline provider. If Docker is reached through the deployed worker, also set `FINDWORKS_DOCKER_HOST_CONTAINER`. Use `--repeats 3` or `FINDWORKS_EVALUATION_REPEATS=3` to expose model variance. Use `--scenario morning-sort` for the former three-turn smoke test alone. `--provider`, `--fixtures`, `--baseline`, `--runtime-version`, and repeated `--scenario` options support other pinned runs; `--help` lists all options.
 
-The command exits non-zero for a deterministic contract violation, a fixture's required semantic gate, or regression against the selected baseline. The preserved `morning-sort` acceptance fixture requires every original semantic assertion to pass; those checks remain semantically classified rather than being mislabeled as deterministic transport rules. Ordinary credential-free checks remain available through:
+The command exits non-zero for a deterministic contract violation, a fixture's required semantic gate, a continuity/provenance gate, or regression against the selected baseline. The preserved `morning-sort` acceptance fixture requires every original semantic assertion to pass; those checks remain semantically classified rather than being mislabeled as deterministic transport rules. Ordinary credential-free checks remain available through:
 
 ```bash
 npm run test:runtime
@@ -40,11 +42,13 @@ Each output directory contains:
 
 The report pins the Git commit, dirty-worktree state, provider/model, reasoning effort, image and image ID, Pi runtime version when labelled or supplied, fixture versions, duration, repeats, and token usage/cost when the runtime makes those values available. Unavailable usage or cost is recorded as `null`, not estimated.
 
-Every turn records the source Question and answer, submitted action, outcome summaries and exact Evidence identities, coverage changes, repeated-Question detection, runtime event, latency, and any available usage. A contract failure includes the turn, stable rule name, source answer, and offending action.
+Every turn records the source Question and answer, synthetic stressor, submitted action, outcome summaries and exact Evidence identities, coverage changes, exact or semantic repeated-Question detection, records removed from the visible context window, runtime event, latency, and any available usage. A contract failure includes the turn, stable rule name, source answer, and offending action. These fixtures contain synthetic people and operations only; do not add production transcripts, credentials, provider payloads, or raw Pi session files to retained traces.
+
+Per scenario, the report measures required-coverage progress, answers linked to useful outcome Evidence per Question, p50/p95 turn latency, compaction retention, and early/middle/late semantic quality. The context-growth section explicitly reports late-versus-early quality and late failing rules so degradation is visible rather than hidden in one aggregate pass rate. Token use and provider-reported cost remain in the report metadata.
 
 Deterministic contract checks are reported separately from graded semantic checks:
 
-- **Contract:** run/revision identity, result and Evidence scope, supported coverage/category/mode, one next action, current thread, one Question, repeat detection, and no premature completion.
+- **Contract:** run/revision identity, result and Evidence scope, supported coverage/category/mode, one next action, current thread, one Question, exact and semantic repeat detection, no private Mission language, no configured fabricated facts, no unsupported names/numeric claims, grounded choice labels, and no premature completion.
 - **Semantic quality:** interviewee vocabulary, private Mission language, own-words response, one information need, non-leading wording, concision, expected outcome kind, and provenance/summary expectations.
 
 The checked-in baseline is an explicit quality floor for `openai/gpt-5.4-mini` at low reasoning. Replace it with a reviewed `result.json`, or pass any prior result with `--baseline`, after a credentialed full-suite run. Baseline comparison never changes the individual behavioural checks.
@@ -59,4 +63,4 @@ Fixtures live in `runtime/evaluation/fixtures/v1/`. Add another `.json` file; ha
 - an ordered answer sequence with a distinct Runtime Turn run identity, immutable Evidence identities, and source types;
 - expected action, result, semantic qualities, and Evidence-linked outcomes.
 
-The current set covers adaptive follow-ups, successful completion, Unknown, Ownership Gap, Conflict, and unconfirmed Assumption outcomes. Advance the fixture directory/schema only for an incompatible fixture contract; increment an individual fixture version when its Mission, persona, answers, or expectations change.
+The current set covers adaptive follow-ups, successful completion, Unknown, Ownership Gap, Conflict, unconfirmed Assumption, and 20/40-turn continuity outcomes. Long fixtures may also declare `assertions.minimumTurns`, private/fabricated terms, critical Evidence identities, per-turn `stressor` labels, and `contextPolicy.maxQuestionEvidenceRecords`. Advance the fixture directory/schema only for an incompatible fixture contract; increment an individual fixture version when its Mission, persona, answers, or expectations change.
