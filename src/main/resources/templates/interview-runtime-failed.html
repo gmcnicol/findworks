@@ -1,17 +1,21 @@
 <!doctype html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interview paused · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Next question unavailable · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block><script defer th:src="@{/assets/interview.js}"></script></head>
 <body class="participant-body">
-<main class="shell centered" id="interview-shell" th:fragment="interviewShell">
-    <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
-    <section class="panel state-panel">
-        <p class="eyebrow">Your answer is safe</p>
-        <h1>We could not prepare the next question</h1>
-        <p>You do not need to repeat your accepted answer. You can try again, leave this paused, or end here.</p>
-        <blockquote class="accepted-answer" th:if="${answer != null}" th:text="${answer}">Your accepted answer</blockquote>
-        <form method="post" th:action="@{${interviewBase + '/retry'}}"><button class="button">Try again</button></form>
-        <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button class="button secondary">End the interview here</button></form>
+<main class="interview-shell" id="interview-shell" th:fragment="interviewShell">
+    <th:block th:replace="~{fragments/interview :: masthead}"></th:block>
+    <th:block th:replace="~{fragments/interview :: progress}"></th:block>
+    <th:block th:replace="~{fragments/interview :: connection}"></th:block>
+    <section class="conversation-state is-error" aria-labelledby="runtime-failed-title">
+        <h1 id="runtime-failed-title" tabindex="-1" data-focus-target data-focus-key="runtime-failed">We couldn’t prepare the next question</h1>
+        <p><strong>Your answer is safe in the transcript.</strong> You do not need to repeat it.</p>
+        <p class="state-support">Retrying uses that same saved response and cannot create a second copy.</p>
+        <div class="state-actions">
+            <form method="post" th:action="@{${interviewBase + '/retry'}}"><button class="button" type="submit">Try again</button></form>
+            <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button class="button secondary" type="submit">End the interview here</button></form>
+        </div>
     </section>
+    <th:block th:replace="~{fragments/interview :: transcript}"></th:block>
 </main>
 </body>
 </html>

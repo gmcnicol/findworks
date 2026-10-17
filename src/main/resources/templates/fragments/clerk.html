@@ -7,7 +7,7 @@
             th:src="${clerkScriptUrl}"></script>
     <script type="module" th:src="@{/assets/clerk-auth.js}"></script>
 </th:block>
-<nav th:fragment="participantAccount" th:if="${clerkEnabled}" class="participant-routes" aria-label="Your account">
+<nav th:fragment="participantAccount" th:if="${clerkEnabled}" class="participant-account" aria-label="Your account">
     <a th:href="@{/work}">Your saved work</a>
     <button type="button" data-clerk-sign-out>Sign out</button>
     <p hidden role="alert" data-clerk-sign-out-error>Sign-out failed. Check your connection and try again.</p>

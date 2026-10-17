@@ -2,6 +2,9 @@ package com.findworks.web;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -278,29 +281,39 @@ public class InvitationController {
     }
 
     @GetMapping({"/interview", "/interview/{sessionId}"})
-    String interview(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token, Model model) {
+    String interview(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                     @RequestParam(required = false) UUID revise,
+                     Model model) {
         if (clerkProperties.enabled() && scopedSessionId() == null) return "redirect:/interviews";
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         model.addAttribute("view", view);
         if (view.state().equals("NOT_STARTED")) return "interview-introduction";
-        if (view.state().equals("PAUSED")) return "interview-paused";
-        if (view.state().equals("ACTIVE")) {
-            var question = db.sql("select id,text,response_mode from questions where session_id=:session and active=true")
-                    .param("session", view.sessionId()).query((rs, row) -> new ActiveQuestion(
-                            rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3))).optional();
-            var answers = db.sql("select id,exact_text,option_label,explanation from evidence where session_id=:session and participant_id is not null order by created_at,id")
-                    .param("session", view.sessionId()).query((rs, row) -> new PreviousAnswer(
-                            rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), rs.getString(4))).list();
-            model.addAttribute("question", question.map(ActiveQuestion::text).orElse(null));
-            model.addAttribute("questionId", question.map(ActiveQuestion::id).orElse(null));
-            model.addAttribute("questionMode", question.map(ActiveQuestion::responseMode).orElse("FREE_TEXT"));
-            model.addAttribute("options", question.map(q -> db.sql("select option_id,label from question_options where question_id=:id order by position")
-                    .param("id", q.id()).query((rs, row) -> Map.of("id", rs.getString(1), "label", rs.getString(2))).list()).orElse(java.util.List.of()));
-            model.addAttribute("answers", answers);
-            model.addAttribute("answer", answers.isEmpty() ? null : answers.getLast().exactText());
-            model.addAttribute("working", question.isEmpty());
-            return "interview-question";
+
+        var question = db.sql("select id,text,response_mode from questions where session_id=:session and active=true")
+                .param("session", view.sessionId()).query((rs, row) -> new ActiveQuestion(
+                        rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3))).optional();
+        model.addAttribute("question", question.map(ActiveQuestion::text).orElse(null));
+        model.addAttribute("questionId", question.map(ActiveQuestion::id).orElse(null));
+        model.addAttribute("questionMode", question.map(ActiveQuestion::responseMode).orElse("FREE_TEXT"));
+        model.addAttribute("options", question.map(q -> db.sql("select option_id,label from question_options where question_id=:id order by position")
+                .param("id", q.id()).query((rs, row) -> Map.of("id", rs.getString(1), "label", rs.getString(2))).list()).orElse(List.of()));
+        model.addAttribute("transcript", transcript(view.sessionId()));
+        model.addAttribute("progress", progress(view.sessionId()));
+        var working = view.state().equals("ACTIVE") && question.isEmpty();
+        model.addAttribute("working", working);
+        if (revise != null) {
+            var revisionTargetExists = db.sql("""
+                    select exists(select 1 from evidence
+                    where id=:evidence and session_id=:session and participant_id is not null and revises is null)
+                    """).param("evidence", revise).param("session", view.sessionId()).query(Boolean.class).single();
+            if (!view.state().equals("ACTIVE") || working || !revisionTargetExists) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+            }
         }
+        model.addAttribute("revisionEvidenceId", revise);
+
+        if (view.state().equals("ACTIVE")) return "interview-question";
+        if (view.state().equals("PAUSED")) return "interview-paused";
         if (view.state().equals("AWAITING_CONFIRMATION")) {
             var unresolved = db.sql("""
                     select coalesce(u.owner,u.summary) from unresolved u
@@ -309,15 +322,55 @@ public class InvitationController {
             model.addAttribute("unresolved", unresolved);
             return "interview-confirmation";
         }
-        if (view.state().equals("RUNTIME_FAILED")) {
-            model.addAttribute("answer", db.sql("""
-                    select exact_text from evidence
-                    where session_id=:session and participant_id is not null
-                    order by created_at desc,id desc limit 1
-                    """).param("session", view.sessionId()).query(String.class).optional().orElse(null));
-            return "interview-runtime-failed";
+        if (view.state().equals("RUNTIME_FAILED")) return "interview-runtime-failed";
+        if (view.state().equals("COMPLETED") || view.state().equals("ENDED_EARLY")) return "interview-complete";
+        return "interview-unavailable";
+    }
+
+    private List<TranscriptTurn> transcript(UUID sessionId) {
+        var rows = db.sql("""
+                select q.id,q.sequence,q.text,e.id,e.source_type,e.exact_text,e.option_label,e.explanation,e.revises
+                from questions q left join evidence e on e.question_id=q.id and e.participant_id is not null
+                where q.session_id=:session and not q.active
+                order by q.sequence,e.created_at,case when e.revises is null then 0 else 1 end,e.id
+                """).param("session", sessionId).query((rs, row) -> new TranscriptRow(
+                        rs.getObject(1, UUID.class), rs.getInt(2), rs.getString(3), rs.getObject(4, UUID.class),
+                        rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8),
+                        rs.getObject(9, UUID.class))).list();
+        var turns = new LinkedHashMap<UUID, TranscriptTurn>();
+        for (var row : rows) {
+            var turn = turns.computeIfAbsent(row.questionId(), ignored ->
+                    new TranscriptTurn(row.questionId(), row.sequence(), row.question(), new ArrayList<>()));
+            if (row.evidenceId() != null) turn.responses().add(new TranscriptResponse(
+                    row.evidenceId(), row.sourceType(), row.exactText(), row.optionLabel(), row.explanation(), row.revises()));
         }
-        return "interview-complete";
+        return List.copyOf(turns.values());
+    }
+
+    private ConversationProgress progress(UUID sessionId) {
+        var counts = db.sql("""
+                select count(*) filter(where i.required),
+                       count(*) filter(where i.required and r.coverage not in ('UNADDRESSED','EXPLORING','PARTIAL')),
+                       count(*) filter(where i.required and r.coverage in ('EXPLORING','PARTIAL')),
+                       (select count(*) from evidence e where e.session_id=:session and e.participant_id is not null)
+                from investigation_results r join investigation_items i on i.id=r.item_id
+                where r.session_id=:session
+                """).param("session", sessionId).query((rs, row) ->
+                        new long[] {rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)}).single();
+        var total = counts[0];
+        var outcomes = counts[1];
+        var exploring = counts[2];
+        var responses = counts[3];
+        var percent = total == 0 ? 0 : (int) Math.round(outcomes * 100.0 / total);
+        String summary;
+        if (total == 0) summary = "Conversation in progress";
+        else if (outcomes == total) summary = "All key areas have an outcome";
+        else if (outcomes > 0 && exploring > 0) summary = outcomes + " of " + total + " key areas "
+                + (outcomes == 1 ? "has" : "have") + " an outcome · exploring " + exploring + " more";
+        else if (exploring > 0) summary = total == 1 ? "Exploring 1 key area"
+                : "Exploring " + exploring + " of " + total + " key areas";
+        else summary = total == 1 ? "1 key area to explore" : total + " key areas to explore";
+        return new ConversationProgress(outcomes, total, responses, percent, summary);
     }
 
     @GetMapping(value = {"/interview/events", "/interview/{sessionId}/events"}, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -337,7 +390,7 @@ public class InvitationController {
             response.setStatus(HttpStatus.NO_CONTENT.value());
             return null;
         }
-        var template = interview(token, model);
+        var template = interview(token, null, model);
         response.setContentType(MediaType.TEXT_HTML_VALUE);
         response.setHeader("Datastar-Selector", "#interview-shell");
         response.setHeader("Datastar-Mode", "outer");
@@ -380,12 +433,14 @@ public class InvitationController {
     @PostMapping({"/interview/answer", "/interview/{sessionId}/answer"})
     String answer(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
                   @RequestParam(required = false) UUID questionId,
-                  @RequestParam String answer) {
+                  @RequestParam(required = false, defaultValue = "") String optionId,
+                  @RequestParam(required = false, defaultValue = "") String answer) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
-        if (answer.isBlank() || answer.length() > 10_000) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter an answer");
+        if (answer.length() > 10_000 || (optionId.isBlank() && answer.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter an answer or choose a response");
         }
-        acceptEvidence(view, questionId, "ANSWER", answer, null, null, null, null);
+        if (optionId.isBlank()) acceptEvidence(view, questionId, "ANSWER", answer, null, null, null, null);
+        else acceptStructuredResponse(view, questionId, optionId, answer);
         return "redirect:/interview";
     }
 
@@ -396,6 +451,11 @@ public class InvitationController {
                             @RequestParam(required = false, defaultValue = "") String explanation) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (explanation.length() > 10_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        acceptStructuredResponse(view, questionId, optionId, explanation);
+        return "redirect:/interview";
+    }
+
+    private void acceptStructuredResponse(ParticipantView view, UUID questionId, String optionId, String explanation) {
         transactions.executeWithoutResult(status -> {
             var labelQuery = questionId == null
                     ? db.sql("""
@@ -412,7 +472,6 @@ public class InvitationController {
                     explanation.isBlank() ? label : label + "\n" + explanation,
                     optionId, label, explanation, null, true);
         });
-        return "redirect:/interview";
     }
 
     @PostMapping({"/interview/pause", "/interview/{sessionId}/pause"})
@@ -524,21 +583,28 @@ public class InvitationController {
 
     @PostMapping({"/interview/revise", "/interview/{sessionId}/revise"})
     String revise(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
-                  @RequestParam UUID evidenceId, @RequestParam String answer) {
+                  @RequestParam UUID evidenceId,
+                  @RequestParam(required = false) Integer expectedRevision,
+                  @RequestParam String answer,
+                  org.springframework.web.servlet.mvc.support.RedirectAttributes redirect) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (answer.isBlank() || answer.length() > 10_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        transactions.executeWithoutResult(status -> {
+        var result = transactions.execute(status -> {
             var replayed = db.sql("select exists(select 1 from evidence where session_id=:session and revises=:evidence and exact_text=:text)")
                     .param("session", view.sessionId()).param("evidence", evidenceId).param("text", answer).query(Boolean.class).single();
-            if (replayed) return;
+            if (replayed) return RevisionResult.REPLAYED;
+            var session = db.sql("select state,revision from interview_sessions where id=:session for update")
+                    .param("session", view.sessionId()).query((rs, row) -> new RevisionState(rs.getString(1), rs.getInt(2))).single();
+            if (!session.state().equals("ACTIVE")) return RevisionResult.NOOP;
+            if (expectedRevision != null && session.revision() != expectedRevision) return RevisionResult.STALE;
             var prior = db.sql("select question_id,participant_id from evidence where id=:evidence and session_id=:session and participant_id is not null")
                     .param("evidence", evidenceId).param("session", view.sessionId())
                     .query((rs, row) -> new PriorEvidence(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class))).optional()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
             db.sql("update questions set active=false where session_id=:session and active").param("session", view.sessionId()).update();
-            var revision = db.sql("update interview_sessions set revision=revision+1 where id=:session and state='ACTIVE' returning revision")
-                    .param("session", view.sessionId()).query(Integer.class).optional().orElse(null);
-            if (revision == null) return;
+            var revision = session.revision() + 1;
+            db.sql("update interview_sessions set revision=:revision where id=:session")
+                    .param("revision", revision).param("session", view.sessionId()).update();
             var newEvidence = Ids.id();
             db.sql("insert into evidence(id,organization_id,session_id,question_id,participant_id,source_type,exact_text,revises) values(:id,:organization,:session,:question,:participant,'REVISION',:text,:revises)")
                     .param("id", newEvidence).param("organization", view.organizationId()).param("session", view.sessionId())
@@ -546,7 +612,9 @@ public class InvitationController {
             db.sql("insert into runtime_runs(id,organization_id,session_id,evidence_id,expected_revision,state) values(:id,:organization,:session,:evidence,:revision,'PENDING')")
                     .param("id", Ids.id()).param("organization", view.organizationId()).param("session", view.sessionId())
                     .param("evidence", newEvidence).param("revision", revision).update();
+            return RevisionResult.APPENDED;
         });
+        if (result == RevisionResult.STALE) redirect.addFlashAttribute("revisionConflict", true);
         return "redirect:/interview";
     }
 
@@ -855,7 +923,7 @@ public class InvitationController {
             subject = ClerkInterviewAccess.subject(authentication);
         } else if (token == null || token.isBlank()) return Optional.empty();
         var query = db.sql("""
-                select s.id,s.organization_id,s.mission_id,s.mission_version,s.state,
+                select s.id,s.organization_id,s.mission_id,s.mission_version,s.state,s.revision,
                        u.display_name,o.name,mv.objective,mv.data_use,o.retention_days,o.contact_email
                 from interview_sessions s
                 """ + (clerkProperties.enabled()
@@ -875,8 +943,8 @@ public class InvitationController {
         else query.param("hash", Ids.sha(token));
         var result = query.query((rs, row) -> new ParticipantView(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class),
-                        rs.getInt(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8),
-                        rs.getString(9), rs.getInt(10), rs.getString(11)))
+                        rs.getInt(4), rs.getString(5), rs.getInt(6), rs.getString(7), rs.getString(8),
+                        rs.getString(9), rs.getString(10), rs.getInt(11), rs.getString(12)))
                 .optional();
         if (result.isPresent() && !clerkProperties.enabled()) {
             db.sql("update access_grants set last_used_at=now() where token_hash=:hash")
@@ -918,12 +986,30 @@ public class InvitationController {
                               int expectedRevision, String answer, int attempts) {}
     private record FailedRun(UUID evidenceId, int expectedRevision) {}
     private record ActiveQuestion(UUID id, String text, String responseMode) {}
-    private record PreviousAnswer(UUID id, String exactText, String optionLabel, String explanation) {}
+    private record TranscriptRow(UUID questionId, int sequence, String question, UUID evidenceId,
+                                 String sourceType, String exactText, String optionLabel, String explanation,
+                                 UUID revises) {}
+    public record TranscriptTurn(UUID questionId, int sequence, String question,
+                                 List<TranscriptResponse> responses) {}
+    public record TranscriptResponse(UUID id, String sourceType, String exactText, String optionLabel,
+                                     String explanation, UUID revises) {
+        public String status() {
+            return switch (sourceType) {
+                case "REVISION" -> "Correction · saved";
+                case "UNKNOWN" -> "I don’t know · saved";
+                case "OWNERSHIP_GAP" -> "Another owner · saved";
+                default -> "Answer accepted · saved";
+            };
+        }
+    }
+    public record ConversationProgress(long outcomes, long total, long responses, int percent, String summary) {}
     private record Clarifiable(UUID id, UUID itemId, int sequence, String text, UUID clarifies) {}
     private record PriorEvidence(UUID questionId, UUID participantId) {}
+    private record RevisionState(String state, int revision) {}
+    private enum RevisionResult { APPENDED, REPLAYED, STALE, NOOP }
     private record EvidenceAccepted(UUID id, UUID questionId) {}
     private record OwnedSession(UUID organizationId, UUID missionId) {}
     public record ParticipantView(UUID sessionId, UUID organizationId, UUID missionId, int missionVersion,
-                                  String state, String investigator, String organization, String objective,
+                                  String state, int revision, String investigator, String organization, String objective,
                                   String dataUse, int retentionDays, String contactEmail) {}
 }

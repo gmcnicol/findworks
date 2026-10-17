@@ -57,9 +57,9 @@ test('Interviewee returns on a saved browser grant without repeating an accepted
   await expect(returning.getByRole('heading', { name: 'Your place is saved' })).toBeVisible();
   await returning.getByRole('button', { name: 'Resume interview' }).click();
   await expect(returning.getByRole('heading', { name: 'What does the finance analyst check in the source ledger?' })).toBeVisible();
-  await returning.getByText('Review or revise accepted answers', { exact: true }).click();
-  await expect(returning.locator('.history-entry')).toHaveCount(1);
-  await expect(returning.locator('.history-entry').getByText(answer, { exact: true })).toHaveCount(1);
+  await expect(returning.getByRole('heading', { name: 'Conversation transcript' })).toBeAttached();
+  await expect(returning.locator('.transcript-exchange')).toHaveCount(1);
+  await expect(returning.locator('.transcript-response').getByText(answer, { exact: true })).toHaveCount(1);
 
   const investigator = await browser.newPage();
   await signIn(investigator);
