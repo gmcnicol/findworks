@@ -128,6 +128,70 @@ test('accessibility tree exposes one announced surface from initial Question thr
   await expect(page.getByRole('complementary')).toHaveCount(0);
 });
 
+test('keyboard-only traversal reaches long-session correction, editor, and append action', async ({ page, request }) => {
+  const data = await fixture(request, 'keyboard-long-revision@example.com');
+  await begin(page, data);
+  expect((await request.post(`/test/interviews/${data.session_id}/long-conversation`)).ok()).toBeTruthy();
+  await page.reload();
+
+  await expect(page.getByRole('heading', { name: 'Is there anything important about mismatch decisions that we have missed?' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.getByRole('link', { name: 'Correct this response' }).last()).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Correct your saved response' })).toBeFocused();
+
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('textbox', { name: 'Add a correction' })).toBeFocused();
+  await page.keyboard.type('The final reminder should also mention exception ownership.');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Cancel correction' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Append correction' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.getByRole('link', { name: 'Cancel correction' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByRole('heading', { name: 'Preparing your next question' })).toBeFocused();
+  await expect(page.getByText('The final reminder should also mention exception ownership.', { exact: true })).toBeVisible();
+});
+
+test('keyboard-only traversal reaches lifecycle actions after a long transcript', async ({ page, request }) => {
+  const lifecycleStates = [
+    { state: 'PAUSED', heading: 'Your place is saved', actions: ['Resume interview', 'End here'] },
+    { state: 'RUNTIME_FAILED', heading: 'We couldn’t prepare the next question', actions: ['Try again', 'End the interview here'] },
+    { state: 'AWAITING_CONFIRMATION', heading: 'Ready to finish?', actions: ['Confirm and finish'] },
+    { state: 'UNAVAILABLE', heading: 'This interview can’t continue right now', actions: ['privacy@findworks.test'] },
+  ] as const;
+
+  for (const lifecycle of lifecycleStates) {
+    const data = await fixture(request, `keyboard-${lifecycle.state.toLowerCase()}@example.com`);
+    await begin(page, data);
+    expect((await request.post(`/test/interviews/${data.session_id}/long-conversation`)).ok()).toBeTruthy();
+    expect((await request.post(`/test/interviews/${data.session_id}/state`, { form: { state: lifecycle.state } })).ok()).toBeTruthy();
+    await page.reload();
+
+    await expect(page.getByRole('heading', { name: lifecycle.heading })).toBeFocused();
+    for (const action of lifecycle.actions) {
+      await page.keyboard.press('Tab');
+      await expect(page.getByRole(action === 'privacy@findworks.test' ? 'link' : 'button', { name: action })).toBeFocused();
+    }
+    if (lifecycle.actions.length > 1) {
+      await page.keyboard.press('Shift+Tab');
+      await expect(page.getByRole('button', { name: lifecycle.actions[0] })).toBeFocused();
+    }
+  }
+
+  const completed = await fixture(request, 'keyboard-completed@example.com');
+  await begin(page, completed);
+  expect((await request.post(`/test/interviews/${completed.session_id}/long-conversation`)).ok()).toBeTruthy();
+  expect((await request.post(`/test/interviews/${completed.session_id}/state`, { form: { state: 'COMPLETED' } })).ok()).toBeTruthy();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Thank you' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'FindWorks' })).toBeFocused();
+});
+
 test('accessibility tree keeps lifecycle states singular and revision mode exposes one editor', async ({ page, request }) => {
   const lifecycleStates = [
     {

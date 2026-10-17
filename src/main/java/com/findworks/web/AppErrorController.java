@@ -18,6 +18,9 @@ final class AppErrorController implements ErrorController {
         var status = value instanceof Number number ? number.intValue() : 500;
         response.setStatus(status);
         model.addAttribute("status", status);
+        var failedPath = request.getAttribute(RequestDispatcher.ERROR_REQUEST_URI);
+        model.addAttribute("clearInterviewDrafts", status == 403 && failedPath instanceof String path
+                && path.startsWith("/interview"));
         model.addAttribute("title", switch (status) {
             case 403 -> "Access is no longer available";
             case 404 -> "We couldn’t find that page";

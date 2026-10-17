@@ -10,7 +10,7 @@
     <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.3/bundles/datastar.js"></script>
 </head>
 <body class="participant-body">
-<main class="interview-shell" id="interview-shell" th:fragment="interviewShell">
+<main class="interview-shell" id="interview-shell" th:fragment="interviewShell" th:attr="data-interview-session=${view.sessionId()}">
     <th:block th:replace="~{fragments/interview :: masthead}"></th:block>
     <th:block th:replace="~{fragments/interview :: progress}"></th:block>
     <th:block th:replace="~{fragments/interview :: connection}"></th:block>

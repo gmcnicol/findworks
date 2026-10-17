@@ -22,6 +22,19 @@ test('drafts survive reload and disconnection while one composer remains actiona
   const composer = page.getByLabel('Your answer in your own words');
   const draft = 'Priya checks the cashbook first, then compares the source ledger when the totals differ.';
   await composer.fill(draft);
+  const stored = await page.evaluate(() => ({
+    legacy: Object.keys(localStorage).filter((key) => key.startsWith('findworks:answer:') || key.startsWith('findworks:correction:')),
+    session: Object.entries(sessionStorage).filter(([key]) => key.startsWith('findworks:interview-drafts:')),
+    now: Date.now(),
+  }));
+  expect(stored.legacy).toEqual([]);
+  expect(stored.session).toHaveLength(1);
+  expect(stored.session[0][0]).toContain(data.session_id);
+  const payload = JSON.parse(stored.session[0][1]);
+  expect(payload.expiresAt).toBeGreaterThan(stored.now);
+  expect(payload.expiresAt).toBeLessThanOrEqual(stored.now + (24 * 60 * 60 * 1000));
+  expect(JSON.stringify(payload.drafts)).toContain(draft);
+
   await page.reload();
   await expect(page.getByLabel('Your answer in your own words')).toHaveValue(draft);
   await expect(page.locator('textarea:visible')).toHaveCount(1);
@@ -36,9 +49,70 @@ test('drafts survive reload and disconnection while one composer remains actiona
   await composer.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
   await expect(page.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await expect(page.locator('.transcript-response').getByText(draft, { exact: true })).toHaveCount(1);
+  expect(await page.evaluate((text) => Object.values(sessionStorage).every((value) => !value.includes(text)), draft)).toBeTruthy();
   await request.post(`/test/runtime/run-once?sessionId=${data.session_id}`);
   await expect(page.locator('[data-active-question]')).toHaveCount(1);
   await expect(page.locator('#active-question')).toBeFocused();
+});
+
+test('draft recovery expires and never crosses authoritative Interview Sessions', async ({ page, request }) => {
+  const first = await fixture(request, 'draft-session-a@example.com');
+  await begin(page, first);
+  const firstDraft = 'This belongs only to the first Interview Session.';
+  await page.getByLabel('Your answer in your own words').fill(firstDraft);
+
+  const second = await fixture(request, 'draft-session-b@example.com');
+  await begin(page, second);
+  await expect(page.getByLabel('Your answer in your own words')).toHaveValue('');
+  expect(await page.evaluate((text) => Object.values(sessionStorage).some((value) => value.includes(text)), firstDraft)).toBeTruthy();
+
+  const secondDraft = 'This bounded draft should expire.';
+  await page.getByLabel('Your answer in your own words').fill(secondDraft);
+  await page.evaluate((sessionId) => {
+    const key = Object.keys(sessionStorage).find((candidate) => candidate.includes(sessionId));
+    if (!key) throw new Error('Session-scoped draft was not stored');
+    const payload = JSON.parse(sessionStorage.getItem(key)!);
+    payload.expiresAt = Date.now() - 1;
+    sessionStorage.setItem(key, JSON.stringify(payload));
+  }, second.session_id);
+  await page.reload();
+
+  await expect(page.getByLabel('Your answer in your own words')).toHaveValue('');
+  expect(await page.evaluate((text) => Object.values(sessionStorage).every((value) => !value.includes(text)), secondDraft)).toBeTruthy();
+});
+
+test('revoked access clears the Session draft without exposing transcript content', async ({ page, request }) => {
+  const data = await fixture(request, 'revoked-draft@example.com');
+  await begin(page, data);
+  const draft = 'Unsubmitted content must not survive revoked access.';
+  await page.getByLabel('Your answer in your own words').fill(draft);
+  expect(await page.evaluate((text) => Object.values(sessionStorage).some((value) => value.includes(text)), draft)).toBeTruthy();
+
+  expect((await request.post(`/test/interviews/${data.session_id}/revoke-access`)).ok()).toBeTruthy();
+  await page.reload();
+
+  await expect(page.getByRole('heading', { name: 'Access is no longer available' })).toBeVisible();
+  await expect(page.getByText(draft, { exact: true })).toHaveCount(0);
+  expect(await page.evaluate((text) => Object.values(sessionStorage).every((value) => !value.includes(text)), draft)).toBeTruthy();
+});
+
+test('completion and authorised unavailability clear drafts while keeping accepted transcript readable', async ({ page, request }) => {
+  for (const lifecycle of ['COMPLETED', 'UNAVAILABLE'] as const) {
+    const data = await fixture(request, `draft-clear-${lifecycle.toLowerCase()}@example.com`);
+    await begin(page, data);
+    expect((await request.post(`/test/interviews/${data.session_id}/long-conversation`)).ok()).toBeTruthy();
+    await page.reload();
+    const draft = `Unsubmitted ${lifecycle.toLowerCase()} draft`;
+    await page.getByLabel('Your answer in your own words').fill(draft);
+    expect(await page.evaluate((text) => Object.values(sessionStorage).some((value) => value.includes(text)), draft)).toBeTruthy();
+
+    expect((await request.post(`/test/interviews/${data.session_id}/state`, { form: { state: lifecycle } })).ok()).toBeTruthy();
+    await page.reload();
+
+    await expect(page.locator('.transcript-exchange')).toHaveCount(21);
+    await expect(page.getByText('Yesterday an imported card payment was £18.40 higher', { exact: false })).toBeVisible();
+    expect(await page.evaluate((text) => Object.values(sessionStorage).every((value) => !value.includes(text)), draft)).toBeTruthy();
+  }
 });
 
 test('only one composer is visible while moving between answer and revision modes', async ({ page, request }) => {

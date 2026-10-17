@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Action not completed · FindWorks</title>
     <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <script defer th:if="${clearInterviewDrafts}" th:src="@{/assets/interview.js}"></script>
 </head>
 <body>
 <main class="shell centered">
+    <span hidden th:if="${clearInterviewDrafts}" data-clear-all-interview-drafts></span>
     <section class="panel state-panel" role="alert">
         <p class="eyebrow" th:text="|Error ${status}|">Error</p>
         <h1 th:text="${title}">We couldn’t complete that action</h1>

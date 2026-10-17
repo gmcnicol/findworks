@@ -2,7 +2,7 @@
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Next question unavailable · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block><script defer th:src="@{/assets/interview.js}"></script></head>
 <body class="participant-body">
-<main class="interview-shell" id="interview-shell" th:fragment="interviewShell">
+<main class="interview-shell" id="interview-shell" th:fragment="interviewShell" th:attr="data-interview-session=${view.sessionId()}">
     <th:block th:replace="~{fragments/interview :: masthead}"></th:block>
     <th:block th:replace="~{fragments/interview :: progress}"></th:block>
     <th:block th:replace="~{fragments/interview :: connection}"></th:block>

@@ -39,6 +39,7 @@ export async function initialiseClerk(window, document) {
     try {
       if (!window.Clerk?.loaded) throw new Error('Sign-in has not loaded');
       await timeout(window.Clerk.signOut());
+      window.dispatchEvent(new Event('findworks:auth-ended'));
       window.location.assign(destination);
     } catch {
       button.disabled = false;
