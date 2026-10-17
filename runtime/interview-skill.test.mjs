@@ -62,7 +62,7 @@ test("own words are the default and finite choices preserve interviewee language
   assert.match(skill, /genuinely finite decision or paraphrase confirmation/);
   assert.match(skill, /word every option in the interviewee's language/);
   assert.match(skill, /Never invent alternatives or possible answers inside a free-text Question/);
-  assert.match(runner, /"--thinking", "low"/);
+  assert.match(runner, /"--thinking", process\.env\.FINDWORKS_REASONING_EFFORT \|\| "low"/);
 });
 
 test("interview outcomes are deltas against durable current outcomes", () => {

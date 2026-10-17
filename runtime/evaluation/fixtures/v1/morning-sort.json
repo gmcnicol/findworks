@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "morning-sort",
+  "title": "Adaptive follow-ups use interviewee language",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Clare",
+    "role": "Practice administrator",
+    "brief": "Answer from recent operational experience and use the team's informal vocabulary."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000001",
+    "session_id": "30000000-0000-0000-0000-000000000001",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Determine the exception-triage architecture for imported transaction reconciliation.",
+      "desired_outcome": "A decision matrix for prioritisation, escalation, and terminal system states.",
+      "data_use": "The Investigator will use reviewed findings in project work."
+    },
+    "shared_mission_entries": [
+      { "kind": "TERM", "position": 0, "value": "Mismatch", "detail": "An imported transaction that does not reconcile automatically." },
+      { "kind": "COMPLETION_CRITERION", "position": 0, "value": "Every exception class has an owner, transition rule, and terminal state." }
+    ],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000001",
+      "knowledge_gap": "Define the decisioning and escalation architecture for reconciliation exceptions.",
+      "why_it_matters": "The implementation requires deterministic state transitions.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "A practice manager reviews imported transaction mismatches.",
+      "sufficient_evidence": "A decision matrix covering priority, ownership, escalation triggers, exceptions, and completion states.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "20000000-0000-0000-0000-000000000001",
+      "sourceQuestion": "Walk me through the last imported transaction problem you dealt with.",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000001",
+        "sourceType": "ANSWER",
+        "text": "We call it the morning sort. Maya, the practice manager, looks at the red jobs first because those clients are waiting for payroll."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "10000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": ["morning sort", "Maya", "practice manager", "red jobs", "payroll"],
+          "forbiddenTerms": ["investigation item", "sufficient evidence", "decision matrix", "system state", "architecture", "capability inventory"],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "20000000-0000-0000-0000-000000000011",
+      "sourceQuestion": "What makes one red job go ahead of another?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000002",
+        "sourceType": "ANSWER",
+        "text": "A red job means payroll is due today and the bank feed still has a gap. Maya checks the cashbook, then calls it ready when the gap is explained."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "10000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": ["red job", "payroll", "bank feed", "cashbook", "ready", "Maya"],
+          "forbiddenTerms": ["investigation item", "sufficient evidence", "decision matrix", "system state", "architecture", "capability inventory"],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "20000000-0000-0000-0000-000000000012",
+      "sourceQuestion": "What happens when the cashbook does not explain the gap?",
+      "answer": {
+        "evidenceId": "40000000-0000-0000-0000-000000000003",
+        "sourceType": "ANSWER",
+        "text": "If the cashbook still does not explain it, Maya puts it in the help pile for Jo, our payroll lead. Jo decides whether to contact the client."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "10000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": ["cashbook", "Maya", "help pile", "Jo", "payroll lead", "client"],
+          "forbiddenTerms": ["investigation item", "sufficient evidence", "decision matrix", "system state", "architecture", "capability inventory"],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    }
+  ]
+}

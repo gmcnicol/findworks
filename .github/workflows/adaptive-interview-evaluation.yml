@@ -1,0 +1,65 @@
+name: adaptive interview evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: Repeats per scenario
+        required: true
+        default: '1'
+      scenario:
+        description: Optional fixture ID; blank runs the full suite
+        required: false
+        default: ''
+      model:
+        description: Model name
+        required: true
+        default: gpt-5.4-mini
+      reasoning:
+        description: Reasoning effort
+        required: true
+        default: low
+
+permissions:
+  contents: read
+
+jobs:
+  model-backed-evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Require model credentials
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: test -n "$OPENAI_API_KEY"
+      - name: Build pinned runtime image
+        run: docker build --build-arg VCS_REF="$GITHUB_SHA" -t findworks-runtime:evaluation runtime
+      - name: Run evaluation
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FINDWORKS_RUNTIME_IMAGE: findworks-runtime:evaluation
+        run: |
+          args=(
+            --commit "$GITHUB_SHA"
+            --model "${{ inputs.model }}"
+            --reasoning "${{ inputs.reasoning }}"
+            --repeats "${{ inputs.repeats }}"
+            --output artifacts/adaptive-interview-evaluation/ci
+          )
+          if [[ -n "${{ inputs.scenario }}" ]]; then
+            args+=(--scenario "${{ inputs.scenario }}")
+          fi
+          npm run test:adaptive-interview -- "${args[@]}"
+      - name: Upload evaluation trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adaptive-interview-evaluation-${{ github.sha }}
+          path: artifacts/adaptive-interview-evaluation/ci/
+          if-no-files-found: warn

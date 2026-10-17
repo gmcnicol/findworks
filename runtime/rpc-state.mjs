@@ -35,6 +35,7 @@ export class JsonlDecoder {
 export class RpcTurnMonitor {
   #providerError = false;
   #semanticCommit = false;
+  #usage;
 
   observe(event) {
     if (event.type === "response" && event.command === "set_auto_retry" && !event.success) {
@@ -43,8 +44,9 @@ export class RpcTurnMonitor {
     if (event.type === "response" && event.command === "prompt" && !event.success) {
       return terminal(64, "PROMPT_REJECTED");
     }
-    if (event.type === "message_end" && event.message?.role === "assistant" && event.message.stopReason === "error") {
-      this.#providerError = true;
+    if (event.type === "message_end" && event.message?.role === "assistant") {
+      this.#addUsage(event.message.usage);
+      if (event.message.stopReason === "error") this.#providerError = true;
     }
     if (event.type === "tool_execution_end" && event.toolName === "submit_interview_turn" && !event.isError) {
       this.#semanticCommit = true;
@@ -55,6 +57,19 @@ export class RpcTurnMonitor {
       return terminal(70, "NO_SEMANTIC_COMMIT");
     }
     return { terminal: false };
+  }
+
+  usage() {
+    return this.#usage ? { ...this.#usage } : null;
+  }
+
+  #addUsage(usage) {
+    if (!usage) return;
+    this.#usage ??= { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
+    this.#usage.inputTokens += (usage.input ?? 0) + (usage.cacheRead ?? 0);
+    this.#usage.outputTokens += usage.output ?? 0;
+    this.#usage.cacheWriteTokens += usage.cacheWrite ?? 0;
+    this.#usage.costUsd += usage.cost?.total ?? 0;
   }
 }
 
