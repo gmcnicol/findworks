@@ -7,10 +7,15 @@ colors:
   navigation-navy: "#111a2b"
   navigation-active: "#263a59"
   cool-paper: "#f2f5f9"
+  interview-paper: "#f7f5f0"
+  interview-surface: "#fffefb"
   surface-white: "#ffffff"
   primary-ink: "#172033"
   secondary-ink: "#68778e"
+  interview-ink: "#263449"
+  interview-secondary-ink: "#76726b"
   divider: "#d8e0ec"
+  interview-divider: "#d8d3ca"
   attention-ink: "#984018"
   attention-surface: "#fff0e8"
 typography:
@@ -140,7 +145,7 @@ The palette is restrained: deep navy framing, cool neutral work surfaces, one co
 
 The authenticated Investigator workspace uses a 236px persistent navigation column and a fluid content region capped at 1260px. Primary workspace content uses 52px desktop insets and a vertical section rhythm around 48–52px. Detail and review work narrows to approximately 1000px.
 
-The Interviewee surface uses a warm paper background, an 820px shell, and a 700px reading column. The active question precedes every control, accepted-answer history stays collapsed, and alternative responses sit below the primary answer.
+The Interviewee surface uses a warm paper background, an 820px shell, and a 700px reading column. It is a durable conversation ledger: accepted Question/Evidence exchanges remain visible in chronological order, corrections append beneath the original Evidence, and exactly one current composer follows the transcript. The active question precedes every control; alternative responses remain visually secondary below the composer. On narrow screens, answer cards retain a small rightward offset without creating horizontal overflow.
 
 At 900px, navigation becomes a sticky header. At 640px, all destinations wrap into a visible compact menu, summaries form a two-column grid, and table rows become labelled vertical records. No primary destination may depend on hidden horizontal scrolling.
 
@@ -181,6 +186,13 @@ Working surfaces use gently rounded corners between 9px and 14px. Larger 20px pa
 ### Inputs / Fields
 - **Style:** White field, one-pixel cool border, 12px corners, generous 12–14px inset.
 - **Focus:** Use the shared visible focus ring; do not rely on border color alone.
+
+### Interview Conversation
+- **Question:** Editorial serif, approximately 1.2rem with a relaxed 1.55–1.6 line height; speaker metadata remains compact sans serif.
+- **Evidence:** Warm-white, one-pixel bordered cards offset to the right. Saved state is textual as well as colored.
+- **Composer:** One bordered 14px surface with a plain textarea and action footer; no chat bubble, fake typing, or simulated streaming treatment.
+- **Progress:** A factual covered-area summary and thin progress rule. Never imply that turn count equals completion.
+- **Lifecycle:** Waiting, paused, failed, confirmation, completion, stale-revision conflict, and unavailable states retain the transcript whenever access remains valid.
 
 ### Navigation
 - **Desktop:** Persistent dark column with a single lighter active row and account controls anchored at the bottom.

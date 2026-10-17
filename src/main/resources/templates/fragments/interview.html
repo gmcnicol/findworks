@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<body>
+<header th:fragment="masthead" class="participant-masthead">
+    <a class="participant-brand" th:href="@{${interviewBase}}">FindWorks</a>
+    <span class="participant-context">A private conversation with <span th:text="${view.investigator()}">the Investigator</span></span>
+    <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
+</header>
+
+<section th:fragment="progress" class="conversation-progress" aria-label="Interview progress">
+    <div class="progress-copy">
+        <strong th:text="${progress.summary()}">Conversation in progress</strong>
+        <span th:text="${progress.responses() == 1 ? '1 response saved' : progress.responses() + ' responses saved'}">0 responses saved</span>
+    </div>
+    <progress th:value="${progress.percent()}" max="100" th:attr="aria-label=${progress.summary()}">0%</progress>
+</section>
+
+<section th:fragment="transcript" class="conversation-transcript" aria-labelledby="transcript-heading">
+    <h1 class="sr-only" id="transcript-heading">Conversation transcript</h1>
+    <ol class="transcript-list" role="log" aria-live="off">
+        <li class="transcript-exchange" th:each="turn : ${transcript}" th:attr="data-question-id=${turn.questionId()},data-clear-draft-key=|findworks:answer:${view.sessionId()}:${turn.questionId()}|">
+            <article class="transcript-turn transcript-interviewer">
+                <p class="speaker-label">FindWorks interviewer</p>
+                <h2 th:text="${turn.question()}">Interview question</h2>
+            </article>
+            <aside class="transcript-response" th:each="response : ${turn.responses()}" aria-label="Your saved response">
+                <div class="response-meta">
+                    <span>You</span>
+                    <span class="saved-state" th:text="${response.status()}">Answer · saved</span>
+                </div>
+                <p class="response-option" th:if="${response.optionLabel() != null}" th:text="${response.optionLabel()}">Selected response</p>
+                <p th:if="${response.optionLabel() == null}" th:text="${response.exactText()}">Your response</p>
+                <p class="response-explanation" th:if="${response.explanation() != null && !response.explanation().isBlank()}" th:text="${response.explanation()}">Explanation</p>
+                <p class="revision-note" th:if="${response.revises() != null}"
+                   th:attr="data-clear-draft-key=|findworks:correction:${view.sessionId()}:${response.revises()}|">This correction was appended. The earlier response remains in the transcript.</p>
+                <details class="correction-disclosure" th:if="${view.state() == 'ACTIVE' && response.revises() == null}">
+                    <summary>Correct this response</summary>
+                    <form class="correction-form" method="post" th:action="@{${interviewBase + '/revise'}}" data-draft-form>
+                        <input type="hidden" name="evidenceId" th:value="${response.id()}">
+                        <input type="hidden" name="expectedRevision" th:value="${view.revision()}">
+                        <label th:for="|correction-${response.id()}|">Add a correction</label>
+                        <textarea th:id="|correction-${response.id()}|" name="answer" rows="3" required maxlength="10000"
+                                  th:attr="data-draft-key=|findworks:correction:${view.sessionId()}:${response.id()}|"
+                                  placeholder="Write the corrected response. Your earlier answer will stay visible."></textarea>
+                        <div class="correction-actions">
+                            <span class="form-status" role="status" aria-live="polite"></span>
+                            <button class="button secondary compact" type="submit">Append correction</button>
+                        </div>
+                    </form>
+                </details>
+            </aside>
+        </li>
+    </ol>
+</section>
+
+<div th:fragment="connection" class="connection-notice" data-connection-notice role="status" aria-live="polite" hidden>
+    <strong>You’re offline.</strong> Your draft is saved in this browser. Reconnect before sending.
+</div>
+<div th:fragment="announcer" class="sr-only" data-question-announcer role="status" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

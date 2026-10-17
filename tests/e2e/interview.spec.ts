@@ -154,17 +154,8 @@ test('answer, adaptive structured follow-up, completion, and findings review', a
   await expect(page.getByRole('heading', { name: 'What does the finance analyst check in the source ledger?' })).toBeVisible({ timeout: 5_000 });
   expect(await page.evaluate(() => (window as any).__interviewDocument)).toBe('unchanged');
   await expect(page.getByLabel('Partly')).toBeEnabled();
-  const questionMotion = await page.locator('.interview-stage').evaluate((stage) => {
-    const style = getComputedStyle(stage);
-    return {
-      properties: style.transitionProperty.split(',').map((value) => value.trim()),
-      durations: style.transitionDuration.split(',').map((value) => value.trim()),
-      timingFunctions: style.transitionTimingFunction.match(/cubic-bezier\([^)]+\)/g) ?? [],
-    };
-  });
-  expect(questionMotion.properties).toEqual(['opacity', 'transform']);
-  expect(new Set(questionMotion.durations)).toEqual(new Set(['0.2s']));
-  expect(new Set(questionMotion.timingFunctions)).toEqual(new Set(['cubic-bezier(0.23, 1, 0.32, 1)']));
+  await expect(page.locator('#active-question')).toBeFocused();
+  await expect(page.locator('[data-question-announcer]')).toContainText('New question: What does the finance analyst check');
   await page.getByLabel('Partly').check();
   await page.getByLabel('Anything to add?').fill('Only unmatched entries need approval.');
   await page.getByRole('button', { name: 'Submit response' }).click();
@@ -175,14 +166,11 @@ test('answer, adaptive structured follow-up, completion, and findings review', a
   expect(await page.evaluate(() => (window as any).__interviewDocument)).toBe('still-unchanged');
   await page.getByRole('button', { name: 'Confirm and finish' }).click();
   await expect(page.locator('body')).toHaveClass(/interview-complete-body/);
-  const completionPanel = page.locator('.state-panel');
+  const completionPanel = page.locator('.conversation-state');
   await expect(completionPanel).toBeVisible();
-  await expect(completionPanel).toContainText('Your interview is complete. Your accepted answers remain available to the Investigator.');
+  await expect(completionPanel).toContainText('Your interview is complete. Your accepted answers remain available to the Investigator');
   await expect(page.getByRole('heading', { name: 'Thank you' })).toBeVisible();
-  const completionTransitionProperties = await completionPanel.evaluate((panel) =>
-    getComputedStyle(panel).transitionProperty.split(',').map((value) => value.trim()),
-  );
-  expect(completionTransitionProperties).toEqual(['opacity', 'transform']);
+  await expect(page.getByRole('heading', { name: 'Conversation transcript' })).toBeAttached();
 
   await signIn(page);
   await page.goto(`/app/findings/${data.session_id}`);
@@ -235,10 +223,11 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   const ownerData = await fixture(request, 'owner@example.com');
   const owner = await browser.newPage();
   await begin(owner, ownerData);
+  await owner.locator('summary').filter({ hasText: 'Someone else owns this' }).click();
   await owner.getByLabel('Owner').fill('Treasury lead');
   await owner.getByLabel('What they own').fill('They decide which mismatch is acceptable.');
   await owner.getByRole('button', { name: 'Someone else owns this' }).click();
-  await expect(owner.getByText('Treasury lead')).toBeVisible();
+  await expect(owner.getByText('Treasury lead').first()).toBeVisible();
   await owner.close();
 
   const clarifyData = await fixture(request, 'clarify@example.com');
@@ -247,7 +236,7 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await clarify.getByRole('button', { name: 'Please clarify' }).click();
   await expect(clarify.getByRole('heading', { name: /Let me put that another way/ })).toBeVisible();
   await clarify.getByRole('button', { name: 'Please clarify' }).click();
-  await expect(clarify.getByText('Question remained unclear')).toBeVisible();
+  await expect(clarify.getByText('Question remained unclear', { exact: true })).toBeVisible();
   await clarify.close();
 
   const discomfortData = await fixture(request, 'discomfort@example.com');
@@ -264,10 +253,10 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await revision.getByRole('button', { name: 'Submit answer' }).click();
   await expect(revision.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${revisionData.session_id}`);
-  await expect(revision.locator('.interview-stage')).toBeVisible();
-  await revision.getByText('Review or revise accepted answers').click();
-  await revision.getByLabel('Revise this answer').fill('Only unmatched imported amounts need approval.');
-  await revision.getByRole('button', { name: 'Save revision' }).click();
+  await expect(revision.locator('.conversation-current')).toBeVisible();
+  await revision.getByText('Correct this response').click();
+  await revision.getByLabel('Add a correction').fill('Only unmatched imported amounts need approval.');
+  await revision.getByRole('button', { name: 'Append correction' }).click();
   await expect(revision.getByRole('complementary').getByText('Only unmatched imported amounts need approval.')).toBeVisible();
   await expect(revision.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${revisionData.session_id}`);
@@ -281,9 +270,9 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await conflict.getByRole('button', { name: 'Submit answer' }).click();
   await expect(conflict.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${conflictData.session_id}`);
-  await expect(conflict.locator('.interview-stage')).toBeVisible();
-  await conflict.getByLabel('Your answer in your own words').fill('This contradicts my first answer: routine mismatches do not need approval.');
-  await conflict.getByRole('button', { name: 'Submit answer' }).click();
+  await expect(conflict.locator('.conversation-current')).toBeVisible();
+  await conflict.getByLabel('Anything to add?').fill('This contradicts my first answer: routine mismatches do not need approval.');
+  await conflict.getByRole('button', { name: 'Submit response' }).click();
   await expect(conflict.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${conflictData.session_id}`);
   await expect(conflict.getByText('Contradictory evidence needs review')).toBeVisible();

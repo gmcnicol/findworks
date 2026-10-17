@@ -839,6 +839,61 @@ class PilotShellIntegrationTest {
     }
 
     @Test
+    void conversation_transcript_keeps_original_evidence_and_labels_an_appended_correction() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "transcript-correction@example.com");
+        var questionId = jdbcTemplate.queryForObject(
+                "select id from questions where session_id=? and active", UUID.class, participant.sessionId());
+
+        mockMvc.perform(post("/interview/answer").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("questionId", questionId.toString())
+                        .param("answer", "Every imported amount needs approval."))
+                .andExpect(status().is3xxRedirection());
+        mockMvc.perform(post("/test/runtime/run-once").param("sessionId", participant.sessionId().toString()))
+                .andExpect(status().isOk());
+        var evidenceId = jdbcTemplate.queryForObject(
+                "select id from evidence where session_id=? and source_type='ANSWER'", UUID.class, participant.sessionId());
+        var revision = jdbcTemplate.queryForObject(
+                "select revision from interview_sessions where id=?", Integer.class, participant.sessionId());
+
+        mockMvc.perform(post("/interview/revise").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("evidenceId", evidenceId.toString())
+                        .param("expectedRevision", revision.toString())
+                        .param("answer", "Only unmatched imported amounts need approval."))
+                .andExpect(status().is3xxRedirection());
+
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Conversation transcript")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Walk me through the last mismatch you resolved.")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Every imported amount needs approval.")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Only unmatched imported amounts need approval.")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Correction · saved")));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select revises from evidence where session_id=? and source_type='REVISION'", UUID.class, participant.sessionId()))
+                .isEqualTo(evidenceId);
+
+        mockMvc.perform(post("/interview/revise").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("evidenceId", evidenceId.toString())
+                        .param("expectedRevision", revision.toString())
+                        .param("answer", "A stale browser tried to add a different correction."))
+                .andExpect(status().is3xxRedirection());
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "The conversation moved on before that correction was saved.")));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(2);
+    }
+
+    @Test
     void unknown_on_one_required_item_continues_to_the_remaining_required_item() throws Exception {
         var access = authorizeHarness("findworks:read findworks:write");
         var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();

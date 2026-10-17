@@ -1,16 +1,22 @@
 <!doctype html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Confirm completion · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Confirm completion · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block><script defer th:src="@{/assets/interview.js}"></script></head>
 <body class="participant-body">
-<main class="shell centered" id="interview-shell" th:fragment="interviewShell">
-    <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
-    <section class="panel state-panel">
-        <p class="eyebrow">One last check</p>
-        <h1>Ready to finish?</h1>
-        <p>We recorded your answers. These points remain open:</p>
-        <ul><li th:each="item : ${unresolved}" th:text="${item}">Unresolved point</li></ul>
-        <p class="subtle">You can confirm this is an honest stopping point. It does not pretend the open points are resolved.</p>
-        <form method="post" th:action="@{${interviewBase + '/confirm-completion'}}"><button class="button" type="submit">Confirm and finish</button></form>
+<main class="interview-shell" id="interview-shell" th:fragment="interviewShell">
+    <th:block th:replace="~{fragments/interview :: masthead}"></th:block>
+    <th:block th:replace="~{fragments/interview :: progress}"></th:block>
+    <th:block th:replace="~{fragments/interview :: transcript}"></th:block>
+    <section class="conversation-state is-completion" aria-labelledby="completion-title">
+        <h1 id="completion-title">Ready to finish?</h1>
+        <p>Does this feel like an honest stopping point?</p>
+        <div th:if="${!unresolved.isEmpty()}">
+            <p>These points remain open:</p>
+            <ul class="open-points"><li th:each="item : ${unresolved}" th:text="${item}">Unresolved point</li></ul>
+        </div>
+        <p class="state-support">Finishing records the open points as unresolved. It does not pretend they were answered.</p>
+        <div class="state-actions">
+            <form method="post" th:action="@{${interviewBase + '/confirm-completion'}}"><button class="button" type="submit">Confirm and finish</button></form>
+        </div>
     </section>
 </main>
 </body>
