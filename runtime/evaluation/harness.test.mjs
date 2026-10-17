@@ -195,6 +195,27 @@ test("fixture-defined focus and pressure checks make bounded follow-ups reviewab
   assert.match(pressure.detail, /guess, email, invite/);
 });
 
+test("sentence-opening transition words are not mistaken for unsupported proper names", () => {
+  for (const text of [
+    "After Maya finishes the morning sort, what happens to the red job?",
+    "Once Maya finishes the morning sort, what happens to the red job?",
+  ]) {
+    const submission = validSubmission();
+    submission.nextAction.text = text;
+    const evaluation = evaluateSubmission({
+      fixture: fixture(), turnIndex: 0, context: context(), submission, previousQuestions: [],
+    });
+    assert.ok(!evaluation.contractViolations.some(item => item.rule === "unsupported-specific"));
+  }
+
+  const invented = validSubmission();
+  invented.nextAction.text = "Priya finishes the morning sort; what happens to the red job?";
+  const evaluation = evaluateSubmission({
+    fixture: fixture(), turnIndex: 0, context: context(), submission: invented, previousQuestions: [],
+  });
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "unsupported-specific"));
+});
+
 test("long-scenario assertions reject planning leaks, fabricated specifics, and ungrounded choices", () => {
   const scenario = fixture({
     assertions: {
