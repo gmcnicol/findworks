@@ -118,8 +118,8 @@ public class FindingsController {
     @PostMapping("/app/findings/{sessionId}/retry")
     String retryExtraction(@PathVariable UUID sessionId, Authentication authentication) {
         ownedSession(sessionId, authentication);
-        if (db.sql("update interview_sessions set extraction_state='PENDING' where id=:session and extraction_state='FAILED'")
-                .param("session", sessionId).update() != 1) throw new ResponseStatusException(HttpStatus.CONFLICT);
+        db.sql("update interview_sessions set extraction_state='PENDING' where id=:session and extraction_state='FAILED'")
+                .param("session", sessionId).update();
         return "redirect:/app/findings/" + sessionId;
     }
 
@@ -221,9 +221,10 @@ public class FindingsController {
         var investigator = currentInvestigator.require(authentication);
         if (claim.isBlank() || claim.length() > 2_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         transactions.executeWithoutResult(status -> {
-            var current = db.sql("select k.current_version,v.category from knowledge_items k join knowledge_versions v on v.knowledge_id=k.id and v.version=k.current_version where k.id=:id for update of k,v")
-                    .param("id", knowledgeId).query((rs, row) -> new CurrentKnowledge(rs.getInt(1), rs.getString(2))).optional()
+            var current = db.sql("select k.current_version,v.category,v.claim from knowledge_items k join knowledge_versions v on v.knowledge_id=k.id and v.version=k.current_version where k.id=:id for update of k,v")
+                    .param("id", knowledgeId).query((rs, row) -> new CurrentKnowledge(rs.getInt(1), rs.getString(2), rs.getString(3))).optional()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+            if (current.claim().equals(claim)) return;
             var evidenceId = Ids.id();
             db.sql("insert into evidence(id,organization_id,session_id,source_type,exact_text,author_membership_id) values(:id,:organization,:session,'INVESTIGATOR_CORRECTION',:text,:author)")
                     .param("id", evidenceId).param("organization", session.organizationId()).param("session", sessionId)
@@ -263,13 +264,18 @@ public class FindingsController {
         var investigator = currentInvestigator.require(authentication);
         if (notes.length() > 2_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         transactions.executeWithoutResult(status -> {
-            var packageId = readyPackage(sessionId, version);
+            var packageDecision = packageDecision(sessionId, version);
+            if (packageDecision.state().equals("ACCEPTED")) return;
+            if (!packageDecision.state().equals("READY")) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The current package already has a different decision");
+            }
+            var packageId = packageDecision.id();
             var readiness = reviewReadiness(sessionId);
             if (readiness.needingReview() > 0) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Review every available required outcome first");
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Review every available required outcome first");
             }
             if (readiness.open() > 0 && !acceptOpenAreas) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Confirm acceptance with open required areas");
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Confirm acceptance with open required areas");
             }
             var decisionNotes = notes.trim();
             if (readiness.open() > 0) {
@@ -305,7 +311,12 @@ public class FindingsController {
         if (notes.isEmpty() || notes.length() > 2_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         var followUp = notes;
         transactions.executeWithoutResult(status -> {
-            var packageId = readyPackage(sessionId, version);
+            var packageDecision = packageDecision(sessionId, version);
+            if (packageDecision.state().equals("REJECTED")) return;
+            if (!packageDecision.state().equals("READY")) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "The current package already has a different decision");
+            }
+            var packageId = packageDecision.id();
             db.sql("update package_versions set state='REJECTED',notes=:notes where package_id=:package and version=:version")
                     .param("notes", followUp).param("package", packageId).param("version", version).update();
             db.sql("update discoveries d set retention_due_at=now()+(o.retention_days||' days')::interval,last_activity_at=now() from organizations o where d.id=:discovery and o.id=d.organization_id")
@@ -348,14 +359,15 @@ public class FindingsController {
                 """).param("session", sessionId).query((rs, row) -> new ReviewReadiness(rs.getLong(1), rs.getLong(2))).single();
     }
 
-    private UUID readyPackage(UUID sessionId, int version) {
+    private PackageDecision packageDecision(UUID sessionId, int version) {
         return db.sql("""
-                select p.id from findings_packages p
+                select p.id,v.state from findings_packages p
                 join package_versions v on v.package_id=p.id and v.version=:version
-                where p.session_id=:session and p.current_version=:version and v.state='READY'
+                where p.session_id=:session and p.current_version=:version
                 for update of p,v
-                """).param("session", sessionId).param("version", version).query(UUID.class).optional()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Decide the exact current package"));
+                """).param("session", sessionId).param("version", version)
+                .query((rs, row) -> new PackageDecision(rs.getObject(1, UUID.class), rs.getString(2))).optional()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Decide the exact current package"));
     }
 
     private OwnedSession ownedSession(UUID sessionId, Authentication authentication) {
@@ -402,6 +414,7 @@ public class FindingsController {
     private record SourceEvidence(UUID id, String text) {}
     private record KnowledgeRow(UUID resultId, UUID id, String claim, String category, String reviewState, UUID evidenceId, String answer,
                                 String quote, Object evidenceAt, String participant, Integer startOffset, Integer endOffset) {}
-    private record CurrentKnowledge(int version, String category) {}
+    private record CurrentKnowledge(int version, String category, String claim) {}
+    private record PackageDecision(UUID id, String state) {}
     private record ReviewReadiness(long needingReview, long open) {}
 }

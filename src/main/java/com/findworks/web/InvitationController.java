@@ -95,7 +95,7 @@ public class InvitationController {
                     """).param("mission", missionId).param("version", version)
                     .param("member", investigator.membershipId()).param("organization", investigator.organizationId())
                     .query((rs, row) -> new ApprovedMission(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)))
-                    .optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Approve this exact version first"));
+                    .optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Approve this exact version first"));
             var recent = db.sql("select count(*) from invitations where session_id in(select id from interview_sessions where mission_id=:mission) and expires_at>now()+interval '6 days'")
                     .param("mission", missionId).query(Long.class).single();
             if (recent >= 10) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Try again later");
@@ -111,7 +111,7 @@ public class InvitationController {
             UUID sessionId;
             if (existing.isPresent()) {
                 if (java.util.Set.of("COMPLETED", "ENDED_EARLY", "TERMINATED").contains(existing.get().state())) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "This Interview Session has ended");
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "This Interview Session has ended");
                 }
                 var previous = existing.get();
                 sessionId = previous.id();
@@ -122,7 +122,7 @@ public class InvitationController {
                             .param("version", version).param("id", sessionId).update();
                 } else if (previous.missionVersion() != version || !previous.email().equalsIgnoreCase(recipient)
                         || !previous.name().equals(participantName)) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                             "Reissue must preserve the original interviewee and approved Mission version");
                 }
                 db.sql("update invitations set state='REVOKED',revoked_at=now() where session_id=:session and state<>'REVOKED'")
