@@ -660,7 +660,9 @@ function unsupportedSpecifics(value, context) {
   ].join(" ").toLowerCase();
   const input = String(value ?? "");
   const numeric = input.match(/(?:£|\$|€)?\d[\d,.]*/g) ?? [];
-  const names = (input.match(/\b[A-Z][a-z]{2,}(?:'[a-z]+)?\b/g) ?? [])
+  const names = [...input.matchAll(/\b[A-Z][a-z]{2,}(?:'[a-z]+)?\b/g)]
+    .filter(match => match.index !== 0)
+    .map(match => match[0])
     .filter(word => !QUESTION_STOP_WORDS.has(stemWord(word.toLowerCase())));
   return [...new Set([...numeric, ...names].filter(specific => !grounded.includes(specific.toLowerCase())))];
 }

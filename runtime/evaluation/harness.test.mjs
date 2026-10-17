@@ -195,6 +195,13 @@ test("long-scenario assertions reject planning leaks, fabricated specifics, and 
   assert.ok(evaluation.contractViolations.some(item => item.rule === "fabricated-fact"));
   assert.ok(evaluation.contractViolations.some(item => item.rule === "unsupported-specific"));
   assert.ok(evaluation.contractViolations.some(item => item.rule === "ungrounded-choice"));
+
+  const grounded = validSubmission();
+  grounded.nextAction.text = "Besides Maya and the red jobs, what affects the morning sort?";
+  const groundedEvaluation = evaluateSubmission({
+    fixture: fixture(), turnIndex: 0, context: context(), submission: grounded, previousQuestions: [],
+  });
+  assert.ok(!groundedEvaluation.contractViolations.some(item => item.rule === "unsupported-specific"));
 });
 
 test("a terminal outcome may close the current thread and ask the next result in one turn", () => {
