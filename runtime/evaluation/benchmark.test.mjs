@@ -138,6 +138,7 @@ test("benchmark report retains sanitised failures, distributions, trade-offs, cr
 
   assert.equal(report.configurations.find(value => value.id === "gpt-medium").status, "blocked");
   assert.equal(report.configurations.find(value => value.id === "mini-low").individualFailures.length, 2);
+  assert.equal(report.configurations.find(value => value.id === "mini-low").evaluationMetadata.costUsd, 0.1);
   assert.equal(JSON.stringify(report).includes("sk-secret"), false);
   assert.equal(JSON.stringify(report).includes("proj_private"), false);
   assert.equal(report.tradeoffs.find(value => value.id === "mini-medium").costPerQuestionRatio, 1.2);
@@ -154,7 +155,16 @@ test("benchmark report retains sanitised failures, distributions, trade-offs, cr
 
 function evaluationReport({ semanticP25, semanticP50, evidenceP50, costPerQuestion }) {
   return {
-    metadata: { fixtureVersions: { synthetic: "1.0.0" }, costUsd: costPerQuestion * 10 },
+    metadata: {
+      commit: "abc123",
+      model: "openai/model",
+      reasoningEffort: "low",
+      runtimeVersion: "0.84.4",
+      runtimeCommit: "abc123",
+      fixtureVersions: { synthetic: "1.0.0" },
+      tokenUsage: { inputTokens: 100, outputTokens: 10, available: true },
+      costUsd: costPerQuestion * 10,
+    },
     summary: {
       deterministicFailures: 0,
       semanticGateFailures: 0,
