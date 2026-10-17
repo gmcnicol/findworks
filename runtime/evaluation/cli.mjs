@@ -141,10 +141,14 @@ export async function writeReport(report, outputDirectory) {
   return { json, markdown };
 }
 
-async function createDockerRuntimeExecutor(options, env) {
+export async function createDockerRuntimeExecutor(options, env, protocol = {}) {
+  const role = protocol.role ?? "interviewer";
+  const endpoint = protocol.endpoint ?? (role === "reviewer" ? "/review" : "/turn");
+  const requestIdentity = protocol.requestIdentity ?? (value => value.run_id);
+  const responseIdentity = protocol.responseIdentity ?? (value => role === "reviewer" ? value.requestId : value.runId);
   let pending;
   const server = createServer(async (request, response) => {
-    if (request.method !== "POST" || request.url !== "/turn") {
+    if (request.method !== "POST" || request.url !== endpoint) {
       response.writeHead(404).end();
       return;
     }
@@ -164,14 +168,16 @@ async function createDockerRuntimeExecutor(options, env) {
       pending = undefined;
       return;
     }
-    if (!pending || submission.runId !== pending.runId) {
+    if (!pending || responseIdentity(submission) !== pending.identity) {
       response.writeHead(409, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ code: "stale_revision" }));
       return;
     }
-    const event = submission.nextAction?.type === "PROPOSE_COMPLETION"
-      ? "completion_confirmation_ready"
-      : "question_ready";
+    const event = role === "reviewer"
+      ? "review_proposed"
+      : submission.nextAction?.type === "PROPOSE_COMPLETION"
+        ? "completion_confirmation_ready"
+        : "question_ready";
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ event }));
     pending?.resolve({ submission, event });
@@ -196,11 +202,11 @@ async function createDockerRuntimeExecutor(options, env) {
       let received;
       let runtimeOutput = "";
       pending = {
-        runId: context.run_id,
+        identity: requestIdentity(context),
         resolve(value) { received = value; },
         reject(error) { clearTimeout(timeout); rejectExecution(error); },
       };
-      child = spawnRuntime(options, env, context, port);
+      child = spawnRuntime(options, env, context, port, { role, endpoint });
       child.stdout.on("data", chunk => {
         if (runtimeOutput.length < 4_096) runtimeOutput += chunk.toString("utf8").slice(0, 4_096 - runtimeOutput.length);
       });
@@ -231,7 +237,7 @@ async function createDockerRuntimeExecutor(options, env) {
   };
 }
 
-function spawnRuntime(options, env, context, port) {
+function spawnRuntime(options, env, context, port, { role, endpoint }) {
   const dockerArgs = [
     "run", "--rm", "-i", "--read-only", "--add-host", "host.docker.internal:host-gateway",
     "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "--cap-drop", "ALL",
@@ -245,11 +251,21 @@ function spawnRuntime(options, env, context, port) {
     "--env", `FINDWORKS_MODEL_PROVIDER=${options.provider}`,
     "--env", `FINDWORKS_MODEL=${options.model}`,
     "--env", `FINDWORKS_REASONING_EFFORT=${options.reasoningEffort}`,
-    "--env", `FINDWORKS_TURN_URL=http://host.docker.internal:${port}/turn`,
-    "--env", "FINDWORKS_TURN_TOKEN=acceptance-token",
+    "--env", `FINDWORKS_RUNTIME_ROLE=${role}`,
     "--env", "NO_PROXY=host.docker.internal",
-    options.image,
   );
+  if (role === "reviewer") {
+    dockerArgs.push(
+      "--env", `FINDWORKS_REVIEW_URL=http://host.docker.internal:${port}${endpoint}`,
+      "--env", "FINDWORKS_REVIEW_TOKEN=acceptance-token",
+    );
+  } else {
+    dockerArgs.push(
+      "--env", `FINDWORKS_TURN_URL=http://host.docker.internal:${port}${endpoint}`,
+      "--env", "FINDWORKS_TURN_TOKEN=acceptance-token",
+    );
+  }
+  dockerArgs.push(options.image);
   const args = options.hostContainer
     ? ["exec", "-i", options.hostContainer, "docker", ...dockerArgs]
     : dockerArgs;
@@ -287,7 +303,7 @@ function resolveCommit(root, requested) {
   return pinned;
 }
 
-function inspectImage(image, hostContainer) {
+export function inspectImage(image, hostContainer) {
   try {
     const args = hostContainer
       ? ["exec", hostContainer, "docker", "image", "inspect", image]

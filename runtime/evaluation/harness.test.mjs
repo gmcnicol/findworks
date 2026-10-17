@@ -653,6 +653,43 @@ test("a scenario drives every answer through the Runtime Turn seam and records a
   assert.equal(run.semanticGatePassed, true);
 });
 
+test("a scenario records rejected reviewer proposals plus role-specific latency, cost, and cadence", async () => {
+  const run = await runScenario({
+    fixture: fixture(),
+    repeat: 1,
+    executeRuntime: async () => ({
+      submission: validSubmission(),
+      durationMs: 80,
+      interviewerDurationMs: 50,
+      reviewerDurationMs: 30,
+      usage: { inputTokens: 170, outputTokens: 30, cacheWriteTokens: 0, costUsd: 0.005 },
+      interviewerUsage: { inputTokens: 100, outputTokens: 20, costUsd: 0.003 },
+      reviewerUsage: { inputTokens: 70, outputTokens: 10, costUsd: 0.002 },
+      review: {
+        accepted: false,
+        trigger: "INITIAL_EVIDENCE",
+        requestId: "review-1",
+        rejection: "reviewer_revision_stale",
+      },
+    }),
+  });
+
+  assert.ok(run.turns[0].contractViolations.some(value => value.rule === "reviewer-proposal-rejected"));
+  assert.deepEqual(run.metrics.reviewer, {
+    invocations: 1,
+    accepted: 0,
+    rejected: 1,
+    cadence: 1,
+    triggers: { INITIAL_EVIDENCE: 1 },
+    latencyMs: { p50: 30, p95: 30 },
+  });
+  assert.equal(run.turns[0].trace.review.requestId, "review-1");
+  assert.equal(run.turns[0].interviewerDurationMs, 50);
+  assert.equal(run.turns[0].reviewerDurationMs, 30);
+  assert.equal(run.turns[0].interviewerUsage.costUsd, 0.003);
+  assert.equal(run.turns[0].reviewerUsage.costUsd, 0.002);
+});
+
 test("a scenario uses the source Question result rather than leaking the expected next result", async () => {
   const scenario = fixture();
   scenario.context.investigation_results.push({
@@ -870,6 +907,16 @@ test("summary distributions expose benchmark quality, safety, turns, latency, an
     contradictionsMissed: 1,
     repeatedQuestions: 1,
     earlyCompletions: 1,
+    completionErrors: 1,
+  });
+  assert.deepEqual(summary.reviewer, {
+    invocations: 0,
+    accepted: 0,
+    rejected: 0,
+    eligibleTurns: 2,
+    cadence: 0,
+    triggers: {},
+    latencyMs: emptyDistribution(),
   });
 });
 
@@ -906,7 +953,16 @@ test("repeat summaries compare deterministic and graded results with a baseline"
       costUsdPerQuestion: emptyDistribution(),
     },
     runsWithoutSufficientEvidence: 2,
-    failureCounts: { contradictionsMissed: 0, repeatedQuestions: 0, earlyCompletions: 0 },
+    failureCounts: { contradictionsMissed: 0, repeatedQuestions: 0, earlyCompletions: 0, completionErrors: 0 },
+    reviewer: {
+      invocations: 0,
+      accepted: 0,
+      rejected: 0,
+      eligibleTurns: 2,
+      cadence: 0,
+      triggers: {},
+      latencyMs: emptyDistribution(),
+    },
   });
   const comparison = compareWithBaseline(summary, { semanticPassRate: 0.8, deterministicFailures: 0 });
   assert.equal(comparison.regressed, false);

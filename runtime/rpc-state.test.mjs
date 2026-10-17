@@ -46,11 +46,19 @@ test("assistant usage is aggregated without retaining message content", () => {
   assert.doesNotMatch(JSON.stringify(monitor.usage()), /sensitive/);
 });
 
-test("a settled run succeeds only after the semantic tool commits", () => {
-  const monitor = new RpcTurnMonitor();
-  assert.equal(monitor.observe({ type: "response", command: "prompt", success: true }).terminal, false);
-  assert.equal(monitor.observe({ type: "tool_execution_end", toolName: "submit_interview_turn", isError: false }).terminal, false);
-  assert.deepEqual(monitor.observe({ type: "agent_settled" }), {
+test("a settled run succeeds only after the configured semantic tool commits", () => {
+  const interview = new RpcTurnMonitor();
+  assert.equal(interview.observe({ type: "response", command: "prompt", success: true }).terminal, false);
+  assert.equal(interview.observe({ type: "tool_execution_end", toolName: "submit_interview_turn", isError: false }).terminal, false);
+  assert.deepEqual(interview.observe({ type: "agent_settled" }), {
+    terminal: true,
+    exitCode: 0,
+    reason: "COMMITTED",
+  });
+
+  const review = new RpcTurnMonitor("submit_investigation_review");
+  assert.equal(review.observe({ type: "tool_execution_end", toolName: "submit_investigation_review", isError: false }).terminal, false);
+  assert.deepEqual(review.observe({ type: "agent_settled" }), {
     terminal: true,
     exitCode: 0,
     reason: "COMMITTED",
