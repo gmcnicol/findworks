@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { selectedProviderCredential } from "./cli.mjs";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
@@ -53,7 +54,13 @@ export async function runBenchmark(options, dependencies = {}) {
   const env = dependencies.env ?? process.env;
   const resolvePinnedCommit = dependencies.resolveCommit ?? resolveCommit;
   const probeConfigurations = dependencies.probeConfigurations
-    ?? (configurations => probeOpenAiConfigurations(configurations, { apiKey: env.OPENAI_API_KEY }));
+    ?? (configurations => {
+      const credential = selectedProviderCredential("openai", env);
+      return probeOpenAiConfigurations(configurations, {
+        apiKey: env[credential.name],
+        credential,
+      });
+    });
   const executeEvaluation = dependencies.executeEvaluation ?? executeModelEvaluation;
   const workingTreeDirty = dependencies.workingTreeDirty
     ?? (() => git(options.root, ["status", "--porcelain"]).trim() !== "");
@@ -68,7 +75,7 @@ export async function runBenchmark(options, dependencies = {}) {
   for (const configuration of configurations) {
     const probe = probeById.get(configuration.id);
     if (!probe?.accessible || !probe.reasoningSupported) continue;
-    const report = await executeEvaluation(configuration, { ...options, commit }, env);
+    const report = await executeEvaluation(configuration, { ...options, commit }, env, probe);
     if (report) evaluationReports.set(configuration.id, report);
   }
   const report = buildBenchmarkReport({
@@ -114,7 +121,11 @@ export async function writeBenchmarkReport(report, outputDirectory) {
   await writeFile(join(outputDirectory, "summary.md"), formatBenchmarkSummary(report));
 }
 
-export async function probeOpenAiConfigurations(configurations, { apiKey, fetchImpl = fetch }) {
+export async function probeOpenAiConfigurations(configurations, {
+  apiKey,
+  credential = { name: "OPENAI_API_KEY", kind: "api-key" },
+  fetchImpl = fetch,
+}) {
   if (!apiKey) throw new Error("OPENAI_API_KEY is required for provider capability verification");
   const modelResponse = await fetchImpl(`${OPENAI_API_BASE}/models`, {
     headers: { authorization: `Bearer ${apiKey}` },
@@ -146,6 +157,8 @@ export async function probeOpenAiConfigurations(configurations, { apiKey, fetchI
       httpStatus: response.status,
       errorCode: response.ok ? null : body.error?.code ?? "provider_error",
       errorType: response.ok ? null : body.error?.type ?? null,
+      credentialEnvironment: credential.name,
+      credentialKind: credential.kind,
     });
   }
   return results;
@@ -163,7 +176,11 @@ export function buildBenchmarkReport({ metadata, configurations, probes, evaluat
     let status = "completed";
     if (!probe?.accessible || !probe?.reasoningSupported) status = "blocked";
     else if (!evaluation) status = "failed";
-    if (status !== "completed" && configuration.required) {
+    if (status === "completed" && !matchesPreflightIdentity(configuration, probe, evaluation.metadata ?? {})) {
+      status = "invalid";
+      blockers.push({ configurationId: configuration.id, reason: "Actual Runtime Turn model/reasoning/credential identity differs from preflight identity" });
+    }
+    if (["blocked", "failed"].includes(status) && configuration.required) {
       blockers.push({
         configurationId: configuration.id,
         reason: status === "blocked"
@@ -274,7 +291,7 @@ export function formatBenchmarkSummary(report) {
   return `${lines.join("\n")}\n`;
 }
 
-async function executeModelEvaluation(configuration, options, env) {
+async function executeModelEvaluation(configuration, options, env, probe) {
   const outputDirectory = join(options.outputDirectory, "evaluations", configuration.id);
   await mkdir(outputDirectory, { recursive: true });
   const args = [
@@ -283,6 +300,8 @@ async function executeModelEvaluation(configuration, options, env) {
     "--provider", configuration.provider,
     "--model", configuration.model,
     "--reasoning", configuration.reasoningEffort,
+    "--resolved-model", probe.resolvedModel,
+    "--provider-reasoning", configuration.reasoningEffort,
     "--repeats", String(options.repeats),
     "--fixtures", options.fixturesDirectory,
     "--commit", options.commit,
@@ -329,10 +348,20 @@ function git(root, args) {
 
 function evaluationMetadata(metadata) {
   return Object.fromEntries([
-    "startedAt", "completedAt", "commit", "workingTreeDirty", "provider", "model", "reasoningEffort",
-    "runtimeVersion", "runtimeImage", "runtimeImageId", "runtimeCommit", "fixtureSchemaVersion", "repeats",
-    "tokenUsage", "costUsd",
+    "startedAt", "completedAt", "commit", "workingTreeDirty", "provider", "model", "resolvedModel", "reasoningEffort",
+    "providerReasoningEffort", "credentialKind", "credentialEnvironment", "runtimeVersion", "runtimeImage",
+    "runtimeImageId", "runtimeCommit", "fixtureSchemaVersion", "repeats", "tokenUsage", "costUsd",
   ].map(key => [key, metadata[key] ?? null]));
+}
+
+function matchesPreflightIdentity(configuration, probe, metadata) {
+  return metadata.provider === configuration.provider
+    && metadata.model === `${configuration.provider}/${configuration.model}`
+    && metadata.resolvedModel === probe.resolvedModel
+    && metadata.reasoningEffort === configuration.reasoningEffort
+    && metadata.providerReasoningEffort === configuration.reasoningEffort
+    && metadata.credentialKind === probe.credentialKind
+    && metadata.credentialEnvironment === probe.credentialEnvironment;
 }
 
 function tradeoffMetrics(summary) {
@@ -410,15 +439,11 @@ function sanitise(value) {
 }
 
 function difference(value, baseline) {
-  return typeof value === "number" && typeof baseline === "number" ? rounded(value - baseline) : null;
+  return typeof value === "number" && typeof baseline === "number" ? value - baseline : null;
 }
 
 function ratio(value, baseline) {
-  return typeof value === "number" && typeof baseline === "number" && baseline > 0 ? rounded(value / baseline) : null;
-}
-
-function rounded(value) {
-  return Number(value.toFixed(6));
+  return typeof value === "number" && typeof baseline === "number" && baseline > 0 ? value / baseline : null;
 }
 
 function minimumInteger(value, fallback, minimum) {

@@ -47,6 +47,8 @@ test("provider preflight verifies exact model access and reasoning support witho
     httpStatus: 200,
     errorCode: null,
     errorType: null,
+    credentialEnvironment: "OPENAI_API_KEY",
+    credentialKind: "api-key",
   }, {
     configurationId: "candidate",
     requestedModel: "gpt-5.4",
@@ -58,6 +60,8 @@ test("provider preflight verifies exact model access and reasoning support witho
     httpStatus: 403,
     errorCode: "model_not_found",
     errorType: "invalid_request_error",
+    credentialEnvironment: "OPENAI_API_KEY",
+    credentialKind: "api-key",
   }]);
   assert.equal(JSON.stringify(result).includes("proj_secret"), false);
   assert.equal(requests.filter(request => request.url.endsWith("/responses")).length, 2);
@@ -117,11 +121,17 @@ test("benchmark report retains sanitised failures, distributions, trade-offs, cr
     contractViolations: [{ rule: "runtime-execution", message: "Bearer sk-secret failed for proj_private", sourceAnswer: "Synthetic answer", offendingAction: null }],
     semanticQuality: { checks: [{ rule: "expected-outcome:CONFLICT", passed: false, detail: "Missing CONFLICT" }] },
   };
-  const optional = evaluationReport({ semanticP25: 0.82, semanticP50: 0.91, evidenceP50: 0.8, costPerQuestion: 0.012 });
+  const optional = evaluationReport({
+    semanticP25: 0.82,
+    semanticP50: 0.91,
+    evidenceP50: 0.8,
+    costPerQuestion: 0.012,
+    reasoningEffort: "medium",
+  });
   const configurations = [
-    { id: "mini-low", label: "GPT-5.4 mini / low", model: "gpt-5.4-mini", reasoningEffort: "low", required: true },
-    { id: "gpt-medium", label: "GPT-5.4 / medium", model: "gpt-5.4", reasoningEffort: "medium", required: true },
-    { id: "mini-medium", label: "GPT-5.4 mini / medium", model: "gpt-5.4-mini", reasoningEffort: "medium", required: false },
+    { id: "mini-low", label: "GPT-5.4 mini / low", provider: "openai", model: "gpt-5.4-mini", reasoningEffort: "low", required: true },
+    { id: "gpt-medium", label: "GPT-5.4 / medium", provider: "openai", model: "gpt-5.4", reasoningEffort: "medium", required: true },
+    { id: "mini-medium", label: "GPT-5.4 mini / medium", provider: "openai", model: "gpt-5.4-mini", reasoningEffort: "medium", required: false },
   ];
   const probes = [
     probe("mini-low", true),
@@ -153,12 +163,68 @@ test("benchmark report retains sanitised failures, distributions, trade-offs, cr
   assert.match(markdown, /Retain GPT-5\.4 mini \/ low/);
 });
 
-function evaluationReport({ semanticP25, semanticP50, evidenceP50, costPerQuestion }) {
+test("benchmark trade-off ratios use full provider-cost precision", () => {
+  const configurations = [
+    { id: "baseline", label: "Baseline", provider: "openai", model: "gpt-5.4-mini", reasoningEffort: "low", required: true },
+    { id: "candidate", label: "Candidate", provider: "openai", model: "gpt-5.4-mini", reasoningEffort: "low", required: false },
+  ];
+  const report = buildBenchmarkReport({
+    metadata: { commit: "abc123", repeats: 3 },
+    configurations,
+    probes: [probe("baseline", true), probe("candidate", true)],
+    evaluationReports: new Map([
+      ["baseline", evaluationReport({ semanticP25: 1, semanticP50: 1, evidenceP50: 1, costPerQuestion: 0.002173125 })],
+      ["candidate", evaluationReport({ semanticP25: 1, semanticP50: 1, evidenceP50: 1, costPerQuestion: 0.005298375 })],
+    ]),
+  });
+
+  assert.equal(
+    report.tradeoffs.find(value => value.id === "candidate").costPerQuestionRatio,
+    0.005298375 / 0.002173125,
+  );
+});
+
+test("benchmark invalidates an evaluation whose actual turn identity differs from preflight", () => {
+  const configuration = {
+    id: "mini-low", label: "Mini low", provider: "openai", model: "gpt-5.4-mini", reasoningEffort: "low", required: true,
+  };
+  const evaluation = evaluationReport({
+    semanticP25: 1,
+    semanticP50: 1,
+    evidenceP50: 1,
+    costPerQuestion: 0.001,
+    resolvedModel: "unexpected-model",
+  });
+  const report = buildBenchmarkReport({
+    metadata: { commit: "abc123", repeats: 3 },
+    configurations: [configuration],
+    probes: [probe("mini-low", true)],
+    evaluationReports: new Map([["mini-low", evaluation]]),
+  });
+
+  assert.equal(report.configurations[0].status, "invalid");
+  assert.ok(report.blockers.some(blocker => /preflight identity/i.test(blocker.reason)));
+});
+
+function evaluationReport({
+  semanticP25,
+  semanticP50,
+  evidenceP50,
+  costPerQuestion,
+  model = "gpt-5.4-mini",
+  resolvedModel = "resolved-model",
+  reasoningEffort = "low",
+}) {
   return {
     metadata: {
       commit: "abc123",
-      model: "openai/model",
-      reasoningEffort: "low",
+      provider: "openai",
+      model: `openai/${model}`,
+      resolvedModel,
+      reasoningEffort,
+      providerReasoningEffort: reasoningEffort,
+      credentialKind: "api-key",
+      credentialEnvironment: "OPENAI_API_KEY",
       runtimeVersion: "0.84.4",
       runtimeCommit: "abc123",
       fixtureVersions: { synthetic: "1.0.0" },
@@ -195,6 +261,8 @@ function probe(configurationId, accessible) {
     httpStatus: accessible ? 200 : 403,
     errorCode: accessible ? null : "model_not_found",
     errorType: accessible ? null : "invalid_request_error",
+    credentialEnvironment: "OPENAI_API_KEY",
+    credentialKind: "api-key",
   };
 }
 

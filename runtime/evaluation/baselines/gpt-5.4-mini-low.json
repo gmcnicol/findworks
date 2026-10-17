@@ -1,14 +1,45 @@
 {
   "schemaVersion": 1,
   "metadata": {
-    "kind": "quality-floor",
+    "kind": "retained-credentialed-baseline",
+    "source": "docs/acceptance/traces/issue-67-periodic-review-26eabe6.json#baseline",
+    "commit": "26eabe672a0dc8bfaccdf73baf194544efb477dc",
+    "runtimeCommit": "26eabe672a0dc8bfaccdf73baf194544efb477dc",
+    "provider": "openai",
     "model": "openai/gpt-5.4-mini",
+    "resolvedModel": "gpt-5.4-mini-2026-03-17",
     "reasoningEffort": "low",
+    "providerReasoningEffort": "low",
+    "credentialKind": "api-key",
+    "credentialEnvironment": "OPENAI_API_KEY",
+    "runtimeVersion": "0.84.4",
+    "configurationId": "single-interviewer-gpt-5.4-mini-low",
+    "configurationVersion": "periodic-investigation-review/1.0.0",
     "fixtureSchemaVersion": 1,
-    "note": "Replace with a reviewed result.json after the first credentialed full-suite run."
+    "fixtureVersions": {
+      "assumption-outcome": "1.1.0",
+      "claims-routing-20-turn-continuity": "1.0.0",
+      "conflict-outcome": "1.1.0",
+      "contradiction-within-interview": "1.1.0",
+      "disputed-terminology": "1.2.0",
+      "incomplete-owner-referral": "1.1.0",
+      "mention-is-not-sufficient": "1.0.0",
+      "morning-sort": "1.1.0",
+      "ownership-gap": "1.1.0",
+      "parked-thread-transition": "1.0.0",
+      "permit-handover-40-turn-compaction": "1.0.0",
+      "refund-completion": "1.2.0",
+      "refusal-to-answer": "1.1.0",
+      "required-before-optional": "1.0.0",
+      "shared-evidence-multiple-results": "1.0.0",
+      "uncertain-recollection": "1.2.0",
+      "unknown-outcome": "1.1.0",
+      "vague-partial-answer": "1.1.0"
+    },
+    "limitations": "Retains only the semantic pass rate and deterministic-failure floor supported by the archived report. Coverage, useful-Evidence, sufficiency, and cost trade-offs require a fresh run under the corrected harness."
   },
   "summary": {
-    "semanticPassRate": 0.8,
-    "deterministicFailures": 0
+    "semanticPassRate": 0.8789144050104384,
+    "deterministicFailures": 5
   }
 }

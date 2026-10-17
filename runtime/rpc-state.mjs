@@ -36,6 +36,8 @@ export class RpcTurnMonitor {
   #providerError = false;
   #semanticCommit = false;
   #usage;
+  #modelIdentity;
+  #modelIdentityMismatch = false;
 
   constructor(semanticToolName = "submit_interview_turn") {
     this.semanticToolName = semanticToolName;
@@ -50,6 +52,7 @@ export class RpcTurnMonitor {
     }
     if (event.type === "message_end" && event.message?.role === "assistant") {
       this.#addUsage(event.message.usage);
+      this.#recordModelIdentity(event.message);
       if (event.message.stopReason === "error") this.#providerError = true;
     }
     if (event.type === "tool_execution_end" && event.toolName === this.semanticToolName && !event.isError) {
@@ -64,7 +67,22 @@ export class RpcTurnMonitor {
   }
 
   usage() {
-    return this.#usage ? { ...this.#usage } : null;
+    return this.#usage ? {
+      ...this.#usage,
+      modelIdentity: this.#modelIdentityMismatch ? null : this.#modelIdentity,
+    } : null;
+  }
+
+  #recordModelIdentity(message) {
+    const identity = {
+      provider: message.provider ?? null,
+      requestedModel: message.model ?? null,
+      responseModel: message.responseModel ?? message.model ?? null,
+      reasoningEffort: message.thinkingLevel ?? null,
+      providerReasoningEffort: message.providerThinkingLevel ?? null,
+    };
+    if (!this.#modelIdentity) this.#modelIdentity = identity;
+    else if (JSON.stringify(this.#modelIdentity) !== JSON.stringify(identity)) this.#modelIdentityMismatch = true;
   }
 
   #addUsage(usage) {

@@ -125,15 +125,11 @@ function mergeUsage(...values) {
 }
 
 function difference(value, baseline) {
-  return typeof value === "number" && typeof baseline === "number" ? rounded(value - baseline) : null;
+  return typeof value === "number" && typeof baseline === "number" ? value - baseline : null;
 }
 
 function ratio(value, baseline) {
   return typeof value === "number" && typeof baseline === "number" && baseline > 0
-    ? rounded(value / baseline)
+    ? value / baseline
     : null;
-}
-
-function rounded(value) {
-  return Number(value.toFixed(6));
 }

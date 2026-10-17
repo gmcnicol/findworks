@@ -44,16 +44,24 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           FINDWORKS_RUNTIME_IMAGE: findworks-runtime:evaluation
+          EVALUATION_MODEL: ${{ inputs.model }}
+          EVALUATION_REASONING: ${{ inputs.reasoning }}
+          EVALUATION_REPEATS: ${{ inputs.repeats }}
+          EVALUATION_SCENARIO: ${{ inputs.scenario }}
         run: |
+          [[ "$EVALUATION_MODEL" =~ ^[A-Za-z0-9._/-]+$ ]]
+          [[ "$EVALUATION_REASONING" =~ ^(off|minimal|low|medium|high|xhigh|max)$ ]]
+          [[ "$EVALUATION_REPEATS" =~ ^[1-9][0-9]*$ ]]
+          [[ -z "$EVALUATION_SCENARIO" || "$EVALUATION_SCENARIO" =~ ^[A-Za-z0-9._-]+$ ]]
           args=(
             --commit "$GITHUB_SHA"
-            --model "${{ inputs.model }}"
-            --reasoning "${{ inputs.reasoning }}"
-            --repeats "${{ inputs.repeats }}"
+            --model "$EVALUATION_MODEL"
+            --reasoning "$EVALUATION_REASONING"
+            --repeats "$EVALUATION_REPEATS"
             --output artifacts/adaptive-interview-evaluation/ci
           )
-          if [[ -n "${{ inputs.scenario }}" ]]; then
-            args+=(--scenario "${{ inputs.scenario }}")
+          if [[ -n "$EVALUATION_SCENARIO" ]]; then
+            args+=(--scenario "$EVALUATION_SCENARIO")
           fi
           npm run test:adaptive-interview -- "${args[@]}"
       - name: Upload evaluation trace

@@ -8,6 +8,12 @@ Retain `openai/gpt-5.4-mini` with low reasoning as the default. Do not add produ
 
 The sanitised machine-readable report, including every individual contract and semantic failure, is [issue-66-model-benchmark-6a66aeb.json](./traces/issue-66-model-benchmark-6a66aeb.json).
 
+## Final-review correction
+
+The retained run predates four material harness corrections: the HTTP seam accepted every proposal before grading it, rejected proposals could enter simulated state, coverage/Evidence-yield/sufficiency metrics counted semantically unsupported outcomes, and cost percentiles were rounded before ratios. Its preflight also used a separate API probe instead of verifying the identity reported by every actual Pi Runtime Turn. Therefore the retained required-coverage, useful-Evidence, turns-to-sufficiency, per-Question cost percentiles, and derived cost ratios are historical observations only and are marked invalid in the machine evidence. A fresh credentialed run is required to republish those measures or make a promotion decision.
+
+No candidate is promoted from this corrected record. That preserves the conservative retain-mini/low decision because both completed configurations had deterministic, semantic-gate, and continuity failures, while the required full-model comparison remained blocked. It does **not** preserve the old numerical cost/quality claim as valid evidence.
+
 ## Reproducibility and provider verification
 
 - Evaluated commit: `6a66aebe46761bcec07cff5bb2a284023f598fc8`.
@@ -52,7 +58,7 @@ FINDWORKS_RUNTIME_IMAGE=findworks-runtime:evaluation \
 | Total provider-reported cost | $0.776247 | $1.126387 | +45.1% |
 | Input / output tokens | 1,216,640 / 68,414 | 1,212,018 / 129,790 | -0.4% / +89.7% |
 
-Provider costs are reported in USD; the relative quality-per-cost result is currency-independent. Median cost per useful Evidence was $0.004 for low and $0.006 for medium, a 1.5× ratio. Semantic checks passed per provider-reported dollar fell from 1,704 to 1,168.
+Provider costs are reported in USD. Total provider-reported costs and token totals remain exact retained observations. The displayed per-run and per-Question percentiles were rounded by the old harness, so the former 1.5× median cost-per-useful-Evidence ratio cannot be recovered exactly from this sanitised aggregate and is withdrawn pending a fresh credentialed rerun. Semantic checks per provider-reported dollar remain 1,704 for low and 1,168 for medium, but they do not repair the invalid outcome-based metrics.
 
 ## Failures and safety signals
 

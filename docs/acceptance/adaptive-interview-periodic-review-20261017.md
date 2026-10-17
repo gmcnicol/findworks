@@ -8,7 +8,7 @@ The reviewer-assisted strategy produced more useful Evidence per Question and on
 
 - runs with deterministic failures increased from 5 to 6;
 - 8 of 42 reviewer proposals were rejected before they could affect interviewer context;
-- median provider-reported cost per Question was 2.50× baseline, above the 2× ceiling;
+- median provider-reported cost per Question was 2.44× baseline, above the 2× ceiling;
 - p95 end-to-end Runtime Turn latency was 2.33× baseline, above the 2× ceiling.
 
 Both strategies missed zero fixture-expected Conflicts, so this run provides no evidence that a separate reviewer improves conflict detection. The result is deliberately conservative: one trial of the complete shared suite is enough to reject this spike under its gates, not enough to claim universal model behaviour.
@@ -65,12 +65,14 @@ The OpenAI credential was read from `findworks-pilot-worker-1` only into command
 | Turns to sufficient Evidence, median | 2 | 2 | no change |
 | Turn latency p50 / p95 | 4.90 s / 6.47 s | 9.68 s / 15.08 s | 1.98× / 2.33× |
 | Provider-reported total cost | $0.284804 | $0.512987 | 1.80× |
-| Median cost / Question | $0.002 | $0.005 | 2.50× |
+| Median cost / Question | $0.002173 | $0.005298 | 2.44× |
 | Input tokens | 407,001 | 525,984 | +29.2% |
 | Output tokens | 22,797 | 53,866 | +136.3% |
 | Cache-write tokens | 0 | 0 | no change |
 
-Provider cost is reported in USD. The total cost values above preserve the provider-reported precision; distribution percentiles use the harness's existing rounded representation.
+Provider cost is reported in USD. The median values and 2.4381363244176022× calculation above were re-derived from the retained per-scenario provider costs without rerunning the model; rounding is display-only. This correction does not change the #67 NO-GO because the ratio remains above the predeclared 2× ceiling, and the reliability and latency gates also still fail.
+
+The retained run predates the corrected production-rejection and semantic-outcome qualification rules. Its useful-Evidence, required-coverage, and turns-to-sufficiency values are therefore historical observations, not valid comparative evidence; they are marked accordingly in the machine record and require a fresh credentialed rerun. This removes the claimed positive Evidence-yield signal but does not weaken or change any predeclared #67 gate.
 
 ## Reviewer cadence and safeguards
 

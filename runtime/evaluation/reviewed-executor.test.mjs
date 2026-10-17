@@ -134,7 +134,7 @@ test("comparison makes Evidence yield, conflicts, completion, cost, latency, and
 
   const comparison = compareReviewStrategies({ baseline, reviewed });
 
-  assert.equal(comparison.usefulEvidencePerQuestionDelta, 0.1);
+  assert.equal(comparison.usefulEvidencePerQuestionDelta, 0.6 - 0.5);
   assert.equal(comparison.missedConflictDelta, -2);
   assert.equal(comparison.completionErrorDelta, -1);
   assert.equal(comparison.costPerQuestionRatio, 1.5);
