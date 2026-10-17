@@ -35,6 +35,36 @@ test("questions are grounded and never assume an unseen inventory", () => {
   assert.match(skill, /approved opening question is guidance, not wording to repeat blindly/);
 });
 
+test("conversation starts with Mission language then adopts the interviewee's terms", () => {
+  assert.match(skill, /Mission's domain terms are only the starting vocabulary/);
+  assert.match(skill, /interviewee's wording becomes the default/);
+  assert.match(skill, /latest_interviewee_wording/);
+  assert.match(skill, /briefly clarify whether two terms mean the same thing/);
+  assert.match(skill, /Do not correct the interviewee's style/);
+});
+
+test("Mission planning stays private and each turn asks one information need", () => {
+  assert.match(skill, /Mission's examples, coverage criteria, and planning language are private guidance/);
+  assert.match(skill, /Never ask the interviewee to classify a Mission list/);
+  assert.match(skill, /one subject and one information need/);
+  assert.match(skill, /Do not bundle several scenarios, decisions, or follow-ups into one question/);
+});
+
+test("drilling stays on one thread and uses the answer to shape the follow-up", () => {
+  assert.match(skill, /Stay on that thread until its exit conditions are met/);
+  assert.match(skill, /current_thread_result_id/);
+  assert.match(skill, /briefly anchor the follow-up in their words/);
+  assert.match(skill, /Do not ask for information the interviewee has already supplied/);
+});
+
+test("own words are the default and finite choices preserve interviewee language", () => {
+  assert.match(skill, /FREE_TEXT is the default response mode/);
+  assert.match(skill, /genuinely finite decision or paraphrase confirmation/);
+  assert.match(skill, /word every option in the interviewee's language/);
+  assert.match(skill, /Never invent alternatives or possible answers inside a free-text Question/);
+  assert.match(runner, /"--thinking", "low"/);
+});
+
 test("interview outcomes are deltas against durable current outcomes", () => {
   assert.match(skill, /current_outcomes/);
   assert.match(skill, /outcomes array is a delta/);
@@ -52,4 +82,10 @@ test("runner explicitly expands and activates bounded design-tree grilling", () 
 test("question actions require the server-scoped result identity", () => {
   assert.match(extension, /nextAction: Type\.Union\(\[/);
   assert.match(extension, /Type\.Literal\("ASK_QUESTION"\)[\s\S]*resultId: Type\.String\(\)/);
+});
+
+test("question tool schema reinforces the conversational contract", () => {
+  assert.match(extension, /One natural, non-leading question with one information need, phrased in the interviewee's domain language/);
+  assert.match(extension, /FREE_TEXT is the default/);
+  assert.match(extension, /Use the interviewee's own wording for finite choices/);
 });

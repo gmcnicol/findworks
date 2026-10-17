@@ -79,6 +79,22 @@ public class RuntimeTurnContext {
             resultView.put("current_outcomes", outcomesByResult.getOrDefault(resultId, List.of()));
             return resultView;
         }).list());
+        var conversationState = new LinkedHashMap<String, Object>();
+        db.sql("""
+                select r.id,q.text,e.exact_text
+                from questions q
+                join evidence e on e.question_id=q.id
+                join investigation_results r on r.item_id=q.item_id and r.session_id=q.session_id
+                where q.session_id=:session
+                order by q.sequence desc,e.created_at desc,e.id desc limit 1
+                """).param("session", sessionId)
+                .query((rs, row) -> new LatestExchange(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3)))
+                .optional().ifPresent(exchange -> {
+                    conversationState.put("current_thread_result_id", exchange.resultId());
+                    conversationState.put("last_question", exchange.question());
+                    conversationState.put("latest_interviewee_wording", exchange.answer());
+                });
+        result.put("conversation_state", conversationState);
         result.put("questions_and_evidence", db.sql("""
                 select q.id,q.sequence,q.text,e.id,e.source_type,e.exact_text,e.option_id,e.option_label,e.explanation,q.active
                 from questions q left join evidence e on e.question_id=q.id
@@ -105,4 +121,5 @@ public class RuntimeTurnContext {
 
     private record StoredOutcome(UUID resultId, UUID id, String coverage, String category, String summary,
                                  List<UUID> evidenceIds) {}
+    private record LatestExchange(UUID resultId, String question, String answer) {}
 }

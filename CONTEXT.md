@@ -259,6 +259,12 @@ Acceptance must show adaptive behaviour in both human interactions. Interview Mi
 
 During an Interview Session, the agent prioritises unresolved required Investigation Items, follows useful new information, clarifies ambiguity or contradiction, avoids already answered ground, and considers optional items after required coverage. It asks one plain-language question at a time, explains why only when useful, and adapts wording to the interviewee's vocabulary.
 
+The approved Mission's domain terms provide the starting vocabulary, but the interviewee's own terms become the conversational default as they introduce them. The agent lightly anchors useful follow-ups in those terms without mechanically recapping or correcting the interviewee's style; genuine ambiguity between Mission and interviewee terms is clarified explicitly. Mission examples, coverage criteria, and planning language remain private guidance rather than lists or classification exercises shown to the interviewee.
+
+The agent pursues one Investigation Item as a coherent conversational thread until its sufficient-evidence conditions are met or it reaches an honest Unknown, Conflict, or Ownership Gap. Each turn asks about one subject and one unresolved information need; it does not bundle scenarios or invent possible answers inside an open question. Own-words answers are the default. Finite choices and paraphrase confirmations are used only when genuinely appropriate, and their labels use wording already grounded in the interviewee's language.
+
+Systems or architecture questions belong in the Interview Session only when the approved Mission includes them. Even then, the agent uses observable domain behaviour, rules, consequences, ownership, and the interviewee's own technical vocabulary where possible. Technical questions outside the Mission remain with the Investigator's project-aware shaping or grilling harness.
+
 Submitting an answer immediately creates immutable Evidence. Later revisions append rather than overwrite. FindWorks may update internal candidate findings after each answer to guide follow-up questions.
 
 When an answer is vague, uncertain, inferred, or contradictory, the agent asks focused clarification only while likely to help, then records an Assumption, Unknown, or Conflict rather than badgering. When the interviewee identifies another owner, it captures an Ownership Gap and owner details, stops pressing them, and never sends another invitation automatically.

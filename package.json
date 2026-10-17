@@ -5,6 +5,7 @@
   "scripts": {
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
+    "test:adaptive-interview": "node runtime/adaptive-sequence.acceptance.mjs",
     "test": "playwright test",
     "test:all": "bash scripts/test.sh"
   },

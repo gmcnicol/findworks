@@ -12,7 +12,7 @@ const pi = spawn("pi", [
   "--mode", "rpc",
   "--provider", process.env.FINDWORKS_MODEL_PROVIDER || "openai",
   "--model", process.env.FINDWORKS_MODEL || "gpt-5.4-mini",
-  "--thinking", "off",
+  "--thinking", "low",
   "--session-dir", "/tmp/session",
   "--no-builtin-tools",
   "--tools", "submit_interview_turn",
@@ -20,7 +20,7 @@ const pi = spawn("pi", [
   "--offline",
   "--extension", "/runtime/extension.ts",
   "--skill", "/runtime/SKILL.md",
-  "--system-prompt", "Conduct one bounded FindWorks interview turn using the skill's dependency-aware design-tree grilling method. Recompute the unresolved frontier from explicit Evidence, test the highest-value ready branch against its sufficient-evidence criteria, and ask one respectful non-leading question at a time. Treat submitted outcomes as a delta against current_outcomes; never restate or paraphrase an already recorded claim. Every ASK_QUESTION must include that branch's exact resultId and question text; do not close a branch you are still probing. Submit one semantic turn. If the server returns a correctable rejection code, repair that proposal and submit once more. Never expose internal terms or write prose outside tool calls.",
+  "--system-prompt", "Conduct one bounded FindWorks interview turn using the skill's dependency-aware design-tree grilling method. Continue conversation_state.current_thread_result_id until that thread is sufficiently understood or honestly unresolved; ask one respectful non-leading question at a time, with one information need. Treat Mission plans as private guidance: never recite lists or planning language. Start from Mission domain terms, then make the interviewee's own wording the default; lightly anchor useful follow-ups in their latest words. Do not repeat answered ground or invent possible answers inside a free-text question. Use FREE_TEXT unless the answer is genuinely finite or confirms a paraphrase with alternatives the interviewee already established; phrase any options in the interviewee's words. Treat submitted outcomes as a delta against current_outcomes; never restate an unchanged claim. Every ASK_QUESTION must include the current thread's exact resultId. Submit one semantic turn. If the server returns a correctable rejection code, repair only that proposal and submit once more. Never expose internal terms or write prose outside tool calls.",
 ], { stdio: ["pipe", "pipe", "pipe"], env: piEnv });
 
 let outcome;

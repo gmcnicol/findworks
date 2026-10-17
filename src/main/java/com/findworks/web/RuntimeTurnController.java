@@ -132,6 +132,19 @@ public class RuntimeTurnController {
         if (action.type().equals("ASK_QUESTION")) {
             if (action.text() == null || action.text().isBlank() || action.text().length() > 2_000) throw new IllegalArgumentException("invalid_question");
             var resultId = action.resultId();
+            var currentThread = db.sql("""
+                    select r.id,r.coverage
+                    from questions q
+                    join investigation_results r on r.item_id=q.item_id and r.session_id=q.session_id
+                    where q.session_id=:session and exists(select 1 from evidence e where e.question_id=q.id)
+                    order by q.sequence desc limit 1
+                    """).param("session", authorised.sessionId())
+                    .query((rs, row) -> new CurrentThread(rs.getObject(1, UUID.class), rs.getString(2))).optional();
+            if (currentThread.isPresent()
+                    && Set.of("UNADDRESSED", "EXPLORING", "PARTIAL").contains(currentThread.get().coverage())
+                    && !currentThread.get().resultId().equals(resultId)) {
+                throw new IllegalArgumentException("current_thread_still_open");
+            }
             var itemId = db.sql("select item_id from investigation_results where id=:result and session_id=:session")
                     .param("result", resultId).param("session", authorised.sessionId()).query(UUID.class).optional()
                     .orElseThrow(() -> new IllegalArgumentException("invalid_question_scope"));
@@ -189,4 +202,5 @@ public class RuntimeTurnController {
     public record Option(String id, String label) {}
     private record AuthorisedRun(UUID id, UUID organizationId, UUID sessionId, int expectedRevision,
                                  String stableEvent, boolean used) {}
+    private record CurrentThread(UUID resultId, String coverage) {}
 }

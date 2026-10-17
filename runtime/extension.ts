@@ -31,12 +31,15 @@ export default function (pi: ExtensionAPI) {
         Type.Object({
           type: Type.Literal("ASK_QUESTION"),
           resultId: Type.String(),
-          text: Type.String(),
+          text: Type.String({ description: "One natural, non-leading question with one information need, phrased in the interviewee's domain language. For free text, do not invent alternatives or possible answers." }),
           responseMode: Type.Optional(Type.Union([
             Type.Literal("FREE_TEXT"), Type.Literal("YES_NO"), Type.Literal("YES_NO_PARTLY"),
             Type.Literal("PARAPHRASE"), Type.Literal("CHOICE"),
-          ])),
-          options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), label: Type.String() }), { minItems: 2, maxItems: 5 })),
+          ], { description: "FREE_TEXT is the default; use a structured mode only for a genuinely finite decision or paraphrase confirmation." })),
+          options: Type.Optional(Type.Array(Type.Object({
+            id: Type.String(),
+            label: Type.String({ description: "Use the interviewee's own wording for finite choices." }),
+          }), { minItems: 2, maxItems: 5 })),
         }),
         Type.Object({ type: Type.Literal("PROPOSE_COMPLETION") }),
       ]),

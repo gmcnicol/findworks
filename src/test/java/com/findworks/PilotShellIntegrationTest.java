@@ -1447,6 +1447,51 @@ class PilotShellIntegrationTest {
     }
 
     @Test
+    void runtime_keeps_drilling_the_current_investigation_thread_until_it_has_an_outcome() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "one-thread@example.com");
+        var secondItem = UUID.randomUUID();
+        jdbcTemplate.update("insert into investigation_items values(?,?,1,1,'Who approves exceptions?','Ownership must be explicit.','HIGH',true,'An exception exists.','The owner or an explicit unknown')",
+                secondItem, UUID.fromString(missionId));
+        var secondResult = UUID.randomUUID();
+        jdbcTemplate.update("insert into investigation_results values(?,(select organization_id from interview_sessions where id=?),?,?, 'UNADDRESSED')",
+                secondResult, participant.sessionId(), participant.sessionId(), secondItem);
+
+        mockMvc.perform(post("/interview/answer").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("answer", "We call it the day-end check, and Priya compares each mismatch with the cashbook."))
+                .andExpect(status().is3xxRedirection());
+        var run = jdbcTemplate.queryForMap("select id,expected_revision from runtime_runs where session_id=?", participant.sessionId());
+        var firstResult = jdbcTemplate.queryForObject("""
+                select r.id from questions q join investigation_results r on r.item_id=q.item_id and r.session_id=q.session_id
+                where q.session_id=? and q.sequence=1
+                """, UUID.class, participant.sessionId());
+        var context = tools.jackson.databind.json.JsonMapper.builder().build().valueToTree(
+                runtimeTurnContext.project((UUID) run.get("id"), participant.sessionId(), 1,
+                        ((Number) run.get("expected_revision")).intValue()));
+        org.assertj.core.api.Assertions.assertThat(context.at("/conversation_state/current_thread_result_id").asText())
+                .isEqualTo(firstResult.toString());
+        org.assertj.core.api.Assertions.assertThat(context.at("/conversation_state/latest_interviewee_wording").asText())
+                .isEqualTo("We call it the day-end check, and Priya compares each mismatch with the cashbook.");
+        var token = "one-thread-turn-token";
+        jdbcTemplate.update("insert into runtime_turn_credentials values(?,?,now()+interval '5 minutes',null)",
+                com.findworks.platform.Ids.sha(token), run.get("id"));
+
+        mockMvc.perform(post("/internal/runtime/turn").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"runId":"%s","expectedRevision":%s,"outcomes":[],
+                                  "nextAction":{"type":"ASK_QUESTION","resultId":"%s","text":"Who approves exceptions?"}}
+                                """.formatted(run.get("id"), run.get("expected_revision"), secondResult)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("{\"code\":\"current_thread_still_open\"}"));
+
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from questions where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+    }
+
+    @Test
     void repeated_outcome_proposal_is_not_duplicated_in_findings() throws Exception {
         var access = authorizeHarness("findworks:read findworks:write");
         var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
