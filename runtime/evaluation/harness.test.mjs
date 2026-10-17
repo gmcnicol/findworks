@@ -17,6 +17,10 @@ const resultId = "10000000-0000-0000-0000-000000000001";
 const otherResultId = "10000000-0000-0000-0000-000000000002";
 const evidenceId = "40000000-0000-0000-0000-000000000001";
 
+function emptyDistribution() {
+  return { count: 0, min: null, p25: null, p50: null, p75: null, p95: null, max: null, mean: null };
+}
+
 function fixture(overrides = {}) {
   return {
     schemaVersion: 1,
@@ -799,6 +803,48 @@ test("runtime failures remain reviewable and stop only the affected scenario", a
   assert.equal(run.turns[0].executionError, "provider unavailable");
 });
 
+test("summary distributions expose benchmark quality, safety, turns, latency, and cost", () => {
+  const runs = [{
+    scenarioId: "conflict",
+    repeat: 1,
+    durationMs: 30,
+    usage: { costUsd: 0.03 },
+    metrics: {
+      requiredCoverage: { completionRate: 1 },
+      requiredCoverageProgress: [
+        { turn: 1, terminal: 0, total: 1, completionRate: 0 },
+        { turn: 2, terminal: 1, total: 1, completionRate: 1 },
+      ],
+      usefulEvidence: { perQuestion: 0.5 },
+    },
+    turns: [{
+      durationMs: 10,
+      contractViolations: [{ rule: "semantically-repeated-question" }],
+      semanticQuality: { passed: 2, total: 3, checks: [{ rule: "expected-outcome:CONFLICT", passed: false }] },
+      trace: { repeatedQuestion: true, action: { type: "ASK_QUESTION" } },
+    }, {
+      durationMs: 20,
+      contractViolations: [{ rule: "premature-completion" }],
+      semanticQuality: { passed: 1, total: 1, checks: [] },
+      trace: { repeatedQuestion: false, action: { type: "PROPOSE_COMPLETION" } },
+    }],
+  }];
+
+  const summary = summariseRuns(runs);
+
+  assert.deepEqual(summary.distributions.semanticPassRate, {
+    count: 1, min: 0.75, p25: 0.75, p50: 0.75, p75: 0.75, p95: 0.75, max: 0.75, mean: 0.75,
+  });
+  assert.equal(summary.distributions.turnsToSufficientEvidence.p50, 2);
+  assert.equal(summary.distributions.latencyMs.p95, 19.5);
+  assert.equal(summary.distributions.costUsdPerRun.p50, 0.03);
+  assert.deepEqual(summary.failureCounts, {
+    contradictionsMissed: 1,
+    repeatedQuestions: 1,
+    earlyCompletions: 1,
+  });
+});
+
 test("repeat summaries compare deterministic and graded results with a baseline", () => {
   const runs = [
     { scenarioId: "morning-sort", repeat: 1, durationMs: 100, turns: [{ contractViolations: [], semanticQuality: { passed: 3, total: 3 } }] },
@@ -820,6 +866,19 @@ test("repeat summaries compare deterministic and graded results with a baseline"
     usefulEvidencePerQuestion: null,
     latencyMs: { p50: null, p95: null },
     durationMs: 220,
+    distributions: {
+      semanticPassRate: {
+        count: 2, min: 2 / 3, p25: 0.75, p50: 0.833, p75: 0.917, p95: 0.983, max: 1, mean: (1 + 2 / 3) / 2,
+      },
+      requiredCoverageCompletionRate: emptyDistribution(),
+      usefulEvidencePerQuestion: emptyDistribution(),
+      turnsToSufficientEvidence: emptyDistribution(),
+      latencyMs: emptyDistribution(),
+      costUsdPerRun: emptyDistribution(),
+      costUsdPerQuestion: emptyDistribution(),
+    },
+    runsWithoutSufficientEvidence: 2,
+    failureCounts: { contradictionsMissed: 0, repeatedQuestions: 0, earlyCompletions: 0 },
   });
   const comparison = compareWithBaseline(summary, { semanticPassRate: 0.8, deterministicFailures: 0 });
   assert.equal(comparison.regressed, false);
