@@ -830,6 +830,128 @@ class PilotShellIntegrationTest {
     }
 
     @Test
+    void unknown_on_one_required_item_continues_to_the_remaining_required_item() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "continue-after-unknown@example.com");
+        var secondItem = UUID.randomUUID();
+        jdbcTemplate.update("insert into investigation_items values(?,?,1,1,'Who approves exceptions?','Ownership must be explicit.','HIGH',true,'An exception exists.','The owner or an explicit unknown')",
+                secondItem, UUID.fromString(missionId));
+        jdbcTemplate.update("insert into investigation_results values(?,(select organization_id from interview_sessions where id=?),?,?, 'UNADDRESSED')",
+                UUID.randomUUID(), participant.sessionId(), participant.sessionId(), secondItem);
+
+        mockMvc.perform(post("/interview/do-not-know").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().is3xxRedirection());
+
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Preparing your next question")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Confirm and finish"))));
+    }
+
+    @Test
+    void replayed_answer_is_create_once_and_cannot_answer_a_later_question() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "replayed-answer@example.com");
+        var questionId = jdbcTemplate.queryForObject(
+                "select id from questions where session_id=? and active", UUID.class, participant.sessionId());
+
+        for (int replay = 0; replay < 2; replay++) {
+            mockMvc.perform(post("/interview/answer").session(participant.session()).cookie(participant.cookie())
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                            .param("questionId", questionId.toString()).param("answer", "The finance analyst checks the source ledger."))
+                    .andExpect(status().is3xxRedirection());
+        }
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from runtime_runs where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+
+        mockMvc.perform(post("/test/runtime/run-once").param("sessionId", participant.sessionId().toString()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/interview/answer").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("questionId", questionId.toString()).param("answer", "Delayed duplicate must not answer the next question."))
+                .andExpect(status().is3xxRedirection());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("What does the finance analyst check in the source ledger?")));
+    }
+
+    @Test
+    void interview_lifecycle_commands_are_idempotent() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "idempotent-lifecycle@example.com");
+
+        mockMvc.perform(post("/interview/begin").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().is3xxRedirection());
+        for (int replay = 0; replay < 2; replay++) {
+            mockMvc.perform(post("/interview/pause").session(participant.session()).cookie(participant.cookie())
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                    .andExpect(status().is3xxRedirection());
+        }
+        for (int replay = 0; replay < 2; replay++) {
+            mockMvc.perform(post("/interview/resume").session(participant.session()).cookie(participant.cookie())
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                    .andExpect(status().is3xxRedirection());
+        }
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from questions where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from investigation_results where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+
+        var questionId = jdbcTemplate.queryForObject(
+                "select id from questions where session_id=? and active", UUID.class, participant.sessionId());
+        mockMvc.perform(post("/interview/do-not-know").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("questionId", questionId.toString()))
+                .andExpect(status().is3xxRedirection());
+        for (int replay = 0; replay < 2; replay++) {
+            mockMvc.perform(post("/interview/confirm-completion").session(participant.session()).cookie(participant.cookie())
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                    .andExpect(status().is3xxRedirection());
+        }
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select state from interview_sessions where id=?", String.class, participant.sessionId())).isEqualTo("COMPLETED");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+    }
+
+    @Test
+    void persisted_premature_confirmation_recovers_without_a_conflict() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "recover-premature-confirmation@example.com");
+        var secondItem = UUID.randomUUID();
+        jdbcTemplate.update("insert into investigation_items values(?,?,1,1,'Who approves exceptions?','Ownership must be explicit.','HIGH',true,'An exception exists.','The owner or an explicit unknown')",
+                secondItem, UUID.fromString(missionId));
+        jdbcTemplate.update("insert into investigation_results values(?,(select organization_id from interview_sessions where id=?),?,?, 'UNADDRESSED')",
+                UUID.randomUUID(), participant.sessionId(), participant.sessionId(), secondItem);
+        mockMvc.perform(post("/interview/do-not-know").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().is3xxRedirection());
+        jdbcTemplate.update("delete from runtime_runs where session_id=?", participant.sessionId());
+        jdbcTemplate.update("update interview_sessions set state='AWAITING_CONFIRMATION' where id=?", participant.sessionId());
+
+        mockMvc.perform(post("/interview/confirm-completion").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().is3xxRedirection());
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Preparing your next question")));
+    }
+
+    @Test
     void interview_supports_pause_structured_evidence_unknown_owner_and_confirmed_completion() throws Exception {
         var access = authorizeHarness("findworks:read findworks:write");
         var submitted = submitMission(access, UUID.randomUUID());
