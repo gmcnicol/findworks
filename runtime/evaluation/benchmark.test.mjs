@@ -104,6 +104,7 @@ test("benchmark runner probes then evaluates every accessible configuration with
     env: { OPENAI_API_KEY: "secret" },
     resolveCommit: () => "abc123",
     workingTreeDirty: false,
+    loadFixtureVersions: async () => ({ synthetic: "1.0.0" }),
     probeConfigurations: async configurations => configurations.map(configuration => probe(configuration.id, true)),
     executeEvaluation: async (configuration, options) => {
       calls.push({ configuration, options });
@@ -123,6 +124,8 @@ test("benchmark runner probes then evaluates every accessible configuration with
   assert.ok(calls.every(call => call.options.runtimeModel === "resolved-model"));
   assert.ok(report.configurations.every(configuration => configuration.status === "completed"));
   assert.equal(report.metadata.configurationVersion, "1.0.0");
+  assert.equal(report.metadata.fixturesDirectory, "/fixtures/v1");
+  assert.deepEqual(report.metadata.fixtureVersions, { synthetic: "1.0.0" });
   assert.deepEqual(JSON.parse(await readFile(join(outputDirectory, "benchmark.json"), "utf8")), report);
   assert.match(await readFile(join(outputDirectory, "summary.md"), "utf8"), /Adaptive Interview Model Benchmark/);
 });
@@ -151,6 +154,7 @@ test("benchmark retains a failed configuration and continues the remaining exact
     env: { OPENAI_API_KEY: "secret" },
     resolveCommit: () => "abc123",
     workingTreeDirty: false,
+    loadFixtureVersions: async () => ({ synthetic: "1.0.0" }),
     probeConfigurations: async configurations => configurations.map(configuration => probe(configuration.id, true)),
     executeEvaluation: async configuration => {
       attempted.push(configuration.id);

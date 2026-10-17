@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { selectedProviderCredential } from "./cli.mjs";
+import { loadFixtures } from "./harness.mjs";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
@@ -64,10 +65,12 @@ export async function runBenchmark(options, dependencies = {}) {
   const executeEvaluation = dependencies.executeEvaluation ?? executeModelEvaluation;
   const workingTreeDirty = dependencies.workingTreeDirty
     ?? (() => git(options.root, ["status", "--porcelain"]).trim() !== "");
+  const loadFixtureVersions = dependencies.loadFixtureVersions ?? fixtureVersions;
   const commit = resolvePinnedCommit(options.root, options.commit);
   const manifest = JSON.parse(await readFile(options.configurationsPath, "utf8"));
   validateConfigurationManifest(manifest);
   const configurations = manifest.configurations;
+  const portfolio = await loadFixtureVersions(options.fixturesDirectory);
   const startedAt = new Date().toISOString();
   const probes = await probeConfigurations(configurations);
   const probeById = new Map(probes.map(probe => [probe.configurationId, probe]));
@@ -97,7 +100,8 @@ export async function runBenchmark(options, dependencies = {}) {
       repeats: options.repeats,
       configurationVersion: manifest.configurationVersion,
       configurationSchemaVersion: manifest.schemaVersion,
-      fixturesDirectory: options.fixturesDirectory,
+      fixturesDirectory: retainedPath(options.root, options.fixturesDirectory),
+      fixtureVersions: portfolio,
     },
     configurations,
     probes,
@@ -343,6 +347,16 @@ async function executeModelEvaluation(configuration, options, env, probe) {
       : resolveExecution(code));
   });
   return JSON.parse(await readFile(join(outputDirectory, "result.json"), "utf8"));
+}
+
+async function fixtureVersions(directory) {
+  const fixtures = await loadFixtures(directory);
+  return Object.fromEntries(fixtures.map(fixture => [fixture.id, fixture.fixtureVersion]));
+}
+
+function retainedPath(root, path) {
+  const local = relative(root, path);
+  return local && !local.startsWith("..") ? local : path;
 }
 
 function validateConfigurationManifest(manifest) {
