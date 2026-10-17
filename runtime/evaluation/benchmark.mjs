@@ -75,7 +75,11 @@ export async function runBenchmark(options, dependencies = {}) {
   for (const configuration of configurations) {
     const probe = probeById.get(configuration.id);
     if (!probe?.accessible || !probe.reasoningSupported) continue;
-    const report = await executeEvaluation(configuration, { ...options, commit }, env, probe);
+    const report = await executeEvaluation(configuration, {
+      ...options,
+      commit,
+      runtimeModel: probe.resolvedModel,
+    }, env, probe);
     if (report) evaluationReports.set(configuration.id, report);
   }
   const report = buildBenchmarkReport({
@@ -298,7 +302,7 @@ async function executeModelEvaluation(configuration, options, env, probe) {
     join(options.root, "runtime/adaptive-sequence.acceptance.mjs"),
     "--image", options.image,
     "--provider", configuration.provider,
-    "--model", configuration.model,
+    "--model", options.runtimeModel,
     "--reasoning", configuration.reasoningEffort,
     "--resolved-model", probe.resolvedModel,
     "--repeats", String(options.repeats),
@@ -355,7 +359,7 @@ function evaluationMetadata(metadata) {
 
 function matchesPreflightIdentity(configuration, probe, metadata) {
   return metadata.provider === configuration.provider
-    && metadata.model === `${configuration.provider}/${configuration.model}`
+    && metadata.model === `${configuration.provider}/${probe.resolvedModel}`
     && metadata.resolvedModel === probe.resolvedModel
     && metadata.reasoningEffort === probe.reasoningEffort
     && metadata.reasoningEffort === configuration.reasoningEffort

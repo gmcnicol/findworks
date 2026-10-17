@@ -103,12 +103,21 @@ test("benchmark runner probes then evaluates every accessible configuration with
     probeConfigurations: async configurations => configurations.map(configuration => probe(configuration.id, true)),
     executeEvaluation: async (configuration, options) => {
       calls.push({ configuration, options });
-      return evaluationReport({ semanticP25: 0.8, semanticP50: 0.9, evidenceP50: 0.8, costPerQuestion: 0.01 });
+      return evaluationReport({
+        semanticP25: 0.8,
+        semanticP50: 0.9,
+        evidenceP50: 0.8,
+        costPerQuestion: 0.01,
+        model: "resolved-model",
+        reasoningEffort: configuration.reasoningEffort,
+      });
     },
   });
 
   assert.equal(calls.length, 2);
   assert.ok(calls.every(call => call.options.repeats === 2 && call.options.fixturesDirectory === "/fixtures/v1"));
+  assert.ok(calls.every(call => call.options.runtimeModel === "resolved-model"));
+  assert.ok(report.configurations.every(configuration => configuration.status === "completed"));
   assert.equal(report.metadata.configurationVersion, "1.0.0");
   assert.deepEqual(JSON.parse(await readFile(join(outputDirectory, "benchmark.json"), "utf8")), report);
   assert.match(await readFile(join(outputDirectory, "summary.md"), "utf8"), /Adaptive Interview Model Benchmark/);
@@ -211,7 +220,7 @@ function evaluationReport({
   semanticP50,
   evidenceP50,
   costPerQuestion,
-  model = "gpt-5.4-mini",
+  model = "resolved-model",
   resolvedModel = "resolved-model",
   reasoningEffort = "low",
 }) {
