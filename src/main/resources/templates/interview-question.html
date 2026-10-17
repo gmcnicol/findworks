@@ -34,6 +34,7 @@
         <h1 class="interview-question" id="active-question" th:text="${question}">Question</h1>
 
         <form th:if="${questionMode != 'FREE_TEXT'}" class="form answer-form" method="post" th:action="@{${interviewBase + '/structured-answer'}}">
+            <input type="hidden" name="questionId" th:value="${questionId}">
             <fieldset class="choice-fieldset">
                 <legend>Choose the closest response</legend>
                 <label class="choice-option" th:each="option : ${options}"><input type="radio" name="optionId" th:value="${option.id}" required><span th:text="${option.label}">Choice</span></label>
@@ -45,6 +46,7 @@
         <div class="answer-divider" th:if="${questionMode != 'FREE_TEXT'}">or answer freely</div>
 
         <form class="form answer-form" method="post" th:action="@{${interviewBase + '/answer'}}">
+            <input type="hidden" name="questionId" th:value="${questionId}">
             <label>Your answer in your own words<textarea name="answer" rows="7" required maxlength="10000" th:autofocus="${questionMode == 'FREE_TEXT'}"></textarea></label>
             <button class="button" type="submit">Submit answer</button>
         </form>
@@ -52,12 +54,13 @@
         <div class="interview-secondary">
             <p class="response-heading">Other ways to respond</p>
             <nav class="participant-routes" aria-label="Other response options">
-                <form method="post" th:action="@{${interviewBase + '/do-not-know'}}"><button type="submit">I don’t know</button></form>
-                <form method="post" th:action="@{${interviewBase + '/clarify'}}"><button type="submit">Please clarify</button></form>
-                <form method="post" th:action="@{${interviewBase + '/discomfort'}}"><button type="submit">This feels uncomfortable</button></form>
+                <form method="post" th:action="@{${interviewBase + '/do-not-know'}}"><input type="hidden" name="questionId" th:value="${questionId}"><button type="submit">I don’t know</button></form>
+                <form method="post" th:action="@{${interviewBase + '/clarify'}}"><input type="hidden" name="questionId" th:value="${questionId}"><button type="submit">Please clarify</button></form>
+                <form method="post" th:action="@{${interviewBase + '/discomfort'}}"><input type="hidden" name="questionId" th:value="${questionId}"><button type="submit">This feels uncomfortable</button></form>
                 <form method="post" th:action="@{${interviewBase + '/pause'}}"><button type="submit">Pause and leave</button></form>
                 <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button type="submit">End here</button></form>
                 <form class="owner-form" method="post" th:action="@{${interviewBase + '/another-owner'}}">
+                    <input type="hidden" name="questionId" th:value="${questionId}">
                     <label>Owner<input name="owner" required maxlength="120"></label>
                     <label>What they own<input name="reason" required maxlength="2000"></label>
                     <button type="submit">Someone else owns this</button>

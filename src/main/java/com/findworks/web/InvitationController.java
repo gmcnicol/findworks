@@ -292,6 +292,7 @@ public class InvitationController {
                     .param("session", view.sessionId()).query((rs, row) -> new PreviousAnswer(
                             rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), rs.getString(4))).list();
             model.addAttribute("question", question.map(ActiveQuestion::text).orElse(null));
+            model.addAttribute("questionId", question.map(ActiveQuestion::id).orElse(null));
             model.addAttribute("questionMode", question.map(ActiveQuestion::responseMode).orElse("FREE_TEXT"));
             model.addAttribute("options", question.map(q -> db.sql("select option_id,label from question_options where question_id=:id order by position")
                     .param("id", q.id()).query((rs, row) -> Map.of("id", rs.getString(1), "label", rs.getString(2))).list()).orElse(java.util.List.of()));
@@ -357,7 +358,7 @@ public class InvitationController {
         transactions.executeWithoutResult(status -> {
             var changed = db.sql("update interview_sessions set state='ACTIVE',started_at=now(),revision=revision+1 where id=:id and state='NOT_STARTED'")
                     .param("id", view.sessionId()).update();
-            if (changed != 1) throw new ResponseStatusException(HttpStatus.CONFLICT);
+            if (changed != 1) return;
             db.sql("""
                     insert into investigation_results(id,organization_id,session_id,item_id)
                     select gen_random_uuid(),:organization,:session,id
@@ -378,28 +379,36 @@ public class InvitationController {
 
     @PostMapping({"/interview/answer", "/interview/{sessionId}/answer"})
     String answer(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                  @RequestParam(required = false) UUID questionId,
                   @RequestParam String answer) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (answer.isBlank() || answer.length() > 10_000) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter an answer");
         }
-        acceptEvidence(view, "ANSWER", answer, null, null, null, null);
+        acceptEvidence(view, questionId, "ANSWER", answer, null, null, null, null);
         return "redirect:/interview";
     }
 
     @PostMapping({"/interview/structured-answer", "/interview/{sessionId}/structured-answer"})
     String structuredAnswer(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                            @RequestParam(required = false) UUID questionId,
                             @RequestParam String optionId,
                             @RequestParam(required = false, defaultValue = "") String explanation) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (explanation.length() > 10_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         transactions.executeWithoutResult(status -> {
-            var label = db.sql("""
-                    select o.label from question_options o join questions q on q.id=o.question_id
-                    where q.session_id=:session and q.active and o.option_id=:option
-                    """).param("session", view.sessionId()).param("option", optionId).query(String.class).optional()
+            var labelQuery = questionId == null
+                    ? db.sql("""
+                            select o.label from question_options o join questions q on q.id=o.question_id
+                            where q.session_id=:session and q.active and o.option_id=:option
+                            """).param("session", view.sessionId()).param("option", optionId)
+                    : db.sql("""
+                            select o.label from question_options o join questions q on q.id=o.question_id
+                            where q.session_id=:session and q.id=:question and o.option_id=:option
+                            """).param("session", view.sessionId()).param("question", questionId).param("option", optionId);
+            var label = labelQuery.query(String.class).optional()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST));
-            acceptEvidenceInTransaction(view, "STRUCTURED_ANSWER",
+            acceptEvidenceInTransaction(view, questionId, "STRUCTURED_ANSWER",
                     explanation.isBlank() ? label : label + "\n" + explanation,
                     optionId, label, explanation, null, true);
         });
@@ -420,77 +429,87 @@ public class InvitationController {
 
     @PostMapping({"/interview/another-owner", "/interview/{sessionId}/another-owner"})
     String anotherOwner(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                        @RequestParam(required = false) UUID questionId,
                         @RequestParam String owner, @RequestParam String reason) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (owner.isBlank() || owner.length() > 120 || reason.isBlank() || reason.length() > 2_000) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }
         transactions.executeWithoutResult(status -> {
-            var evidence = acceptEvidenceInTransaction(view, "OWNERSHIP_GAP", reason, null, null, owner, null, false);
+            var evidence = acceptEvidenceInTransaction(view, questionId, "OWNERSHIP_GAP", reason, null, null, owner, null, false);
+            if (evidence == null) return;
             var resultId = db.sql("select id from investigation_results where session_id=:session and item_id=(select item_id from questions where id=:question)")
                     .param("session", view.sessionId()).param("question", evidence.questionId()).query(UUID.class).single();
             db.sql("update investigation_results set coverage='OWNERSHIP_GAP' where id=:id").param("id", resultId).update();
             db.sql("insert into unresolved values(:id,:result,:evidence,'OWNERSHIP_GAP',:summary,:reason,:owner,false)")
                     .param("id", Ids.id()).param("result", resultId).param("evidence", evidence.id())
                     .param("summary", "Another owner is needed").param("reason", reason).param("owner", owner.trim()).update();
-            db.sql("update interview_sessions set state='AWAITING_CONFIRMATION' where id=:id")
-                    .param("id", view.sessionId()).update();
+            continueOrAwaitConfirmation(view, evidence.id());
         });
         return "redirect:/interview";
     }
 
     @PostMapping({"/interview/do-not-know", "/interview/{sessionId}/do-not-know"})
     String doNotKnow(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                     @RequestParam(required = false) UUID questionId,
                      @RequestParam(required = false, defaultValue = "") String explanation) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (explanation.length() > 2_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         transactions.executeWithoutResult(status -> {
-            var evidence = acceptEvidenceInTransaction(view, "UNKNOWN", "I don't know", null, null, explanation, null, false);
+            var evidence = acceptEvidenceInTransaction(view, questionId, "UNKNOWN", "I don't know", null, null, explanation, null, false);
+            if (evidence == null) return;
             var resultId = db.sql("select id from investigation_results where session_id=:session and item_id=(select item_id from questions where id=:question)")
                     .param("session", view.sessionId()).param("question", evidence.questionId()).query(UUID.class).single();
             db.sql("update investigation_results set coverage='UNKNOWN' where id=:id").param("id", resultId).update();
             db.sql("insert into unresolved values(:id,:result,:evidence,'UNKNOWN','Interviewee did not know',:reason,null,false)")
                     .param("id", Ids.id()).param("result", resultId).param("evidence", evidence.id())
                     .param("reason", explanation.isBlank() ? "The answer is not known" : explanation).update();
-            db.sql("update interview_sessions set state='AWAITING_CONFIRMATION' where id=:id").param("id", view.sessionId()).update();
+            continueOrAwaitConfirmation(view, evidence.id());
         });
         return "redirect:/interview";
     }
 
     @PostMapping({"/interview/discomfort", "/interview/{sessionId}/discomfort"})
-    String discomfort(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
+    String discomfort(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                      @RequestParam(required = false) UUID questionId) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         transactions.executeWithoutResult(status -> {
-            var evidence = acceptEvidenceInTransaction(view, "UNKNOWN", "I do not want to continue this line",
+            var evidence = acceptEvidenceInTransaction(view, questionId, "UNKNOWN", "I do not want to continue this line",
                     null, null, "Interviewee discomfort", null, false);
+            if (evidence == null) return;
             var resultId = db.sql("select id from investigation_results where session_id=:session and item_id=(select item_id from questions where id=:question)")
                     .param("session", view.sessionId()).param("question", evidence.questionId()).query(UUID.class).single();
             db.sql("update investigation_results set coverage='UNKNOWN' where id=:id").param("id", resultId).update();
             db.sql("insert into unresolved values(:id,:result,:evidence,'UNKNOWN','Interviewee chose not to continue this line','Interviewee discomfort',null,false)")
                     .param("id", Ids.id()).param("result", resultId).param("evidence", evidence.id()).update();
-            db.sql("update interview_sessions set state='AWAITING_CONFIRMATION' where id=:id")
-                    .param("id", view.sessionId()).update();
+            continueOrAwaitConfirmation(view, evidence.id());
         });
         return "redirect:/interview";
     }
 
     @PostMapping({"/interview/clarify", "/interview/{sessionId}/clarify"})
-    String clarify(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
+    String clarify(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                   @RequestParam(required = false) UUID questionId) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         transactions.executeWithoutResult(status -> {
-            var question = db.sql("select id,item_id,sequence,text,clarifies from questions where session_id=:session and active for update")
-                    .param("session", view.sessionId()).query((rs, row) -> new Clarifiable(rs.getObject(1, UUID.class),
+            var questionQuery = questionId == null
+                    ? db.sql("select id,item_id,sequence,text,clarifies from questions where session_id=:session and active for update")
+                            .param("session", view.sessionId())
+                    : db.sql("select id,item_id,sequence,text,clarifies from questions where session_id=:session and id=:question and active for update")
+                            .param("session", view.sessionId()).param("question", questionId);
+            var question = questionQuery.query((rs, row) -> new Clarifiable(rs.getObject(1, UUID.class),
                             rs.getObject(2, UUID.class), rs.getInt(3), rs.getString(4), rs.getObject(5, UUID.class)))
-                    .optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT));
+                    .optional().orElse(null);
+            if (question == null) return;
             if (question.clarifies() != null) {
-                var evidence = acceptEvidenceInTransaction(view, "UNKNOWN", "The question remained unclear", null, null,
+                var evidence = acceptEvidenceInTransaction(view, question.id(), "UNKNOWN", "The question remained unclear", null, null,
                         "Repeated clarification did not help", null, false);
                 var resultId = db.sql("select id from investigation_results where session_id=:session and item_id=:item")
                         .param("session", view.sessionId()).param("item", question.itemId()).query(UUID.class).single();
                 db.sql("update investigation_results set coverage='UNKNOWN' where id=:id").param("id", resultId).update();
                 db.sql("insert into unresolved values(:id,:result,:evidence,'UNKNOWN','Question remained unclear','Repeated clarification did not help',null,false)")
                         .param("id", Ids.id()).param("result", resultId).param("evidence", evidence.id()).update();
-                db.sql("update interview_sessions set state='AWAITING_CONFIRMATION' where id=:id").param("id", view.sessionId()).update();
+                continueOrAwaitConfirmation(view, evidence.id());
             } else {
                 db.sql("update questions set active=false where id=:id").param("id", question.id()).update();
                 db.sql("insert into questions(id,organization_id,session_id,item_id,sequence,text,clarifies) values(:id,:organization,:session,:item,:sequence,:text,:clarifies)")
@@ -509,13 +528,17 @@ public class InvitationController {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (answer.isBlank() || answer.length() > 10_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         transactions.executeWithoutResult(status -> {
+            var replayed = db.sql("select exists(select 1 from evidence where session_id=:session and revises=:evidence and exact_text=:text)")
+                    .param("session", view.sessionId()).param("evidence", evidenceId).param("text", answer).query(Boolean.class).single();
+            if (replayed) return;
             var prior = db.sql("select question_id,participant_id from evidence where id=:evidence and session_id=:session and participant_id is not null")
                     .param("evidence", evidenceId).param("session", view.sessionId())
                     .query((rs, row) -> new PriorEvidence(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class))).optional()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
             db.sql("update questions set active=false where session_id=:session and active").param("session", view.sessionId()).update();
             var revision = db.sql("update interview_sessions set revision=revision+1 where id=:session and state='ACTIVE' returning revision")
-                    .param("session", view.sessionId()).query(Integer.class).optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT));
+                    .param("session", view.sessionId()).query(Integer.class).optional().orElse(null);
+            if (revision == null) return;
             var newEvidence = Ids.id();
             db.sql("insert into evidence(id,organization_id,session_id,question_id,participant_id,source_type,exact_text,revises) values(:id,:organization,:session,:question,:participant,'REVISION',:text,:revises)")
                     .param("id", newEvidence).param("organization", view.organizationId()).param("session", view.sessionId())
@@ -534,8 +557,21 @@ public class InvitationController {
                 select count(*) from investigation_results r join investigation_items i on i.id=r.item_id
                 where r.session_id=:session and i.required and r.coverage in ('UNADDRESSED','EXPLORING','PARTIAL')
                 """).param("session", view.sessionId()).query(Long.class).single();
-        if (incomplete > 0 || !view.state().equals("AWAITING_CONFIRMATION")) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Required areas still need an outcome");
+        if (view.state().equals("COMPLETED")) return "redirect:/interview";
+        if (!view.state().equals("AWAITING_CONFIRMATION")) return "redirect:/interview";
+        if (incomplete > 0) {
+            transactions.executeWithoutResult(status -> {
+                var evidenceId = db.sql("""
+                        select id from evidence where session_id=:session and participant_id is not null
+                        order by created_at desc,id desc limit 1
+                        """).param("session", view.sessionId()).query(UUID.class).optional().orElse(null);
+                if (evidenceId == null) return;
+                var changed = db.sql("update interview_sessions set state='ACTIVE' where id=:session and state='AWAITING_CONFIRMATION'")
+                        .param("session", view.sessionId()).update();
+                if (changed != 1) return;
+                enqueueRuntime(view, evidenceId);
+            });
+            return "redirect:/interview";
         }
         db.sql("update interview_sessions set state='COMPLETED',completed_at=now(),revision=revision+1 where id=:id")
                 .param("id", view.sessionId()).update();
@@ -548,7 +584,8 @@ public class InvitationController {
         transactions.executeWithoutResult(status -> {
             var failed = db.sql("select evidence_id,expected_revision from runtime_runs where session_id=:session and state='FAILED' order by created_at desc limit 1 for update")
                     .param("session", view.sessionId()).query((rs, row) -> new FailedRun(rs.getObject(1, UUID.class), rs.getInt(2)))
-                    .optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT));
+                    .optional().orElse(null);
+            if (failed == null) return;
             db.sql("update runtime_runs set state='SUPERSEDED' where session_id=:session and state='FAILED'")
                     .param("session", view.sessionId()).update();
             db.sql("insert into runtime_runs(id,organization_id,session_id,evidence_id,expected_revision,state) values(:id,:organization,:session,:evidence,:revision,'PENDING')")
@@ -726,30 +763,62 @@ public class InvitationController {
         });
     }
 
+    private void continueOrAwaitConfirmation(ParticipantView view, UUID evidenceId) {
+        var incompleteRequired = db.sql("""
+                select count(*) from investigation_results r join investigation_items i on i.id=r.item_id
+                where r.session_id=:session and i.required and r.coverage in ('UNADDRESSED','EXPLORING','PARTIAL')
+                """).param("session", view.sessionId()).query(Long.class).single();
+        if (incompleteRequired == 0) {
+            db.sql("update interview_sessions set state='AWAITING_CONFIRMATION' where id=:session")
+                    .param("session", view.sessionId()).update();
+            return;
+        }
+        enqueueRuntime(view, evidenceId);
+    }
+
+    private void enqueueRuntime(ParticipantView view, UUID evidenceId) {
+        var revision = db.sql("select revision from interview_sessions where id=:session")
+                .param("session", view.sessionId()).query(Integer.class).single();
+        db.sql("""
+                insert into runtime_runs(id,organization_id,session_id,evidence_id,expected_revision,state)
+                select :id,:organization,:session,:evidence,:revision,'PENDING'
+                where not exists(select 1 from runtime_runs where session_id=:session and state in ('PENDING','RUNNING'))
+                """).param("id", Ids.id()).param("organization", view.organizationId()).param("session", view.sessionId())
+                .param("evidence", evidenceId).param("revision", revision).update();
+    }
+
     private void changeState(String token, String from, String to) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
-        var changed = db.sql("update interview_sessions set state=:to,revision=revision+1 where id=:id and state=:from")
+        db.sql("update interview_sessions set state=:to,revision=revision+1 where id=:id and state=:from")
                 .param("to", to).param("id", view.sessionId()).param("from", from).update();
-        if (changed != 1) throw new ResponseStatusException(HttpStatus.CONFLICT);
     }
 
-    private EvidenceAccepted acceptEvidence(ParticipantView view, String sourceType, String exactText,
+    private EvidenceAccepted acceptEvidence(ParticipantView view, UUID questionId, String sourceType, String exactText,
                                             String optionId, String optionLabel, String explanation, UUID revises) {
         return transactions.execute(status -> acceptEvidenceInTransaction(
-                view, sourceType, exactText, optionId, optionLabel, explanation, revises, true));
+                view, questionId, sourceType, exactText, optionId, optionLabel, explanation, revises, true));
     }
 
-    private EvidenceAccepted acceptEvidenceInTransaction(ParticipantView view, String sourceType, String exactText,
+    private EvidenceAccepted acceptEvidenceInTransaction(ParticipantView view, UUID questionId, String sourceType, String exactText,
                                                          String optionId, String optionLabel, String explanation,
                                                          UUID revises, boolean enqueueRuntime) {
-        var turn = db.sql("""
-                select q.id,s.participant_id,s.revision
-                from questions q join interview_sessions s on s.id=q.session_id
-                where q.session_id=:session and q.active and s.state='ACTIVE'
-                for update of q,s
-                """).param("session", view.sessionId())
+        var turnQuery = questionId == null
+                ? db.sql("""
+                        select q.id,s.participant_id,s.revision
+                        from questions q join interview_sessions s on s.id=q.session_id
+                        where q.session_id=:session and q.active and s.state='ACTIVE'
+                        for update of q,s
+                        """).param("session", view.sessionId())
+                : db.sql("""
+                        select q.id,s.participant_id,s.revision
+                        from questions q join interview_sessions s on s.id=q.session_id
+                        where q.session_id=:session and q.id=:question and q.active and s.state='ACTIVE'
+                        for update of q,s
+                        """).param("session", view.sessionId()).param("question", questionId);
+        var turn = turnQuery
                 .query((rs, row) -> new AnswerTurn(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getInt(3)))
-                .optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "No question is awaiting an answer"));
+                .optional().orElse(null);
+        if (turn == null) return null;
         var evidenceId = Ids.id();
         var nextRevision = turn.revision() + 1;
         db.sql("""
