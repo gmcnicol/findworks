@@ -128,7 +128,8 @@ export async function runCli(argv = process.argv.slice(2), env = process.env) {
   const paths = await writeReport(report, options.outputDirectory);
   process.stdout.write(formatSummary(report));
   process.stdout.write(`JSON: ${paths.json}\nSummary: ${paths.markdown}\n`);
-  return summary.deterministicFailures > 0 || summary.semanticGateFailures > 0 || comparison?.regressed ? 1 : 0;
+  return summary.deterministicFailures > 0 || summary.semanticGateFailures > 0
+    || summary.continuityGateFailures > 0 || comparison?.regressed ? 1 : 0;
 }
 
 export async function writeReport(report, outputDirectory) {
