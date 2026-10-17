@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "shared-evidence-multiple-results",
+  "title": "One rich answer may support multiple explicitly addressed results",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Marta",
+    "role": "Expense operations lead",
+    "brief": "Give the approval and notification rules together because one event governs both."
+  },
+  "context": {
+    "run_id": "24000000-0000-0000-0000-000000000001",
+    "session_id": "34000000-0000-0000-0000-000000000001",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Understand high-value expense approval and its requester notification.",
+      "desired_outcome": "Supported rules for both approval and notification.",
+      "data_use": "The Investigator will review the findings for expense workflow changes."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [
+      {
+        "result_id": "14000000-0000-0000-0000-000000000001",
+        "knowledge_gap": "How is a high-value expense approved?",
+        "why_it_matters": "The workflow needs the threshold, owner, exception, and completion signal.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "Ordinary expenses use manager approval.",
+        "sufficient_evidence": "The threshold, approver, exception, and observable approval signal are explicit.",
+        "coverage": "EXPLORING",
+        "current_outcomes": []
+      },
+      {
+        "result_id": "14000000-0000-0000-0000-000000000002",
+        "knowledge_gap": "When is the requester told the expense result?",
+        "why_it_matters": "The requester needs an observable notification rule.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "The same approval event may trigger notification.",
+        "sufficient_evidence": "The notification trigger, recipient, channel, failure handling, and completion signal are explicit.",
+        "coverage": "UNADDRESSED",
+        "current_outcomes": []
+      }
+    ],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [{
+    "runId": "24000000-0000-0000-0000-000000000001",
+    "sourceResultId": "14000000-0000-0000-0000-000000000001",
+    "sourceQuestion": "What happens when an expense is over two thousand pounds?",
+    "answer": {
+      "evidenceId": "44000000-0000-0000-0000-000000000001",
+      "sourceType": "ANSWER",
+      "text": "Over two thousand pounds, Finance Director Elena approves it; travel advances are the only exception and go to the CFO. Approval is complete when the expense shows a green authorised badge. That badge immediately emails the requester at their work address. If delivery fails, the finance queue gets a red mail task, and notification is complete when either the email is delivered or that task is closed."
+    },
+    "expected": {
+      "action": "PROPOSE_COMPLETION",
+      "outcomes": [
+        {
+          "resultId": "14000000-0000-0000-0000-000000000001",
+          "coverage": "SUPPORTED",
+          "category": "RULE",
+          "evidenceIds": ["44000000-0000-0000-0000-000000000001"],
+          "summaryIncludes": ["two thousand", "Elena", "travel advances", "green authorised badge"]
+        },
+        {
+          "resultId": "14000000-0000-0000-0000-000000000002",
+          "coverage": "SUPPORTED",
+          "category": "RULE",
+          "evidenceIds": ["44000000-0000-0000-0000-000000000001"],
+          "summaryIncludes": ["email", "requester", "red mail task", "delivered"]
+        }
+      ]
+    }
+  }]
+}

@@ -58,8 +58,11 @@ export function validateFixture(fixture, source = "fixture") {
       throw new Error(`${source}: turn ${index + 1} has missing or duplicate runId`);
     }
     runIds.add(turn.runId);
-    if (typeof turn.sourceQuestion !== "string" || typeof turn.answer?.text !== "string") {
-      throw new Error(`${source}: turn ${index + 1} must include sourceQuestion and answer text`);
+    const sourceResultId = turn.sourceResultId ?? turn.answer?.resultId;
+    if (typeof sourceResultId !== "string"
+        || !fixture.context.investigation_results.some(result => result.result_id === sourceResultId)
+        || typeof turn.sourceQuestion !== "string" || typeof turn.answer?.text !== "string") {
+      throw new Error(`${source}: turn ${index + 1} must include an in-scope sourceResultId, sourceQuestion, and answer text`);
     }
     if (typeof turn.answer.evidenceId !== "string" || evidenceIds.has(turn.answer.evidenceId)) {
       throw new Error(`${source}: turn ${index + 1} has missing or duplicate evidenceId`);
@@ -121,15 +124,20 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
     if (!action || !["ASK_QUESTION", "PROPOSE_COMPLETION"].includes(action.type)) {
       addViolation("exactly-one-next-action", "A Runtime Turn must contain one supported next action");
     } else if (action.type === "ASK_QUESTION") {
+      const projectedCoverage = projectCoverage(context, submission.outcomes ?? []);
       evaluateQuestion(action, {
         context,
-        projectedCoverage: projectCoverage(context, submission.outcomes ?? []),
+        projectedCoverage,
         previousQuestions,
         expected,
         assertions: fixture.assertions ?? {},
         addViolation,
         grade,
       });
+      const transition = calculateThreadTransition(context, submission.outcomes ?? [], action, projectedCoverage);
+      if (transition && transition.evidenceIds.length === 0) {
+        addViolation("thread-transition-evidence", `Transition from ${transition.fromResultId} has no durable supporting Evidence`);
+      }
     } else {
       const projected = projectCoverage(context, submission.outcomes ?? []);
       const incomplete = context.investigation_results.filter(result => result.required && OPEN_COVERAGES.has(projected.get(result.result_id)));
@@ -141,7 +149,11 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
   }
 
   gradeExpectedOutcomes(context, submission?.outcomes ?? [], expected.outcomes ?? [], grade);
+  gradeExpectedCoverage(context, submission?.outcomes ?? [], expected, grade);
   const coverageChanges = calculateCoverageChanges(context, submission?.outcomes ?? []);
+  const threadTransition = action?.type === "ASK_QUESTION"
+    ? calculateThreadTransition(context, submission?.outcomes ?? [], action, projectCoverage(context, submission?.outcomes ?? []))
+    : null;
   const repeatedQuestion = action?.type === "ASK_QUESTION"
     && previousQuestions.some(question => questionsSemanticallyRepeat(question, action.text));
   const outcomeProvenance = (submission?.outcomes ?? []).map(outcome => ({
@@ -169,6 +181,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
       sourceAnswer,
       stressor: fixture.turns[turnIndex]?.stressor ?? null,
       action: action ?? null,
+      threadTransition,
       outcomeProvenance,
       repeatedQuestion,
     },
@@ -180,8 +193,22 @@ function evaluateQuestion(action, { context, projectedCoverage, previousQuestion
     addViolation("question-result-scope", "Question used a result outside this Interview Session");
   }
   const currentThread = context.conversation_state?.current_thread_result_id;
+  const currentCoverage = context.investigation_results.find(result => result.result_id === currentThread)?.coverage;
   if (currentThread && OPEN_COVERAGES.has(projectedCoverage.get(currentThread)) && action.resultId !== currentThread) {
     addViolation("current-thread", `Question left open thread ${currentThread}`);
+  }
+  if (currentThread === action.resultId && OPEN_COVERAGES.has(currentCoverage)
+      && !OPEN_COVERAGES.has(projectedCoverage.get(currentThread))) {
+    addViolation("terminal-thread-continued", `Question continued thread ${currentThread} after making it terminal`);
+  }
+  if (currentThread !== action.resultId && !OPEN_COVERAGES.has(projectedCoverage.get(action.resultId))) {
+    addViolation("finished-thread-reopened", `Question reopened terminal thread ${action.resultId}`);
+  }
+  const target = context.investigation_results.find(result => result.result_id === action.resultId);
+  const openRequired = context.investigation_results.filter(result => result.required
+    && OPEN_COVERAGES.has(projectedCoverage.get(result.result_id)));
+  if (target && !target.required && action.resultId !== currentThread && openRequired.length > 0) {
+    addViolation("required-result-priority", `Optional result ${action.resultId} was chosen while required results remain open: ${openRequired.map(result => result.result_id).join(", ")}`);
   }
   if (typeof action.text !== "string" || action.text.trim() === "" || action.text.length > 2_000) {
     addViolation("question-text", "Question text must contain 1 to 2,000 characters");
@@ -252,6 +279,15 @@ function evaluateQuestion(action, { context, projectedCoverage, previousQuestion
   grade("concise-question", action.text.length <= maxLength, `${action.text.length}/${maxLength} characters`);
 }
 
+function gradeExpectedCoverage(context, outcomes, expected, grade) {
+  const projected = projectCoverage(context, outcomes);
+  for (const resultId of expected.openResultIds ?? []) {
+    const coverage = projected.get(resultId);
+    grade(`expected-open:${resultId}`, OPEN_COVERAGES.has(coverage),
+      OPEN_COVERAGES.has(coverage) ? `${resultId} remains ${coverage}` : `${resultId} became ${coverage}`);
+  }
+}
+
 function gradeExpectedOutcomes(context, actual, expected, grade) {
   const cumulative = context.investigation_results.flatMap(result => (result.current_outcomes ?? []).map(outcome => ({
     resultId: result.result_id,
@@ -315,6 +351,25 @@ function projectCoverage(context, outcomes) {
   return projected;
 }
 
+function calculateThreadTransition(context, outcomes, action, projectedCoverage) {
+  const fromResultId = context.conversation_state?.current_thread_result_id;
+  if (!fromResultId || fromResultId === action.resultId) return null;
+  const reason = projectedCoverage.get(fromResultId) ?? null;
+  const submittedEvidence = outcomes
+    .filter(outcome => outcome.resultId === fromResultId && outcome.coverage === reason)
+    .flatMap(outcome => outcome.evidenceIds ?? []);
+  const durableEvidence = context.investigation_results
+    .find(result => result.result_id === fromResultId)?.current_outcomes
+    ?.filter(outcome => outcome.coverage === reason)
+    .flatMap(outcome => outcome.evidence_ids ?? []) ?? [];
+  return {
+    fromResultId,
+    toResultId: action.resultId,
+    reason,
+    evidenceIds: [...new Set([...submittedEvidence, ...durableEvidence])],
+  };
+}
+
 function calculateCoverageChanges(context, outcomes) {
   const projected = projectCoverage(context, outcomes);
   return context.investigation_results.flatMap(result => {
@@ -335,23 +390,20 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
   const acceptedEvidenceIds = new Set(context.questions_and_evidence.map(record => record.evidence_id).filter(Boolean));
   const coverageProgress = [];
   let durationMs = 0;
-  let previousActionQuestion;
-  let previousActionResultId;
+  let previousQuestionAction;
   let recordsDropped = 0;
   let usefulAnswers = 0;
 
   for (let turnIndex = 0; turnIndex < fixture.turns.length; turnIndex++) {
     const fixtureTurn = fixture.turns[turnIndex];
     context.run_id = fixtureTurn.runId;
-    const sourceQuestion = previousActionQuestion ?? fixtureTurn.sourceQuestion;
-    const sourceResultId = previousActionResultId
-      ?? fixtureTurn.answer.resultId
-      ?? context.conversation_state?.current_thread_result_id
-      ?? fixtureTurn.expected.resultId
-      ?? context.investigation_results.find(result => OPEN_COVERAGES.has(result.coverage))?.result_id;
+    const sourceQuestion = previousQuestionAction?.text ?? fixtureTurn.sourceQuestion;
+    const sourceResultId = previousQuestionAction?.resultId
+      ?? fixtureTurn.sourceResultId
+      ?? fixtureTurn.answer.resultId;
     context.questions_and_evidence.push({
       question_id: fixtureTurn.answer.questionId ?? randomUUID(),
-      sequence: turnIndex + 1,
+      sequence: context.questions_and_evidence.length + 1,
       question: sourceQuestion,
       active: false,
       evidence_id: fixtureTurn.answer.evidenceId,
@@ -422,12 +474,11 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
     const terminal = required.filter(result => TERMINAL_COVERAGES.has(result.coverage)).length;
     coverageProgress.push({ turn: turnIndex + 1, terminal, total: required.length, completionRate: rate(terminal, required.length) });
     if (executed.submission?.nextAction?.type === "ASK_QUESTION") {
-      previousActionQuestion = executed.submission.nextAction.text;
-      previousActionResultId = executed.submission.nextAction.resultId;
-      previousQuestions.push(previousActionQuestion);
+      previousQuestionAction = executed.submission.nextAction;
+      previousQuestions.push(previousQuestionAction.text);
     } else {
-      previousActionQuestion = undefined;
-      previousActionResultId = undefined;
+      previousQuestionAction = undefined;
+      break;
     }
   }
 
@@ -477,7 +528,9 @@ function scenarioMetrics({ fixture, context, turns, acceptedEvidenceIds, coverag
   ]);
   const criticalEvidenceIds = fixture.assertions?.criticalEvidenceIds ?? [];
   const missingCriticalEvidenceIds = criticalEvidenceIds.filter(id => !retainedEvidenceIds.has(id));
-  const untraceableResultIds = context.investigation_results.filter(result => {
+  const investigatedResults = context.investigation_results.filter(result => result.required
+    || result.coverage !== "UNADDRESSED" || (result.current_outcomes ?? []).length > 0);
+  const untraceableResultIds = investigatedResults.filter(result => {
     if (!TERMINAL_COVERAGES.has(result.coverage)) return true;
     const linked = new Set((result.current_outcomes ?? []).flatMap(outcome => outcome.evidence_ids ?? []));
     return linked.size === 0 || [...linked].some(id => !acceptedEvidenceIds.has(id));
