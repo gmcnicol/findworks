@@ -175,6 +175,7 @@ export function buildBenchmarkReport({ metadata, configurations, probes, evaluat
       ...configuration,
       status,
       providerVerification: probe,
+      evaluationMetadata: evaluation ? evaluationMetadata(evaluation.metadata ?? {}) : null,
       fixtureVersions: evaluation?.metadata?.fixtureVersions ?? null,
       summary: evaluation?.summary ?? null,
       individualFailures: evaluation ? extractIndividualFailures(evaluation.runs ?? []) : [],
@@ -324,6 +325,14 @@ function resolveCommit(root, requested) {
 
 function git(root, args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" });
+}
+
+function evaluationMetadata(metadata) {
+  return Object.fromEntries([
+    "startedAt", "completedAt", "commit", "workingTreeDirty", "provider", "model", "reasoningEffort",
+    "runtimeVersion", "runtimeImage", "runtimeImageId", "runtimeCommit", "fixtureSchemaVersion", "repeats",
+    "tokenUsage", "costUsd",
+  ].map(key => [key, metadata[key] ?? null]));
 }
 
 function tradeoffMetrics(summary) {

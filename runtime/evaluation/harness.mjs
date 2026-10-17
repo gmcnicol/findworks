@@ -8,8 +8,8 @@ const RESPONSE_MODES = new Set(["FREE_TEXT", "YES_NO", "YES_NO_PARTLY", "PARAPHR
 const OPEN_COVERAGES = new Set(["UNADDRESSED", "EXPLORING", "PARTIAL"]);
 const TERMINAL_COVERAGES = new Set(["SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OWNERSHIP_GAP"]);
 const QUESTION_STOP_WORDS = new Set([
-  "a", "an", "and", "are", "at", "be", "by", "can", "could", "describe", "did", "do", "does", "for", "from", "get", "gets",
-  "has", "have", "how", "i", "if", "in", "is", "it", "of", "on", "or", "please", "should", "tell", "that", "the", "this", "to", "was", "were", "what",
+  "a", "after", "an", "and", "are", "at", "be", "before", "besides", "by", "can", "could", "describe", "did", "do", "does", "earlier", "finally", "first", "for", "from", "get", "gets",
+  "has", "have", "how", "i", "if", "in", "is", "it", "next", "of", "on", "once", "or", "please", "should", "sorry", "tell", "that", "the", "then", "this", "to", "was", "were", "what",
   "when", "where", "which", "who", "why", "with", "would", "you", "your",
 ]);
 
@@ -784,9 +784,11 @@ function unsupportedSpecifics(value, context) {
   const input = String(value ?? "");
   const numeric = input.match(/(?:£|\$|€)?\d[\d,.]*/g) ?? [];
   const names = [...input.matchAll(/\b[A-Z][a-z]{2,}(?:'[a-z]+)?\b/g)]
-    .filter(match => match.index !== 0)
     .map(match => match[0])
-    .filter(word => !QUESTION_STOP_WORDS.has(stemWord(word.toLowerCase())));
+    .filter(word => {
+      const lower = word.toLowerCase();
+      return !QUESTION_STOP_WORDS.has(lower) && !QUESTION_STOP_WORDS.has(stemWord(lower));
+    });
   return [...new Set([...numeric, ...names].filter(specific => !grounded.includes(specific.toLowerCase())))];
 }
 
