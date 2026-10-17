@@ -1,5 +1,6 @@
 package com.findworks.platform.security;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -12,6 +13,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 
 @Configuration
+@ConditionalOnProperty(name = "findworks.clerk.enabled", havingValue = "false", matchIfMissing = true)
 public class SecurityConfig {
 
     @Bean

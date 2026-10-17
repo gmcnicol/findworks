@@ -33,11 +33,10 @@ final class MissionSchemas {
                         List.of("term", "meaning")), 0, 100)),
                 Map.entry("opening_questions", array(mapper, text(mapper, 4_000), 1, 50)),
                 Map.entry("completion_criteria", array(mapper, text(mapper, 4_000), 1, 50)),
-                Map.entry("expected_commitment_minutes", integer(mapper, 5, 120)),
                 Map.entry("data_use_summary", text(mapper, 4_000))),
                 List.of("objective", "desired_outcome", "intended_interviewee_role", "intended_interviewee_relevance",
                         "investigation_items", "shared_context", "boundaries", "prohibited_topics", "terminology",
-                        "opening_questions", "completion_criteria", "expected_commitment_minutes", "data_use_summary"));
+                        "opening_questions", "completion_criteria", "data_use_summary"));
         var origin = object(mapper, Map.of(
                 "pointer", text(mapper, 500),
                 "authority", enumeration(mapper, "INVESTIGATOR_STATEMENT", "CONFIRMED_AGENT_PROPOSAL")),

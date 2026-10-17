@@ -12,7 +12,8 @@
         <p class="eyebrow">FindWorks · Research operations</p>
         <h1>Find what you need to know from other people.</h1>
         <p th:if="${signedOut}" class="notice">You are signed out.</p>
-        <p>Sign in with your verified pilot account to review and run Discoveries.</p>
+        <p th:if="${clerkEnabled}">Sign in to return to your research and interviews. Your saved work stays with your account.</p>
+        <p th:unless="${clerkEnabled}">Sign in with your verified pilot account to review and run Discoveries.</p>
         <a class="button" th:href="@{/signin}">Sign in</a>
     </section>
 </main>

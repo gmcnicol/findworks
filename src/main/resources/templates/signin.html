@@ -5,10 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sign in · FindWorks</title>
     <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <th:block th:replace="~{fragments/clerk :: scripts}"></th:block>
 </head>
 <body>
 <main class="shell centered">
-    <form class="panel form focus-panel" method="post" th:action="@{/signin}">
+    <section class="clerk-login focus-panel" th:if="${clerkEnabled}" th:attr="data-sign-in-destination=${signInDestination}">
+        <h1>FindWorks</h1>
+        <p>Your research and interviews, saved to one account.</p>
+        <p role="status" data-clerk-auth-status>Loading secure sign-in…</p>
+        <div data-clerk-sign-in th:attr="data-clerk-component=${clerkAuthComponent}"></div>
+        <div data-clerk-auth-error hidden role="alert">
+            <p data-clerk-auth-error-message>Secure sign-in could not load. Check your connection and try again.</p>
+            <button class="button secondary" type="button" data-clerk-auth-retry>Try again</button>
+        </div>
+        <button class="text-button" type="button" data-clerk-switch-account th:attr="data-clerk-switch-destination=@{/signin(returnTo=${signInDestination})}" hidden>Use a different account</button>
+        <noscript><p>Secure sign-in requires JavaScript. Enable it and reload this page.</p></noscript>
+    </section>
+    <form class="panel form focus-panel" th:unless="${clerkEnabled}" method="post" th:action="@{/signin}">
         <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
         <p class="eyebrow">Pilot Investigator sign in</p>
         <h1>Sign in to FindWorks</h1>

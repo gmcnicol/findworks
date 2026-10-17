@@ -18,6 +18,14 @@ findworks:
   cookie-secure: ${FINDWORKS_COOKIE_SECURE:false}
   operator-token: ${FINDWORKS_OPERATOR_TOKEN:disabled}
   pilot-organization-slug: ${FINDWORKS_PILOT_ORGANIZATION_SLUG:pilot-org}
+  clerk:
+    enabled: ${FINDWORKS_CLERK_ENABLED:false}
+    publishable-key: ${CLERK_PUBLISHABLE_KEY:}
+    frontend-api: ${CLERK_FRONTEND_API:}
+    issuer: ${CLERK_ISSUER:}
+    jwks-uri: ${CLERK_JWKS_URI:}
+    secret-key: ${CLERK_SECRET_KEY:}
+    authorized-parties: ${CLERK_AUTHORIZED_PARTIES:http://127.0.0.1:8080}
   runtime-command: ${FINDWORKS_RUNTIME_COMMAND:docker}
   runtime-image: ${FINDWORKS_RUNTIME_IMAGE:findworks-runtime:0.84.4}
   runtime-network: ${FINDWORKS_RUNTIME_NETWORK:findworks-runtime}

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Check your interview access · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block></head>
+<body><main class="shell centered"><section class="panel state-panel">
+    <h1>Interview access could not be granted</h1>
+    <p th:if="${retryable == true}">Email verification is temporarily unavailable. Your invitation and saved work are unchanged. Try again shortly.</p>
+    <form th:if="${retryable == true}" method="post" th:action="@{${signInDestination}}"><button class="button" type="submit">Try again</button></form>
+    <p th:unless="${retryable == true}">Sign in with the email address this invitation was sent to. If you’re already using that address, ask the researcher to check or reissue the invitation.</p>
+    <button th:unless="${retryable == true}" class="button" type="button" data-clerk-switch-account th:attr="data-clerk-switch-destination=@{/signin(returnTo=${signInDestination})}">Use a different account</button>
+    <p hidden role="alert" data-clerk-sign-out-error>Sign-out failed. Check your connection and try again.</p>
+    <p><a th:href="@{/work}">Your saved work</a></p>
+</section></main></body></html>

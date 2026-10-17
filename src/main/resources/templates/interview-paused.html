@@ -1,14 +1,17 @@
 <!doctype html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interview paused · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interview paused · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block></head>
 <body class="participant-body">
 <main class="shell centered">
+    <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
     <section class="panel state-panel">
         <p class="eyebrow">Interview paused</p>
         <h1>Your place is saved</h1>
-        <p>Return in this browser and resume when ready.</p>
-        <form method="post" th:action="@{/interview/resume}"><button class="button">Resume interview</button></form>
-        <form method="post" th:action="@{/interview/end-early}"><button class="button secondary">End here</button></form>
+        <p>Your accepted answers are saved. Return to <a th:href="@{${interviewBase}}">this interview</a> to continue.</p>
+        <p class="subtle" th:if="${clerkEnabled}">Sign in with the same account on any device and find this interview in your saved work. You don’t need your invitation again.</p>
+        <p class="subtle" th:unless="${clerkEnabled}">Development browser access lasts seven days. If it expires or you change browsers, ask the Investigator to reissue access. Your accepted answers remain saved.</p>
+        <form method="post" th:action="@{${interviewBase + '/resume'}}"><button class="button">Resume interview</button></form>
+        <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button class="button secondary">End here</button></form>
     </section>
 </main>
 </body>

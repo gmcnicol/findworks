@@ -23,6 +23,18 @@ test("interview skill tests real sufficiency instead of completing from mention 
   assert.match(skill, /required frontier is empty/);
 });
 
+test("interview skill contains no duration or commitment concept", () => {
+  assert.doesNotMatch(skill, /expected_minutes|expected commitment|duration|time limit/i);
+});
+
+test("questions are grounded and never assume an unseen inventory", () => {
+  assert.match(skill, /Ground questions in the interviewee's actual work and vocabulary/);
+  assert.match(skill, /Never refer to an inventory, candidate list, document, or other material the interviewee has not been shown/);
+  assert.match(skill, /A Mission saying a list exists is not the list/);
+  assert.match(skill, /do not invent its contents, pretend it was supplied, or mark it validated/);
+  assert.match(skill, /approved opening question is guidance, not wording to repeat blindly/);
+});
+
 test("interview outcomes are deltas against durable current outcomes", () => {
   assert.match(skill, /current_outcomes/);
   assert.match(skill, /outcomes array is a delta/);

@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interview complete · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
-<body class="participant-body">
-<main class="shell centered">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interview complete · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block></head>
+<body class="participant-body interview-complete-body">
+<main class="shell centered" id="interview-shell" th:fragment="interviewShell">
+    <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
     <section class="panel state-panel">
         <p class="eyebrow">Interview complete</p>
         <h1>Thank you</h1>

@@ -33,6 +33,8 @@ class EmailDeliveryService {
     private final String endpoint;
     private final String apiKey;
     private final String from;
+    private final com.findworks.platform.config.ClerkProperties clerk;
+    private final org.springframework.beans.factory.ObjectProvider<ClerkInvitationClient> clerkInvitations;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
     EmailDeliveryService(JdbcClient db, TransactionTemplate transactions, ObjectMapper mapper,
@@ -40,9 +42,16 @@ class EmailDeliveryService {
                          @Value("${findworks.outbox-key}") String key,
                          @Value("${findworks.email-endpoint}") String endpoint,
                          @Value("${findworks.email-api-key}") String apiKey,
-                         @Value("${findworks.email-from}") String from) {
+                         @Value("${findworks.email-from}") String from,
+                         com.findworks.platform.config.ClerkProperties clerk,
+                         org.springframework.beans.factory.ObjectProvider<ClerkInvitationClient> clerkInvitations) {
         this.db = db; this.transactions = transactions; this.mapper = mapper; this.testSupport = testSupport;
         this.key = key; this.endpoint = endpoint; this.apiKey = apiKey; this.from = from;
+        this.clerk = clerk; this.clerkInvitations = clerkInvitations;
+    }
+
+    boolean invitationDeliveryAvailable() {
+        return testSupport || clerk.enabled() || (!endpoint.equals("disabled") && !apiKey.equals("disabled"));
     }
 
     void queue(UUID invitationId, UUID organizationId, String recipient, String link) {
@@ -57,9 +66,10 @@ class EmailDeliveryService {
             db.sql("update invitations set state='DELIVERED',delivered_at=now() where id=:id").param("id", invitationId).update();
             return;
         }
-        db.sql("insert into email_outbox(id,organization_id,invitation_id,kind,recipient,encrypted_link) values(:id,:organization,:invitation,'INVITATION',:recipient,:link)")
+        db.sql("insert into email_outbox(id,organization_id,invitation_id,kind,recipient,encrypted_link,delivery_provider) values(:id,:organization,:invitation,'INVITATION',:recipient,:link,:provider)")
                 .param("id", Ids.id()).param("organization", organizationId).param("invitation", invitationId)
-                .param("recipient", recipient).param("link", encrypt(link)).update();
+                .param("recipient", recipient).param("link", encrypt(link))
+                .param("provider", clerk.enabled() ? "CLERK" : "EMAIL").update();
     }
 
     void queueRetentionWarning(UUID discoveryId, UUID organizationId, String recipient, String link) {
@@ -73,31 +83,54 @@ class EmailDeliveryService {
                 .param("link", encrypt(link)).update();
     }
 
-    boolean deliverNext() {
+    boolean deliverNext() { return deliverNext("EMAIL"); }
+
+    boolean deliverNextClerk() { return deliverNext("CLERK"); }
+
+    private boolean deliverNext(String provider) {
         var job = transactions.execute(status -> {
-            db.sql("update email_outbox set state='PENDING',lease_until=null,error_code='PROCESS_DIED' where state='RUNNING' and lease_until<now()").update();
+            db.sql("update email_outbox set state='PENDING',lease_until=null,error_code='PROCESS_DIED' where delivery_provider=:provider and state='RUNNING' and lease_until<now()")
+                    .param("provider", provider).update();
             return db.sql("""
                 update email_outbox set state='RUNNING',attempts=attempts+1,lease_until=now()+interval '30 seconds'
-                where id=(select id from email_outbox where state='PENDING' and available_at<=now() order by created_at limit 1 for update skip locked)
+                where id=(select id from email_outbox where delivery_provider=:provider and state='PENDING' and available_at<=now() order by created_at limit 1 for update skip locked)
                 returning id,invitation_id,kind,recipient,encrypted_link,attempts,max_attempts
-                """).query((rs, row) -> new EmailJob(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
+                """).param("provider", provider).query((rs, row) -> new EmailJob(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
                     rs.getString(3), rs.getString(4), rs.getBytes(5), rs.getInt(6), rs.getInt(7))).optional().orElse(null);
         });
         if (job == null) return false;
         try {
-            if (endpoint.equals("disabled") || apiKey.equals("disabled")) throw new IllegalStateException("email_not_configured");
-            var body = mapper.writeValueAsString(Map.of("from", from, "to", job.recipient(),
-                    "template", job.kind().equals("INVITATION") ? "findworks-invitation" : "findworks-retention-warning",
-                    "link", decrypt(job.encryptedLink())));
-            var request = HttpRequest.newBuilder(URI.create(endpoint)).timeout(Duration.ofSeconds(15))
-                    .header("Authorization", "Bearer " + apiKey).header("Content-Type", "application/json")
-                    .header("Idempotency-Key", job.id().toString())
-                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
-            var response = http.send(request, HttpResponse.BodyHandlers.discarding());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) throw new IllegalStateException("email_provider_rejected");
+            String providerId = null;
+            if (job.invitationId() != null) {
+                var days = db.sql("select greatest(1,ceil(extract(epoch from (expires_at-now()))/86400))::int from invitations where id=:id and state='PENDING' and revoked_at is null and expires_at>now()")
+                        .param("id", job.invitationId()).query(Integer.class).optional();
+                if (days.isEmpty()) {
+                    if (provider.equals("CLERK") && job.attempts() > 1) clerkInvitations.getObject().recoverAndRevoke(job.id(), job.recipient());
+                    db.sql("update email_outbox set state='CANCELLED',lease_until=null,provider_revoked_at=now(),error_code='INVITATION_INACTIVE' where id=:id")
+                            .param("id", job.id()).update();
+                    return true;
+                }
+                if (provider.equals("CLERK")) providerId = clerkInvitations.getObject()
+                        .deliver(job.id(), job.recipient(), decrypt(job.encryptedLink()), days.get());
+            }
+            if (provider.equals("EMAIL")) {
+                if (endpoint.equals("disabled") || apiKey.equals("disabled")) throw new IllegalStateException("email_not_configured");
+                var body = mapper.writeValueAsString(Map.of("from", from, "to", job.recipient(),
+                        "template", job.kind().equals("INVITATION") ? "findworks-invitation" : "findworks-retention-warning",
+                        "link", decrypt(job.encryptedLink())));
+                var request = HttpRequest.newBuilder(URI.create(endpoint)).timeout(Duration.ofSeconds(15))
+                        .header("Authorization", "Bearer " + apiKey).header("Content-Type", "application/json")
+                        .header("Idempotency-Key", job.id().toString())
+                        .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                var response = http.send(request, HttpResponse.BodyHandlers.discarding());
+                if (response.statusCode() < 200 || response.statusCode() >= 300) throw new IllegalStateException("email_provider_rejected");
+            }
+            var remoteId = providerId;
             transactions.executeWithoutResult(status -> {
-                db.sql("update email_outbox set state='COMPLETED',lease_until=null where id=:id").param("id", job.id()).update();
-                if (job.invitationId() != null) db.sql("update invitations set state='DELIVERED',delivered_at=now() where id=:id and state='PENDING'").param("id", job.invitationId()).update();
+                db.sql("update email_outbox set state='COMPLETED',lease_until=null,available_at=now(),error_code=null,provider_invitation_id=:providerId where id=:id")
+                        .param("id", job.id()).param("providerId", remoteId).update();
+                if (job.invitationId() != null) db.sql("update invitations set state='DELIVERED',delivered_at=now() where id=:id and state='PENDING' and revoked_at is null and expires_at>now()")
+                        .param("id", job.invitationId()).update();
             });
         } catch (Exception exception) {
             transactions.executeWithoutResult(status -> {
@@ -106,6 +139,31 @@ class EmailDeliveryService {
                         .param("state", terminal ? "FAILED" : "PENDING").param("delay", job.attempts() * 10).param("id", job.id()).update();
                 if (terminal && job.invitationId() != null) db.sql("update invitations set state='FAILED' where id=:id and state='PENDING'").param("id", job.invitationId()).update();
             });
+        }
+        return true;
+    }
+
+    boolean revokeNextClerkInvitation() {
+        var job = transactions.execute(status -> db.sql("""
+                update email_outbox set lease_until=now()+interval '30 seconds'
+                where id=(select e.id from email_outbox e join invitations i on i.id=e.invitation_id
+                  where e.delivery_provider='CLERK' and e.provider_revoked_at is null
+                    and (e.provider_invitation_id is not null or e.attempts>0)
+                    and (i.state in ('REVOKED','REDEEMED','FAILED') or i.revoked_at is not null or i.expires_at<=now())
+                    and (e.lease_until is null or e.lease_until<now()) and e.available_at<=now()
+                  order by e.created_at limit 1 for update of e skip locked)
+                returning id,recipient,provider_invitation_id
+                """).query((rs, row) -> new RevokeJob(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3)))
+                .optional().orElse(null));
+        if (job == null) return false;
+        try {
+            if (job.providerId() == null) clerkInvitations.getObject().recoverAndRevoke(job.id(), job.recipient());
+            else clerkInvitations.getObject().revoke(job.providerId());
+            db.sql("update email_outbox set provider_revoked_at=now(),lease_until=null,error_code=null where id=:id")
+                    .param("id", job.id()).update();
+        } catch (Exception unavailable) {
+            db.sql("update email_outbox set lease_until=null,available_at=now()+interval '60 seconds',error_code='CLERK_REVOCATION_PENDING' where id=:id")
+                    .param("id", job.id()).update();
         }
         return true;
     }
@@ -130,4 +188,5 @@ class EmailDeliveryService {
 
     private SecretKeySpec secretKey() { return new SecretKeySpec(Base64.getDecoder().decode(key), "AES"); }
     private record EmailJob(UUID id, UUID invitationId, String kind, String recipient, byte[] encryptedLink, int attempts, int maxAttempts) {}
+    private record RevokeJob(UUID id, String recipient, String providerId) {}
 }

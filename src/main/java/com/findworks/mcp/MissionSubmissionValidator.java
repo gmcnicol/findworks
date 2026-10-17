@@ -18,7 +18,7 @@ final class MissionSubmissionValidator {
     private static final Set<String> MISSION = Set.of(
             "objective", "desired_outcome", "intended_interviewee_role", "intended_interviewee_relevance",
             "investigation_items", "shared_context", "boundaries", "prohibited_topics", "terminology",
-            "opening_questions", "completion_criteria", "expected_commitment_minutes", "data_use_summary");
+            "opening_questions", "completion_criteria", "data_use_summary");
     private static final Set<String> ITEM = Set.of(
             "knowledge_gap", "why_it_matters", "priority", "required", "relevant_context", "sufficient_evidence");
     private static final Set<String> TERM = Set.of("term", "meaning");
@@ -69,10 +69,6 @@ final class MissionSubmissionValidator {
             stringArray(mission, "completion_criteria", true, violations);
             items(mission.path("investigation_items"), violations);
             terms(mission.path("terminology"), violations);
-            var minutes = mission.path("expected_commitment_minutes");
-            if (!minutes.isIntegralNumber() || minutes.asInt() < 5 || minutes.asInt() > 120) {
-                add(violations, "/mission/expected_commitment_minutes", "must be an integer from 5 through 120");
-            }
         }
 
         var boundPointers = origins(input.path("origins"), violations);
@@ -151,7 +147,7 @@ final class MissionSubmissionValidator {
             pointers.add("/discovery_objective");
         }
         for (var field : List.of("objective", "desired_outcome", "intended_interviewee_role",
-                "intended_interviewee_relevance", "expected_commitment_minutes", "data_use_summary")) {
+                "intended_interviewee_relevance", "data_use_summary")) {
             pointers.add("/mission/" + field);
         }
         var mission = input.path("mission");

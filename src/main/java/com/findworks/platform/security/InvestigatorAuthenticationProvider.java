@@ -1,5 +1,6 @@
 package com.findworks.platform.security;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import com.findworks.platform.config.FindWorksProperties;
 
 @Component
+@ConditionalOnProperty(name = "findworks.clerk.enabled", havingValue = "false", matchIfMissing = true)
 public class InvestigatorAuthenticationProvider implements AuthenticationProvider {
 
     private final InvestigatorAccountRepository repository;

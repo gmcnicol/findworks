@@ -2,6 +2,12 @@
 
 Read [`CONTEXT.md`](./CONTEXT.md) before making product or architecture decisions.
 
+## Headless host
+
+NUC (`nuc`) is a headless server. Human browser authentication happens on another machine, not on the NUC.
+
+For browser-based CLI authentication on the NUC, prefer device authorization when supported. Otherwise provide the authorization URL and the required SSH loopback-port forwarding before the human authorizes. Treat local GUI/browser launch as unavailable.
+
 ## FindWorks is in discovery
 
 Do not start implementing the product merely because an implementation path appears obvious. The current goal is to use Wayfinder to remove product and architecture ambiguity, then hand a decision-complete result to `to-spec` and `to-tickets`.

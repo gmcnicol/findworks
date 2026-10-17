@@ -10,7 +10,6 @@ const begin = async (page, data) => {
   await page.goto(data.invitation_url);
   await page.getByRole('button', { name: 'Continue to invitation' }).click();
   await expect(page.getByRole('heading', { name: 'Before you begin' })).toBeVisible();
-  await expect(page.getByText('20 minutes')).toBeVisible();
   await expect(page.getByText('90 days after findings review')).toBeVisible();
   await page.getByRole('button', { name: 'Begin interview' }).click();
   await expect(page.getByRole('heading', { name: 'Walk me through the last mismatch you resolved.' })).toBeVisible();
@@ -21,6 +20,22 @@ const signIn = async (page) => {
   await page.getByLabel('Email').fill('gareth@example.com');
   await page.getByLabel('Password').fill('findworks');
   await page.getByRole('button', { name: 'Continue' }).click();
+};
+
+const holdToConfirmDeletion = async (page, name: string) => {
+  const button = page.locator(`[data-hold-label="${name}"]`);
+  const form = button.locator('..');
+
+  await button.click();
+  await expect(button).toBeVisible();
+  await expect(form.getByRole('status')).toHaveText('Deletion cancelled.');
+
+  await button.focus();
+  await page.keyboard.down('Space');
+  await expect(button).toHaveAccessibleName('Keep holding…');
+  await expect(form.getByRole('status')).toHaveText('Keep holding to confirm deletion.');
+  await page.waitForTimeout(2_100);
+  await page.keyboard.up('Space');
 };
 
 test('investigator reviews, renames, approves, and supersedes an exact Mission version', async ({ browser, page, request }) => {
@@ -36,12 +51,27 @@ test('investigator reviews, renames, approves, and supersedes an exact Mission v
   await page.getByLabel('Administrative label').fill('Monthly reconciliation decisions');
   await page.getByRole('button', { name: 'Rename Mission' }).click();
   await expect(page.getByRole('heading', { name: 'Monthly reconciliation decisions' })).toBeVisible();
-  for (let checkpoint = 0; checkpoint < 5; checkpoint++) {
-    await page.locator('button:not([disabled])').filter({ hasText: 'Mark reviewed' }).first().click();
+  const contextCheckpoint = page.getByRole('button', { name: 'Mark reviewed · Shared context and boundaries' });
+  const reviewPosition = await contextCheckpoint.evaluate((button) => {
+    button.scrollIntoView({ block: 'center' });
+    (window as any).__missionReviewDocument = 'unchanged';
+    return window.scrollY;
+  });
+  expect(reviewPosition).toBeGreaterThan(0);
+  await contextCheckpoint.click();
+  await expect(page.getByRole('button', { name: 'Reviewed · Shared context and boundaries' })).toBeDisabled();
+  await expect(page.getByLabel('Review progress').getByText('1 of 5 checkpoints reviewed')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__missionReviewDocument)).toBe('unchanged');
+  expect(Math.abs((await page.evaluate(() => window.scrollY)) - reviewPosition)).toBeLessThanOrEqual(1);
+
+  for (const checkpoint of ['Purpose', 'Intended interviewee', 'Investigation Items', 'Completion and data use']) {
+    await page.getByRole('button', { name: `Mark reviewed · ${checkpoint}` }).click();
+    await expect(page.getByRole('button', { name: `Reviewed · ${checkpoint}` })).toBeDisabled();
   }
   await expect(page.getByLabel('Review progress').getByText('5 of 5 checkpoints reviewed')).toBeVisible();
   await page.getByRole('button', { name: 'Approve this version' }).click();
   await expect(page.getByText('Approved · Version 1')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__missionReviewDocument)).toBe('unchanged');
   await expect(page.getByText('An invitation link is active.')).toBeVisible();
 
   const unusedAccess = await browser.newPage();
@@ -77,16 +107,27 @@ test('investigator generates and copies a manual invitation link', async ({ brow
   const invitationSection = page.getByRole('heading', { name: 'Invite the interviewee' }).locator('..');
   await invitationSection.getByLabel('Name').fill('Clare');
   await invitationSection.getByLabel('Email').fill('clare@example.com');
-  await invitationSection.getByRole('button', { name: 'Generate link' }).click();
+  await invitationSection.getByRole('button', { name: 'Generate link instead' }).click();
 
   await expect(page.getByRole('heading', { name: 'Copy invitation link' })).toBeVisible();
   const link = await page.getByRole('textbox', { name: 'Invitation link' }).inputValue();
   expect(new URL(link).origin).toBe(new URL(page.url()).origin);
   expect(new URL(link).pathname).toMatch(/^\/invite\//);
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const copyRow = page.locator('.copy-row');
+  const copyRowWidthBefore = await copyRow.evaluate((row) => row.getBoundingClientRect().width);
+  await expect(page.locator('.copy-feedback-text')).toHaveCount(0);
   await page.getByRole('button', { name: 'Copy link' }).click();
-  await expect(page.getByRole('status')).toContainText('Copied');
+  await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Copied. You can now paste the link into your message.');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+  const copyRowWidthAfter = await copyRow.evaluate((row) => row.getBoundingClientRect().width);
+  expect(Math.abs(copyRowWidthAfter - copyRowWidthBefore)).toBeLessThanOrEqual(1);
+  const feedbackTransitions = await page.locator('.copy-feedback-text').evaluateAll((elements) => elements.map((element) =>
+    getComputedStyle(element).transitionProperty.split(',').map((value) => value.trim()),
+  ));
+  expect(feedbackTransitions).toHaveLength(2);
+  expect(feedbackTransitions.every((properties) => properties.join(', ') === 'opacity, transform')).toBeTruthy();
 
   const preview = await browser.newPage();
   await preview.goto(link);
@@ -106,17 +147,42 @@ test('answer, adaptive structured follow-up, completion, and findings review', a
   await page.getByLabel('Your answer in your own words').fill('The finance analyst checks the imported amount against the source ledger.');
   await page.getByRole('button', { name: 'Submit answer' }).click();
   await expect(page.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
+  await expect(page.locator('meta[http-equiv="refresh"]')).toHaveCount(0);
   await expect(page.getByRole('complementary').getByText('The finance analyst checks the imported amount')).toBeVisible();
+  await page.evaluate(() => (window as any).__interviewDocument = 'unchanged');
   await request.post(`/test/runtime/run-once?sessionId=${data.session_id}`);
   await expect(page.getByRole('heading', { name: 'What does the finance analyst check in the source ledger?' })).toBeVisible({ timeout: 5_000 });
+  expect(await page.evaluate(() => (window as any).__interviewDocument)).toBe('unchanged');
+  await expect(page.getByLabel('Partly')).toBeEnabled();
+  const questionMotion = await page.locator('.interview-stage').evaluate((stage) => {
+    const style = getComputedStyle(stage);
+    return {
+      properties: style.transitionProperty.split(',').map((value) => value.trim()),
+      durations: style.transitionDuration.split(',').map((value) => value.trim()),
+      timingFunctions: style.transitionTimingFunction.match(/cubic-bezier\([^)]+\)/g) ?? [],
+    };
+  });
+  expect(questionMotion.properties).toEqual(['opacity', 'transform']);
+  expect(new Set(questionMotion.durations)).toEqual(new Set(['0.2s']));
+  expect(new Set(questionMotion.timingFunctions)).toEqual(new Set(['cubic-bezier(0.23, 1, 0.32, 1)']));
   await page.getByLabel('Partly').check();
   await page.getByLabel('Anything to add?').fill('Only unmatched entries need approval.');
   await page.getByRole('button', { name: 'Submit response' }).click();
+  await expect(page.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
+  await page.evaluate(() => (window as any).__interviewDocument = 'still-unchanged');
   await request.post(`/test/runtime/run-once?sessionId=${data.session_id}`);
-  await page.reload();
   await expect(page.getByRole('heading', { name: 'Ready to finish?' })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__interviewDocument)).toBe('still-unchanged');
   await page.getByRole('button', { name: 'Confirm and finish' }).click();
+  await expect(page.locator('body')).toHaveClass(/interview-complete-body/);
+  const completionPanel = page.locator('.state-panel');
+  await expect(completionPanel).toBeVisible();
+  await expect(completionPanel).toContainText('Your interview is complete. Your accepted answers remain available to the Investigator.');
   await expect(page.getByRole('heading', { name: 'Thank you' })).toBeVisible();
+  const completionTransitionProperties = await completionPanel.evaluate((panel) =>
+    getComputedStyle(panel).transitionProperty.split(',').map((value) => value.trim()),
+  );
+  expect(completionTransitionProperties).toEqual(['opacity', 'transform']);
 
   await signIn(page);
   await page.goto(`/app/findings/${data.session_id}`);
@@ -126,6 +192,24 @@ test('answer, adaptive structured follow-up, completion, and findings review', a
   await page.reload();
   await page.getByText('Open source context').click();
   await expect(page.getByRole('group').getByText('Only unmatched entries need approval.')).toBeVisible();
+
+  const acceptFinding = page.getByRole('button', { name: 'Accept', exact: true });
+  const reviewPosition = await acceptFinding.evaluate((button) => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '1000px';
+    document.body.prepend(spacer);
+    button.scrollIntoView({ block: 'center' });
+    (window as any).__findingsReviewDocument = 'unchanged';
+    return window.scrollY;
+  });
+  expect(reviewPosition).toBeGreaterThan(0);
+  await expect(page.getByRole('button', { name: 'Accept exact package' })).toBeDisabled();
+  await acceptFinding.click();
+  await expect(page.getByText('ACCEPTED', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Accept exact package' })).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).__findingsReviewDocument)).toBe('unchanged');
+  expect(Math.abs((await page.evaluate(() => window.scrollY)) - reviewPosition)).toBeLessThanOrEqual(1);
+
   await page.getByRole('button', { name: 'Reject', exact: true }).click();
   await expect(page.getByText('REJECTED', { exact: true })).toBeVisible();
   await page.getByLabel('Corrected claim').fill('Only unmatched entries require Gareth approval.');
@@ -178,14 +262,15 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await begin(revision, revisionData);
   await revision.getByLabel('Your answer in your own words').fill('All imported amounts need approval.');
   await revision.getByRole('button', { name: 'Submit answer' }).click();
+  await expect(revision.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${revisionData.session_id}`);
-  await revision.reload();
+  await expect(revision.locator('.interview-stage')).toBeVisible();
   await revision.getByText('Review or revise accepted answers').click();
   await revision.getByLabel('Revise this answer').fill('Only unmatched imported amounts need approval.');
   await revision.getByRole('button', { name: 'Save revision' }).click();
   await expect(revision.getByRole('complementary').getByText('Only unmatched imported amounts need approval.')).toBeVisible();
+  await expect(revision.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${revisionData.session_id}`);
-  await revision.reload();
   await expect(revision.getByRole('heading', { name: 'Ready to finish?' })).toBeVisible();
   await revision.close();
 
@@ -194,12 +279,13 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await begin(conflict, conflictData);
   await conflict.getByLabel('Your answer in your own words').fill('Every mismatch needs approval.');
   await conflict.getByRole('button', { name: 'Submit answer' }).click();
+  await expect(conflict.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${conflictData.session_id}`);
-  await conflict.reload();
+  await expect(conflict.locator('.interview-stage')).toBeVisible();
   await conflict.getByLabel('Your answer in your own words').fill('This contradicts my first answer: routine mismatches do not need approval.');
   await conflict.getByRole('button', { name: 'Submit answer' }).click();
+  await expect(conflict.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${conflictData.session_id}`);
-  await conflict.reload();
   await expect(conflict.getByText('Contradictory evidence needs review')).toBeVisible();
   await conflict.getByRole('button', { name: 'Confirm and finish' }).click();
   await request.post('/test/extraction/run-once');
@@ -210,18 +296,37 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await conflictReview.goto(`/app/findings/${conflictData.session_id}`);
   await expect(conflictReview.getByText('1 of 1 required areas have an explicit outcome')).toBeVisible();
   await expect(conflictReview.getByText('Conflict members · 2')).toBeVisible();
+  await expect(conflictReview.getByText('1 required outcome still needs review. Accept or reject each claim and acknowledge unresolved outcomes first.')).toBeVisible();
+  await expect(conflictReview.locator('.result-group-needs-review')).toContainText('3 items need review');
+  const unresolvedFinding = conflictReview.locator('article.finding').filter({ hasText: 'Contradictory evidence needs review' });
+  await expect(unresolvedFinding).toHaveClass(/finding-needs-review/);
+  await expect(unresolvedFinding.getByText('Needs acknowledgement')).toBeVisible();
+  await expect(conflictReview.getByRole('button', { name: 'Accept exact package' })).toBeDisabled();
   for (const button of await conflictReview.getByRole('button', { name: 'Accept', exact: true }).all()) await button.click();
-  await conflictReview.getByRole('button', { name: 'Acknowledge unresolved' }).click();
+  const acknowledgeUnresolved = conflictReview.getByRole('button', { name: 'Acknowledge unresolved' });
+  const unresolvedPosition = await acknowledgeUnresolved.evaluate((button) => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '1000px';
+    document.body.prepend(spacer);
+    button.scrollIntoView({ block: 'center' });
+    (window as any).__findingsReviewDocument = 'unchanged';
+    return window.scrollY;
+  });
+  await acknowledgeUnresolved.click();
+  await expect(acknowledgeUnresolved).toHaveCount(0);
+  expect(await conflictReview.evaluate(() => (window as any).__findingsReviewDocument)).toBe('unchanged');
+  expect(Math.abs((await conflictReview.evaluate(() => window.scrollY)) - unresolvedPosition)).toBeLessThanOrEqual(1);
+  await expect(unresolvedFinding).toHaveClass(/finding-acknowledged/);
+  await expect(unresolvedFinding.getByText('Acknowledged · remains unresolved')).toBeVisible();
+  await expect(conflictReview.locator('.result-group-reviewed')).toContainText('Review complete');
+  await expect(conflictReview.getByRole('button', { name: 'Accept exact package' })).toBeEnabled();
   await conflictReview.getByRole('button', { name: 'Accept exact package' }).click();
   await conflictReview.close();
 
   const pauseData = await fixture(request, 'pause@example.com');
   const pause = await browser.newPage();
   await begin(pause, pauseData);
-  await request.post(`/test/sessions/${pauseData.session_id}/near-limit`);
-  await pause.reload();
   await expect(pause.getByRole('heading', { name: 'Walk me through the last mismatch you resolved.' })).toBeVisible();
-  await expect(pause.getByRole('heading', { name: 'Nearly at the expected time' })).not.toBeVisible();
   await pause.getByRole('button', { name: 'Pause and leave' }).click();
   await expect(pause.getByRole('heading', { name: 'Your place is saved' })).toBeVisible();
   await pause.getByRole('button', { name: 'Resume interview' }).click();
@@ -239,7 +344,7 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await expect(review.getByText('Decision · REJECTED')).toBeVisible();
   await expect(review.getByText('Ask the reconciliation owner.')).toBeVisible();
   await expect(review.getByText('Package Version 1')).toBeVisible();
-  await review.getByRole('button', { name: 'Delete Interview Session' }).click();
+  await holdToConfirmDeletion(review, 'Hold to delete Interview Session');
   const deleted = await review.goto(`/app/findings/${unknownData.session_id}`);
   expect(deleted?.status()).toBe(404);
   await review.close();
@@ -306,7 +411,7 @@ test('lost browser, reissue, revocation, and termination invalidate stale partic
   await investigator.goto(data.review_url);
   await investigator.getByLabel('Name').fill('Clare');
   await investigator.getByLabel('Email').fill('access-recovery@example.com');
-  await investigator.getByRole('button', { name: 'Send invitation' }).click();
+  await investigator.getByRole('button', { name: 'Email invitation' }).click();
   expect((await firstBrowser.reload())?.status()).toBe(403);
 
   const email = await (await request.get('/test/emails/latest?recipient=access-recovery%40example.com')).json();
@@ -344,7 +449,7 @@ test('retention warning and Discovery deletion deny access immediately', async (
   await signIn(page);
   await page.goto(`/app/discoveries/${data.discovery_id}`);
   await expect(page.getByText('Scheduled deletion is within 14 days')).toBeVisible();
-  await page.getByRole('button', { name: 'Delete Discovery' }).click();
+  await holdToConfirmDeletion(page, 'Hold to delete Discovery');
   await expect(page.getByRole('heading', { name: 'Your Discoveries' })).toBeVisible();
   const participant = await browserPageFromInvitation(page.context().browser(), data.invitation_url);
   await expect(participant.getByText('Ask Gareth to reissue access')).toBeVisible();
@@ -357,18 +462,20 @@ test('Interview Session deletion removes findings and participant access immedia
   await begin(participant, data);
   await participant.getByLabel('Your answer in your own words').fill('The analyst checks unmatched entries against the source ledger.');
   await participant.getByRole('button', { name: 'Submit answer' }).click();
+  await expect(participant.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${data.session_id}`);
-  await participant.reload();
+  await expect(participant.getByLabel('Yes')).toBeEnabled();
   await participant.getByLabel('Yes').check();
   await participant.getByRole('button', { name: 'Submit response' }).click();
+  await expect(participant.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${data.session_id}`);
-  await participant.reload();
+  await expect(participant.getByRole('button', { name: 'Confirm and finish' })).toBeEnabled();
   await participant.getByRole('button', { name: 'Confirm and finish' }).click();
   await request.post('/test/extraction/run-once');
 
   await signIn(page);
   await page.goto(`/app/findings/${data.session_id}`);
-  await page.getByRole('button', { name: 'Delete Interview Session' }).click();
+  await holdToConfirmDeletion(page, 'Hold to delete Interview Session');
   await expect(page.getByRole('heading', { name: 'Your Discoveries' })).toBeVisible();
   expect((await page.goto(`/app/findings/${data.session_id}`))?.status()).toBe(404);
   await participant.reload();

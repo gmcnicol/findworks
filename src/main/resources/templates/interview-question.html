@@ -3,16 +3,18 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta th:if="${working}" http-equiv="refresh" content="2">
     <title>Interview · FindWorks</title>
     <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <th:block th:replace="~{fragments/clerk :: scripts}"></th:block>
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.3/bundles/datastar.js"></script>
 </head>
 <body class="participant-body">
-<main class="interview-shell">
+<main class="interview-shell" id="interview-shell" th:fragment="interviewShell">
     <header class="participant-masthead">
         <span class="participant-brand">FindWorks</span>
         <span class="participant-context">Adaptive interview · one question at a time</span>
     </header>
+    <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
 
     <aside class="accepted-answer" th:if="${answer != null}">
         <strong>Answer accepted</strong>
@@ -20,6 +22,8 @@
     </aside>
 
     <section class="working-state" th:if="${working}" role="status" aria-live="polite">
+        <div id="interview-stream" th:attr="data-init=|@get('${interviewBase}/events')|"></div>
+        <div id="interview-state-trigger"></div>
         <hr class="working-rule">
         <h1>Preparing your next question</h1>
         <p class="subtle">Your answer is safe. This usually takes a moment.</p>
@@ -29,7 +33,7 @@
         <p class="question-kicker">Your next question</p>
         <h1 class="interview-question" id="active-question" th:text="${question}">Question</h1>
 
-        <form th:if="${questionMode != 'FREE_TEXT'}" class="form answer-form" method="post" th:action="@{/interview/structured-answer}">
+        <form th:if="${questionMode != 'FREE_TEXT'}" class="form answer-form" method="post" th:action="@{${interviewBase + '/structured-answer'}}">
             <fieldset class="choice-fieldset">
                 <legend>Choose the closest response</legend>
                 <label class="choice-option" th:each="option : ${options}"><input type="radio" name="optionId" th:value="${option.id}" required><span th:text="${option.label}">Choice</span></label>
@@ -40,7 +44,7 @@
 
         <div class="answer-divider" th:if="${questionMode != 'FREE_TEXT'}">or answer freely</div>
 
-        <form class="form answer-form" method="post" th:action="@{/interview/answer}">
+        <form class="form answer-form" method="post" th:action="@{${interviewBase + '/answer'}}">
             <label>Your answer in your own words<textarea name="answer" rows="7" required maxlength="10000" th:autofocus="${questionMode == 'FREE_TEXT'}"></textarea></label>
             <button class="button" type="submit">Submit answer</button>
         </form>
@@ -48,12 +52,12 @@
         <div class="interview-secondary">
             <p class="response-heading">Other ways to respond</p>
             <nav class="participant-routes" aria-label="Other response options">
-                <form method="post" th:action="@{/interview/do-not-know}"><button type="submit">I don’t know</button></form>
-                <form method="post" th:action="@{/interview/clarify}"><button type="submit">Please clarify</button></form>
-                <form method="post" th:action="@{/interview/discomfort}"><button type="submit">This feels uncomfortable</button></form>
-                <form method="post" th:action="@{/interview/pause}"><button type="submit">Pause and leave</button></form>
-                <form method="post" th:action="@{/interview/end-early}"><button type="submit">End here</button></form>
-                <form class="owner-form" method="post" th:action="@{/interview/another-owner}">
+                <form method="post" th:action="@{${interviewBase + '/do-not-know'}}"><button type="submit">I don’t know</button></form>
+                <form method="post" th:action="@{${interviewBase + '/clarify'}}"><button type="submit">Please clarify</button></form>
+                <form method="post" th:action="@{${interviewBase + '/discomfort'}}"><button type="submit">This feels uncomfortable</button></form>
+                <form method="post" th:action="@{${interviewBase + '/pause'}}"><button type="submit">Pause and leave</button></form>
+                <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button type="submit">End here</button></form>
+                <form class="owner-form" method="post" th:action="@{${interviewBase + '/another-owner'}}">
                     <label>Owner<input name="owner" required maxlength="120"></label>
                     <label>What they own<input name="reason" required maxlength="2000"></label>
                     <button type="submit">Someone else owns this</button>
@@ -67,7 +71,7 @@
         <article class="history-entry" th:each="prior : ${answers}">
             <p th:text="${prior.optionLabel() != null ? prior.optionLabel() : prior.exactText()}">Your accepted answer</p>
             <p class="subtle" th:if="${prior.explanation() != null}" th:text="${prior.explanation()}">Explanation</p>
-            <form class="form" method="post" th:action="@{/interview/revise}">
+            <form class="form" method="post" th:action="@{${interviewBase + '/revise'}}">
                 <input type="hidden" name="evidenceId" th:value="${prior.id()}">
                 <label>Revise this answer<textarea name="answer" rows="3" required maxlength="10000"></textarea></label>
                 <button class="button secondary compact">Save revision</button>

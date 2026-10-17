@@ -36,7 +36,7 @@ class TestSupportController {
                     .param("id", discovery).param("organization", ORGANIZATION).param("owner", OWNER).update();
             db.sql("insert into missions values(:id,:organization,:discovery,'Ledgerling reconciliation',1,1,now())")
                     .param("id", mission).param("organization", ORGANIZATION).param("discovery", discovery).update();
-            db.sql("insert into mission_versions(mission_id,organization_id,version,state,objective,desired_outcome,interviewee_role,interviewee_relevance,expected_minutes,data_use,created_by,approved_by,approved_at) values(:mission,:organization,1,'APPROVED','Understand Ledgerling reconciliation','Know which mismatches need human judgement.','Accountant','Performs reconciliation every month.',20,'Reviewed findings and bounded source excerpts may be exported; later deletion cannot recall those copies.',:owner,:owner,now())")
+            db.sql("insert into mission_versions(mission_id,organization_id,version,state,objective,desired_outcome,interviewee_role,interviewee_relevance,data_use,created_by,approved_by,approved_at) values(:mission,:organization,1,'APPROVED','Understand Ledgerling reconciliation','Know which mismatches need human judgement.','Accountant','Performs reconciliation every month.','Reviewed findings and bounded source excerpts may be exported; later deletion cannot recall those copies.',:owner,:owner,now())")
                     .param("mission", mission).param("organization", ORGANIZATION).param("owner", OWNER).update();
             db.sql("insert into mission_entries values(:mission,1,'SHARED_CONTEXT',0,'Ledgerling imports bank transactions.',null),(:mission,1,'BOUNDARY',0,'Discuss reconciliation workflow only.',null),(:mission,1,'PROHIBITED_TOPIC',0,'Customer-identifying data',null),(:mission,1,'OPENING_QUESTION',0,'Walk me through the last mismatch you resolved.',null),(:mission,1,'COMPLETION_CRITERION',0,'Every required area has an explicit outcome.',null)")
                     .param("mission", mission).update();
@@ -63,8 +63,8 @@ class TestSupportController {
                 .param("id", fixture.get("mission_id")).update();
         for (var pointer : java.util.List.of(
                 "/mission/objective", "/mission/desired_outcome", "/mission/intended_interviewee_role",
-                "/mission/intended_interviewee_relevance", "/mission/expected_commitment_minutes",
-                "/mission/data_use_summary", "/mission/investigation_items/0", "/mission/shared_context/0",
+                "/mission/intended_interviewee_relevance", "/mission/data_use_summary",
+                "/mission/investigation_items/0", "/mission/shared_context/0",
                 "/mission/boundaries/0", "/mission/prohibited_topics/0", "/mission/opening_questions/0",
                 "/mission/completion_criteria/0")) {
             db.sql("insert into mission_origins values(:mission,1,:pointer,'INVESTIGATOR_STATEMENT',:owner,now())")
@@ -101,13 +101,5 @@ class TestSupportController {
     Map<String, Object> warning(@PathVariable UUID id) {
         db.sql("update discoveries set retention_due_at=now()+interval '13 days' where id=:id").param("id", id).update();
         return Map.of("discovery_id", id);
-    }
-
-    @PostMapping("/test/sessions/{id}/near-limit")
-    @ResponseBody
-    Map<String, Object> nearLimit(@PathVariable UUID id) {
-        db.sql("update interview_sessions set started_at=now()-interval '19 minutes' where id=:id")
-                .param("id", id).update();
-        return Map.of("session_id", id);
     }
 }

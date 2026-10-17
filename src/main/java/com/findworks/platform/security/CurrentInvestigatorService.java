@@ -18,10 +18,14 @@ public class CurrentInvestigatorService {
     }
 
     public AuthenticatedInvestigator require(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof InvestigatorUserDetails details)) {
-            throw new AccessDeniedException("Authentication required");
+        if (authentication != null && authentication.getPrincipal() instanceof ClerkPrincipal clerk) {
+            return repository.findActiveByClerkUserId(clerk.subject(), properties.pilotOrganizationSlug())
+                    .orElseThrow(() -> new AccessDeniedException("Active Investigator membership required"));
         }
-        return repository.findActiveByMembershipId(details.investigator().membershipId(), properties.pilotOrganizationSlug())
-                .orElseThrow(() -> new AccessDeniedException("Membership is no longer active"));
+        if (authentication != null && authentication.getPrincipal() instanceof InvestigatorUserDetails details) {
+            return repository.findActiveByMembershipId(details.investigator().membershipId(), properties.pilotOrganizationSlug())
+                    .orElseThrow(() -> new AccessDeniedException("Membership is no longer active"));
+        }
+        throw new AccessDeniedException("Authentication required");
     }
 }

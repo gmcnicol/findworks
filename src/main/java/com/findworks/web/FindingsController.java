@@ -7,8 +7,10 @@ import java.util.UUID;
 
 import com.findworks.platform.Ids;
 import com.findworks.platform.security.CurrentInvestigatorService;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.Authentication;
@@ -18,6 +20,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.server.ResponseStatusException;
@@ -42,12 +45,16 @@ public class FindingsController {
         model.addAttribute("investigator", currentInvestigator.require(authentication));
         var session = ownedSession(sessionId, authentication);
         model.addAttribute("findingsSession", session);
-        model.addAttribute("package", db.sql("""
+        var findingsPackage = db.sql("""
                 select p.id,p.current_version,p.accepted_version,v.state,v.notes
                 from findings_packages p join package_versions v on v.package_id=p.id and v.version=p.current_version
                 where p.session_id=:session
                 """).param("session", sessionId).query((rs, row) -> new PackageView(rs.getObject(1, UUID.class), rs.getInt(2),
-                (Integer) rs.getObject(3), rs.getString(4), rs.getString(5))).optional().orElse(null));
+                (Integer) rs.getObject(3), rs.getString(4), rs.getString(5))).optional().orElse(null);
+        model.addAttribute("package", findingsPackage);
+        var reviewReadiness = findingsPackage == null ? new ReviewReadiness(0, 0) : reviewReadiness(sessionId);
+        model.addAttribute("requiredOutcomesNeedingReview", reviewReadiness.needingReview());
+        model.addAttribute("openRequiredOutcomes", reviewReadiness.open());
         var groups = new LinkedHashMap<UUID, ResultGroup>();
         db.sql("""
                 select r.id,i.position,i.gap,i.required,r.coverage
@@ -192,7 +199,8 @@ public class FindingsController {
 
     @PostMapping("/app/findings/{sessionId}/knowledge/{knowledgeId}/decision")
     String decide(@PathVariable UUID sessionId, @PathVariable UUID knowledgeId, @RequestParam String decision,
-                  Authentication authentication) {
+                  @RequestHeader(value = "Datastar-Request", defaultValue = "false") boolean datastarRequest,
+                  Authentication authentication, Model model, HttpServletResponse response) {
         ownedSession(sessionId, authentication);
         if (!List.of("ACCEPTED", "REJECTED").contains(decision)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         var changed = db.sql("""
@@ -202,12 +210,13 @@ public class FindingsController {
                 """).param("decision", decision).param("confirmed", decision.equals("ACCEPTED"))
                 .param("knowledge", knowledgeId).param("session", sessionId).update();
         if (changed != 1) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        return "redirect:/app/findings/" + sessionId;
+        return mutationResult(sessionId, datastarRequest, authentication, model, response);
     }
 
     @PostMapping("/app/findings/{sessionId}/knowledge/{knowledgeId}/correct")
     String correct(@PathVariable UUID sessionId, @PathVariable UUID knowledgeId, @RequestParam String claim,
-                   Authentication authentication) {
+                   @RequestHeader(value = "Datastar-Request", defaultValue = "false") boolean datastarRequest,
+                   Authentication authentication, Model model, HttpServletResponse response) {
         var session = ownedSession(sessionId, authentication);
         var investigator = currentInvestigator.require(authentication);
         if (claim.isBlank() || claim.length() > 2_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
@@ -230,39 +239,50 @@ public class FindingsController {
             db.sql("update knowledge_items set current_version=:version where id=:id")
                     .param("version", current.version() + 1).param("id", knowledgeId).update();
         });
-        return "redirect:/app/findings/" + sessionId;
+        return mutationResult(sessionId, datastarRequest, authentication, model, response);
     }
 
     @PostMapping("/app/findings/{sessionId}/unresolved/{unresolvedId}/acknowledge")
-    String acknowledge(@PathVariable UUID sessionId, @PathVariable UUID unresolvedId, Authentication authentication) {
+    String acknowledge(@PathVariable UUID sessionId, @PathVariable UUID unresolvedId,
+                       @RequestHeader(value = "Datastar-Request", defaultValue = "false") boolean datastarRequest,
+                       Authentication authentication, Model model, HttpServletResponse response) {
         ownedSession(sessionId, authentication);
         var changed = db.sql("update unresolved set acknowledged=true where id=:id and result_id in(select id from investigation_results where session_id=:session)")
                 .param("id", unresolvedId).param("session", sessionId).update();
         if (changed != 1) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        return "redirect:/app/findings/" + sessionId;
+        return mutationResult(sessionId, datastarRequest, authentication, model, response);
     }
 
     @PostMapping("/app/findings/{sessionId}/accept")
     String accept(@PathVariable UUID sessionId, @RequestParam int version,
-                  @RequestParam(defaultValue = "") String notes, Authentication authentication) {
+                  @RequestParam(defaultValue = "") String notes,
+                  @RequestParam(defaultValue = "false") boolean acceptOpenAreas,
+                  @RequestHeader(value = "Datastar-Request", defaultValue = "false") boolean datastarRequest,
+                  Authentication authentication, Model model, HttpServletResponse response) {
         var session = ownedSession(sessionId, authentication);
+        var investigator = currentInvestigator.require(authentication);
         if (notes.length() > 2_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         transactions.executeWithoutResult(status -> {
             var packageId = readyPackage(sessionId, version);
-            var pending = db.sql("""
-                    select count(*) from investigation_results r join investigation_items i on i.id=r.item_id
-                    where r.session_id=:session and i.required and (
-                      r.coverage in ('UNADDRESSED','EXPLORING','PARTIAL')
-                      or exists(select 1 from knowledge_items k join knowledge_versions v on v.knowledge_id=k.id and v.version=k.current_version where k.result_id=r.id and v.review_state='UNREVIEWED')
-                      or exists(select 1 from unresolved u where u.result_id=r.id and not u.acknowledged)
-                      or exists(select 1 from unresolved u where u.result_id=r.id and u.kind='CONFLICT'
-                                and (select count(*) from conflict_members cm where cm.conflict_id=u.id)<2)
-                      or (not exists(select 1 from knowledge_items k where k.result_id=r.id)
-                          and not exists(select 1 from unresolved u where u.result_id=r.id)))
-                    """).param("session", sessionId).query(Long.class).single();
-            if (pending > 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "Review every required outcome first");
+            var readiness = reviewReadiness(sessionId);
+            if (readiness.needingReview() > 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Review every available required outcome first");
+            }
+            if (readiness.open() > 0 && !acceptOpenAreas) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Confirm acceptance with open required areas");
+            }
+            var decisionNotes = notes.trim();
+            if (readiness.open() > 0) {
+                var overrideNote = "Investigator accepted this package with " + readiness.open()
+                        + (readiness.open() == 1 ? " required Investigation Item still open." : " required Investigation Items still open.");
+                decisionNotes = decisionNotes.isEmpty() ? overrideNote : overrideNote + "\n\n" + decisionNotes;
+                db.sql("insert into audit_events(id,organization_id,actor_kind,actor_id,action,resource_kind,resource_id,outcome,correlation_id) values(:id,:organization,'INVESTIGATOR',:actor,'FINDINGS_ACCEPTED_WITH_OPEN_AREAS','FINDINGS_PACKAGE',:resource,'SUCCEEDED',:correlation)")
+                        .param("id", Ids.id()).param("organization", session.organizationId())
+                        .param("actor", investigator.membershipId()).param("resource", packageId)
+                        .param("correlation", Ids.id()).update();
+            }
             db.sql("update package_versions set state='ACCEPTED',notes=nullif(:notes,'') where package_id=:package and version=:version")
-                    .param("notes", notes.trim()).param("package", packageId).param("version", version).update();
+                    .param("notes", decisionNotes).param("package", packageId).param("version", version).update();
             db.sql("update findings_packages set accepted_version=:version where id=:package")
                     .param("version", version).param("package", packageId).update();
             db.sql("update publications set invalidated_at=now() where discovery_id=:discovery and invalidated_at is null")
@@ -273,12 +293,13 @@ public class FindingsController {
             db.sql("update discoveries d set retention_due_at=now()+(o.retention_days||' days')::interval,last_activity_at=now() from organizations o where d.id=:discovery and o.id=d.organization_id")
                     .param("discovery", session.discoveryId()).update();
         });
-        return "redirect:/app/findings/" + sessionId;
+        return mutationResult(sessionId, datastarRequest, authentication, model, response);
     }
 
     @PostMapping("/app/findings/{sessionId}/reject")
     String reject(@PathVariable UUID sessionId, @RequestParam int version, @RequestParam String notes,
-                  Authentication authentication) {
+                  @RequestHeader(value = "Datastar-Request", defaultValue = "false") boolean datastarRequest,
+                  Authentication authentication, Model model, HttpServletResponse response) {
         var session = ownedSession(sessionId, authentication);
         notes = notes.trim();
         if (notes.isEmpty() || notes.length() > 2_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
@@ -290,7 +311,41 @@ public class FindingsController {
             db.sql("update discoveries d set retention_due_at=now()+(o.retention_days||' days')::interval,last_activity_at=now() from organizations o where d.id=:discovery and o.id=d.organization_id")
                     .param("discovery", session.discoveryId()).update();
         });
-        return "redirect:/app/findings/" + sessionId;
+        return mutationResult(sessionId, datastarRequest, authentication, model, response);
+    }
+
+    private String mutationResult(UUID sessionId, boolean datastarRequest, Authentication authentication,
+                                  Model model, HttpServletResponse response) {
+        if (!datastarRequest) return "redirect:/app/findings/" + sessionId;
+        findings(sessionId, authentication, model);
+        response.setContentType(MediaType.TEXT_HTML_VALUE);
+        response.setHeader("Datastar-Selector", "#findings-package");
+        response.setHeader("Datastar-Mode", "outer");
+        return "findings-review :: findingsPackage";
+    }
+
+    private ReviewReadiness reviewReadiness(UUID sessionId) {
+        return db.sql("""
+                with required_results as (
+                  select r.id,r.coverage,fp.id package_id,fp.current_version package_version,
+                    exists(select 1 from knowledge_items k join knowledge_versions v on v.knowledge_id=k.id and v.version=k.current_version
+                           where k.result_id=r.id and k.package_id=fp.id and k.package_version=fp.current_version and v.review_state='UNREVIEWED') needs_knowledge_review,
+                    exists(select 1 from unresolved u where u.result_id=r.id and not u.acknowledged) needs_unresolved_review,
+                    exists(select 1 from unresolved u where u.result_id=r.id and u.kind='CONFLICT'
+                           and (select count(*) from conflict_members cm where cm.conflict_id=u.id)<2) has_incomplete_conflict,
+                    exists(select 1 from knowledge_items k where k.result_id=r.id and k.package_id=fp.id and k.package_version=fp.current_version) has_knowledge,
+                    exists(select 1 from unresolved u where u.result_id=r.id) has_unresolved
+                  from findings_packages fp
+                  join package_results pr on pr.package_id=fp.id and pr.package_version=fp.current_version
+                  join investigation_results r on r.id=pr.result_id
+                  join investigation_items i on i.id=r.item_id
+                  where fp.session_id=:session and i.required
+                )
+                select
+                  count(*) filter(where needs_knowledge_review or needs_unresolved_review or has_incomplete_conflict),
+                  count(*) filter(where coverage in ('UNADDRESSED','EXPLORING','PARTIAL') or (not has_knowledge and not has_unresolved))
+                from required_results
+                """).param("session", sessionId).query((rs, row) -> new ReviewReadiness(rs.getLong(1), rs.getLong(2))).single();
     }
 
     private UUID readyPackage(UUID sessionId, int version) {
@@ -318,7 +373,25 @@ public class FindingsController {
     record OwnedSession(UUID id, UUID organizationId, UUID discoveryId, String extractionState) {}
     record PackageView(UUID id, int version, Integer acceptedVersion, String state, String notes) {}
     record ResultGroup(UUID id, int position, String gap, boolean required, String coverage,
-                       List<KnowledgeView> knowledge, List<UnresolvedView> unresolved) {}
+                       List<KnowledgeView> knowledge, List<UnresolvedView> unresolved) {
+        public boolean reviewComplete() {
+            if (List.of("UNADDRESSED", "EXPLORING", "PARTIAL").contains(coverage)) return false;
+            if (knowledge.stream().anyMatch(item -> item.reviewState().equals("UNREVIEWED"))) return false;
+            if (unresolved.stream().anyMatch(item -> !item.acknowledged()
+                    || item.kind().equals("CONFLICT") && item.conflictMemberCount() < 2)) return false;
+            return !knowledge.isEmpty() || !unresolved.isEmpty();
+        }
+
+        public long outstandingReviewCount() {
+            return knowledge.stream().filter(item -> item.reviewState().equals("UNREVIEWED")).count()
+                    + unresolved.stream().filter(item -> !item.acknowledged()).count();
+        }
+
+        public boolean canAcceptAsOpen() {
+            return outstandingReviewCount() == 0 && (List.of("UNADDRESSED", "EXPLORING", "PARTIAL").contains(coverage)
+                    || knowledge.isEmpty() && unresolved.isEmpty());
+        }
+    }
     record KnowledgeView(UUID id, UUID resultId, String claim, String category, String reviewState, List<KnowledgeSource> sources) {}
     record KnowledgeSource(UUID evidenceId, String answer, String quote, Object evidenceAt, String participant,
                            Integer startOffset, Integer endOffset) {}
@@ -330,4 +403,5 @@ public class FindingsController {
     private record KnowledgeRow(UUID resultId, UUID id, String claim, String category, String reviewState, UUID evidenceId, String answer,
                                 String quote, Object evidenceAt, String participant, Integer startOffset, Integer endOffset) {}
     private record CurrentKnowledge(int version, String category) {}
+    private record ReviewReadiness(long needingReview, long open) {}
 }

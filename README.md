@@ -33,12 +33,32 @@ Local JVM development:
 bash scripts/dev-up.sh
 ```
 
-Seeded pilot accounts use password `findworks`:
+Local development keeps the deterministic seeded sign-in so automated checks do not depend on an external identity provider. Seeded pilot accounts use password `findworks`:
 
 - `gareth@example.com` — active verified Investigator in `pilot-org`
 - `inactive.user@example.com` — denied inactive User
 - `inactive.membership@example.com` — denied inactive Membership
 - `outsider@example.com` — denied other Organisation
+
+## Clerk authentication
+
+Production authentication uses Clerk email verification codes for **both researchers and interviewees**. One account can do both. `/work` shows saved Discoveries/Missions and assigned interviews; sign-out, browser closure, or changing devices does not lose progress or require another invitation.
+
+Configure the web process with:
+
+```bash
+FINDWORKS_CLERK_ENABLED=true
+CLERK_PUBLISHABLE_KEY=pk_...
+CLERK_SECRET_KEY=sk_...
+CLERK_FRONTEND_API=https://your-instance.clerk.accounts.dev
+CLERK_ISSUER=https://your-instance.clerk.accounts.dev
+CLERK_JWKS_URI=https://your-instance.clerk.accounts.dev/.well-known/jwks.json
+CLERK_AUTHORIZED_PARTIES=https://findworks.example
+```
+
+On first access, FindWorks registers the verified Clerk identity and may link an existing active Investigator by server-verified primary email, preserving local ownership IDs. Signup never grants research membership. Interviewees claim an invitation with its currently verified recipient email, creating durable Session-specific account access. Research memberships and interview assignments are independent permissions.
+
+See [`docs/clerk-and-continuity.md`](./docs/clerk-and-continuity.md) for email-code instance setup, pilot provisioning, both-role continuity, revocation rules, and live Clerk acceptance.
 
 ## Run checks
 
@@ -51,7 +71,8 @@ bash scripts/test.sh
 Browser checks only:
 
 ```bash
-npm test
+# Choose a free port; the test runner creates its own disposable Compose stack.
+FINDWORKS_E2E_PORT=8081 npm test
 ```
 
 ## Canonical product sources

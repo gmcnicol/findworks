@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Review findings · FindWorks</title>
     <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.3/bundles/datastar.js"></script>
+    <script type="module" th:src="@{/assets/hold-to-confirm.js}"></script>
 </head>
 <body class="app-body">
 <div class="app-frame">
@@ -21,21 +23,35 @@
             </div>
         </header>
 
-        <section class="findings-package" th:if="${package != null}" aria-label="Findings package">
+        <section class="findings-package" id="findings-package" th:fragment="findingsPackage" th:if="${package != null}" aria-label="Findings package">
             <div class="package-summary">
                 <p><strong th:text="'Package Version ' + ${package.version()}">Package Version 1</strong></p>
                 <p th:text="'Decision · ' + ${package.state()}">Decision · READY</p>
                 <p th:text="${coverage}">Mission coverage</p>
+                <span class="status-label status-attention" th:if="${package.state() == 'READY' and requiredOutcomesNeedingReview > 0}" th:text="${requiredOutcomesNeedingReview} + (${requiredOutcomesNeedingReview == 1} ? ' required outcome needs review' : ' required outcomes need review')">Required outcomes need review</span>
+                <span class="status-label status-waiting" th:if="${package.state() == 'READY' and requiredOutcomesNeedingReview == 0 and openRequiredOutcomes > 0}" th:text="${openRequiredOutcomes} + (${openRequiredOutcomes == 1} ? ' required area remains open' : ' required areas remain open')">Required areas remain open</span>
+                <span class="status-label status-active" th:if="${package.state() == 'READY' and requiredOutcomesNeedingReview == 0 and openRequiredOutcomes == 0}">Required review complete</span>
             </div>
             <p class="notice-banner" th:if="${package.notes() != null}" th:text="${package.notes()}">Decision notes</p>
 
-            <section class="result-group" th:each="group : ${groups}" th:aria-labelledby="'result-' + ${group.id()}">
-                <p class="section-label" th:text="'Investigation Item ' + (${group.position()} + 1) + (${group.required()} ? ' · Required' : ' · Optional')">Investigation Item</p>
-                <h2 th:id="'result-' + ${group.id()}" th:text="${group.gap()}">Knowledge gap</h2>
+            <section class="result-group" th:each="group : ${groups}" th:classappend="${group.reviewComplete()} ? ' result-group-reviewed' : ' result-group-needs-review'" th:aria-labelledby="'result-' + ${group.id()}">
+                <div class="result-heading-row">
+                    <div>
+                        <p class="section-label" th:text="'Investigation Item ' + (${group.position()} + 1) + (${group.required()} ? ' · Required' : ' · Optional')">Investigation Item</p>
+                        <h2 th:id="'result-' + ${group.id()}" th:text="${group.gap()}">Knowledge gap</h2>
+                    </div>
+                    <span class="result-review-status is-reviewed" th:if="${group.reviewComplete()}">Review complete</span>
+                    <span class="result-review-status is-open" th:if="${!group.reviewComplete() and group.canAcceptAsOpen()}">Open · acceptance allowed</span>
+                    <span class="result-review-status is-pending" th:if="${!group.reviewComplete() and !group.canAcceptAsOpen()}" th:text="${group.outstandingReviewCount() > 0 ? group.outstandingReviewCount() + (group.outstandingReviewCount() == 1 ? ' item needs review' : ' items need review') : 'Outcome needs review'}">Needs review</span>
+                </div>
                 <p class="result-outcome" th:text="'Outcome · ' + ${group.coverage()}">Outcome</p>
+                <p class="open-area-copy" th:if="${group.canAcceptAsOpen()}">No reviewable answer was captured for this area. You can leave it open and still accept the findings package.</p>
 
-                <article class="finding" th:each="item : ${group.knowledge()}" th:id="'knowledge-' + ${item.id()}">
-                    <p class="eyebrow" th:text="${item.category()}">Fact</p>
+                <article class="finding" th:each="item : ${group.knowledge()}" th:classappend="${item.reviewState() == 'UNREVIEWED' ? ' finding-needs-review' : item.reviewState() == 'ACCEPTED' ? ' finding-accepted' : item.reviewState() == 'REJECTED' ? ' finding-rejected' : ' finding-corrected'}" th:id="'knowledge-' + ${item.id()}">
+                    <div class="finding-heading-row">
+                        <p class="eyebrow" th:text="${item.category()}">Fact</p>
+                        <p class="finding-status" th:classappend="' finding-status-' + ${#strings.toLowerCase(item.reviewState())}" th:id="'knowledge-status-' + ${item.id()}" th:text="${item.reviewState() == 'UNREVIEWED' ? 'Needs review' : item.reviewState()}">Review state</p>
+                    </div>
                     <h3 th:text="${item.claim()}">Claim</h3>
                     <div th:each="source : ${item.sources()}" th:id="'evidence-' + ${source.evidenceId()}">
                         <blockquote th:text="${source.quote()}">Source quotation</blockquote>
@@ -45,19 +61,22 @@
                             <p class="subtle"><span th:text="${source.participant()}">Participant</span> · <time th:text="${source.evidenceAt()}">Time</time> · characters <span th:text="${source.startOffset()}">0</span>–<span th:text="${source.endOffset()}">0</span></p>
                         </details>
                     </div>
-                    <p class="finding-status" th:text="${item.reviewState()}">Review state</p>
-                    <form class="finding-actions" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/knowledge/' + ${item.id()} + '/decision'}">
+                    <form class="finding-actions" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/knowledge/' + ${item.id()} + '/decision'}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                         <button class="button compact" name="decision" value="ACCEPTED">Accept</button>
                         <button class="button secondary compact" name="decision" value="REJECTED">Reject</button>
                     </form>
-                    <form class="form correction-form" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/knowledge/' + ${item.id()} + '/correct'}">
+                    <form class="form correction-form" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/knowledge/' + ${item.id()} + '/correct'}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                         <label>Corrected claim<input name="claim" required maxlength="2000"></label>
                         <button class="button secondary compact">Correct</button>
                     </form>
                 </article>
 
-                <article class="finding" th:each="item : ${group.unresolved()}" th:id="'evidence-' + ${item.evidenceId()}">
-                    <p class="eyebrow" th:text="${item.kind()}">Unresolved</p>
+                <article class="finding" th:each="item : ${group.unresolved()}" th:classappend="${item.acknowledged()} ? ' finding-acknowledged' : ' finding-needs-review'" th:id="'evidence-' + ${item.evidenceId()}">
+                    <div class="finding-heading-row">
+                        <p class="eyebrow" th:text="${item.kind()}">Unresolved</p>
+                        <p class="finding-status finding-status-acknowledged" th:if="${item.acknowledged()}">Acknowledged · remains unresolved</p>
+                        <p class="finding-status finding-status-unreviewed" th:unless="${item.acknowledged()}">Needs acknowledgement</p>
+                    </div>
                     <h3 th:text="${item.summary()}">Summary</h3>
                     <p th:text="${item.reason()}">Reason</p>
                     <p th:if="${item.kind() == 'CONFLICT'}" th:text="'Conflict members · ' + ${item.conflictMemberCount()}">Conflict members</p>
@@ -67,21 +86,31 @@
                         <p th:text="${item.answer()}">Answer context</p>
                         <p class="subtle"><span th:text="${item.participant()}">Participant</span> · <time th:text="${item.evidenceAt()}">Time</time></p>
                     </details>
-                    <form th:unless="${item.acknowledged()}" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/unresolved/' + ${item.id()} + '/acknowledge'}"><button class="button secondary compact">Acknowledge unresolved</button></form>
+                    <div th:id="'unresolved-review-' + ${item.id()}">
+                        <form th:unless="${item.acknowledged()}" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/unresolved/' + ${item.id()} + '/acknowledge'}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})"><button class="button secondary compact">Acknowledge unresolved</button></form>
+                    </div>
                 </article>
             </section>
 
             <section class="package-decision" th:if="${package.state() == 'READY'}" aria-labelledby="package-decision-heading">
                 <h2 id="package-decision-heading">Decide this package</h2>
                 <p>Accepting publishes this exact version as reviewed Discovery context. Rejecting records the follow-up still required.</p>
+                <div id="package-review-readiness">
+                    <p class="notice-banner" role="status" th:if="${requiredOutcomesNeedingReview > 0}" th:text="${requiredOutcomesNeedingReview} + (${requiredOutcomesNeedingReview == 1} ? ' required outcome still needs review. Accept or reject each claim and acknowledge unresolved outcomes first.' : ' required outcomes still need review. Accept or reject each claim and acknowledge unresolved outcomes first.')">Required outcomes still need review.</p>
+                    <p class="notice-banner notice-neutral" role="status" th:if="${requiredOutcomesNeedingReview == 0 and openRequiredOutcomes > 0}" th:text="${openRequiredOutcomes} + (${openRequiredOutcomes == 1} ? ' required Investigation Item has no reviewable answer. You can explicitly accept the package with that area still open.' : ' required Investigation Items have no reviewable answer. You can explicitly accept the package with those areas still open.')">Required areas remain open.</p>
+                </div>
                 <div class="decision-grid">
-                    <form class="form decision-form" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/accept'}">
+                    <form class="form decision-form" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/accept'}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                         <input type="hidden" name="version" th:value="${package.version()}">
                         <p><strong>Accept package</strong><br>Publish the reviewed findings.</p>
+                        <label class="override-consent" th:if="${openRequiredOutcomes > 0}">
+                            <input type="checkbox" name="acceptOpenAreas" value="true" required>
+                            <span><strong th:text="'Accept with ' + ${openRequiredOutcomes} + (${openRequiredOutcomes == 1} ? ' required area still open' : ' required areas still open')">Accept with open areas</strong><small>The unanswered areas remain visible and are not treated as answered.</small></span>
+                        </label>
                         <label>Acceptance notes (optional)<textarea name="notes" maxlength="2000" rows="4"></textarea></label>
-                        <button class="button">Accept exact package</button>
+                        <button class="button" id="accept-findings-package" th:disabled="${requiredOutcomesNeedingReview > 0}">Accept exact package</button>
                     </form>
-                    <form class="form decision-form" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/reject'}">
+                    <form class="form decision-form" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/reject'}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                         <input type="hidden" name="version" th:value="${package.version()}">
                         <p><strong>Reject package</strong><br>Keep it unpublished and record what must happen next.</p>
                         <label>Required follow-up<textarea name="notes" required maxlength="2000" rows="4"></textarea></label>
@@ -94,7 +123,10 @@
         <section class="danger-zone">
             <h2>Delete this Interview Session</h2>
             <p>This immediately revokes access and schedules its Evidence and findings for deletion.</p>
-            <form method="post" th:action="@{'/app/interviews/' + ${findingsSession.id()} + '/delete'}"><button class="button secondary">Delete Interview Session</button></form>
+            <form method="post" th:action="@{'/app/interviews/' + ${findingsSession.id()} + '/delete'}">
+                <button class="button danger hold-confirm" type="submit" data-hold-confirm data-hold-label="Hold to delete Interview Session"><span data-hold-label-text>Hold to delete Interview Session</span></button>
+                <span class="sr-only" role="status" aria-live="polite" data-hold-status></span>
+            </form>
         </section>
     </main>
 </div>

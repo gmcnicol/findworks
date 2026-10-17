@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title th:text="${mission.label()} + ' · FindWorks'">Interview Mission · FindWorks</title>
     <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.3/bundles/datastar.js"></script>
 </head>
 <body class="app-body">
 <div class="app-frame">
@@ -12,13 +13,14 @@
     <main class="app-main review-shell">
         <nav class="breadcrumbs" aria-label="Breadcrumb"><a th:href="@{/app/missions}">Missions</a><span aria-hidden="true">/</span><span th:text="${mission.label()}">Current Mission</span></nav>
 
+        <div id="mission-review-state" th:fragment="missionReviewState">
         <header class="review-header">
             <div>
                 <p class="eyebrow">Interview Mission</p>
                 <h1 th:text="${mission.label()}">Interview Mission</h1>
                 <p><span class="status-label" th:classappend="${mission.state() == 'APPROVED'} ? ' status-active' : ' status-draft'" th:text="${mission.state() == 'APPROVED' ? 'Approved · Version ' + mission.version() : 'Draft · Version ' + mission.version()}">Draft · Version 1</span></p>
                 <p class="notice-banner" th:if="${mission.approvalSuperseded()}"><strong>Approval superseded.</strong> Review and approve this version before sending a new invitation.</p>
-                <p class="notice" th:if="${mission.state() == 'APPROVED' and !activeInvitation}">Approved. No invitation has been sent.</p>
+                <p class="notice" th:if="${mission.state() == 'APPROVED' and latestSession == null}">Approved. No invitation has been sent.</p>
                 <p class="notice" th:if="${mission.state() == 'APPROVED' and activeInvitation}"><strong>An invitation link is active.</strong> Generating another link will revoke it.</p>
             </div>
             <div class="review-progress" aria-label="Review progress">
@@ -35,7 +37,7 @@
                 <div><dt>Objective</dt><dd th:text="${mission.objective()}">Mission objective</dd></div>
                 <div><dt>Desired outcome</dt><dd th:text="${mission.desiredOutcome()}">Desired outcome</dd></div>
             </dl>
-            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[0]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}">
+            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[0]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                 <input type="hidden" name="version" th:value="${mission.version()}">
                 <button class="button secondary compact" type="submit" th:disabled="${checkpoint.reviewed()}" th:text="${checkpoint.reviewed() ? 'Reviewed · ' + checkpoint.label() : 'Mark reviewed · ' + checkpoint.label()}">Mark reviewed</button>
             </form>
@@ -48,7 +50,7 @@
                 <div><dt>Role</dt><dd th:text="${mission.intervieweeRole()}">Role</dd></div>
                 <div><dt>Why this person</dt><dd th:text="${mission.intervieweeRelevance()}">Relevance</dd></div>
             </dl>
-            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[1]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}">
+            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[1]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                 <input type="hidden" name="version" th:value="${mission.version()}">
                 <button class="button secondary compact" type="submit" th:disabled="${checkpoint.reviewed()}" th:text="${checkpoint.reviewed() ? 'Reviewed · ' + checkpoint.label() : 'Mark reviewed · ' + checkpoint.label()}">Mark reviewed</button>
             </form>
@@ -67,7 +69,7 @@
                 <p class="subtle"><strong>Relevant context:</strong> <span th:text="${item.context}"></span></p>
                 <p class="subtle"><strong>Enough evidence:</strong> <span th:text="${item.sufficient}"></span></p>
             </article>
-            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[2]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}">
+            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[2]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                 <input type="hidden" name="version" th:value="${mission.version()}">
                 <button class="button secondary compact" type="submit" th:disabled="${checkpoint.reviewed()}" th:text="${checkpoint.reviewed() ? 'Reviewed · ' + checkpoint.label() : 'Mark reviewed · ' + checkpoint.label()}">Mark reviewed</button>
             </form>
@@ -80,7 +82,7 @@
             <h3>Boundaries</h3><ul><li th:each="entry : ${entries['BOUNDARY']}" th:text="${entry.value()}">Boundary</li></ul>
             <h3>Prohibited topics</h3><ul><li th:each="entry : ${entries['PROHIBITED_TOPIC']}" th:text="${entry.value()}">Topic</li></ul>
             <h3>Opening questions</h3><ul><li th:each="entry : ${entries['OPENING_QUESTION']}" th:text="${entry.value()}">Question</li></ul>
-            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[3]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}">
+            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[3]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                 <input type="hidden" name="version" th:value="${mission.version()}">
                 <button class="button secondary compact" type="submit" th:disabled="${checkpoint.reviewed()}" th:text="${checkpoint.reviewed() ? 'Reviewed · ' + checkpoint.label() : 'Mark reviewed · ' + checkpoint.label()}">Mark reviewed</button>
             </form>
@@ -89,10 +91,9 @@
         <section class="review-section" aria-labelledby="completion-heading">
             <p class="section-label">Checkpoint 5</p>
             <h2 id="completion-heading">Completion and data use</h2>
-            <p><strong th:text="${mission.expectedMinutes()} + ' minutes expected'">20 minutes expected</strong></p>
             <p th:text="${mission.dataUse()}">Data use</p>
             <h3>Completion criteria</h3><ul><li th:each="entry : ${entries['COMPLETION_CRITERION']}" th:text="${entry.value()}">Criterion</li></ul>
-            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[4]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}">
+            <form class="checkpoint-action" th:with="checkpoint=${checkpoints[4]}" method="post" th:action="@{/app/missions/{id}/review/checkpoints/{checkpoint}(id=${missionId},checkpoint=${checkpoint.number()})}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                 <input type="hidden" name="version" th:value="${mission.version()}">
                 <button class="button secondary compact" type="submit" th:disabled="${checkpoint.reviewed()}" th:text="${checkpoint.reviewed() ? 'Reviewed · ' + checkpoint.label() : 'Mark reviewed · ' + checkpoint.label()}">Mark reviewed</button>
             </form>
@@ -139,29 +140,38 @@
             <dl class="review-fields"><div th:each="origin : ${origins}"><dt th:text="${origin.pointer()}">Field</dt><dd th:text="${origin.authority()}">Authority</dd></div></dl>
         </details>
 
-        <footer class="review-actions" th:if="${mission.state() == 'DRAFT'}">
+        <footer id="approval-decision" class="review-actions" th:if="${mission.state() == 'DRAFT'}">
             <p class="approval-hint" th:text="${reviewedCount == 5 ? 'Approval freezes this exact Mission version. It does not send an invitation.' : 'Complete all five review checkpoints to approve.'}">Complete all five review checkpoints to approve.</p>
-            <form method="post" th:action="@{/app/missions/{id}/approve(id=${missionId})}">
+            <form method="post" th:action="@{/app/missions/{id}/approve(id=${missionId})}" data-on:submit="@post(evt.currentTarget.action, {contentType: 'form'})">
                 <input type="hidden" name="version" th:value="${mission.version()}">
                 <button class="button" type="submit" th:disabled="${reviewedCount != 5 or !originBindingsComplete}">Approve this version</button>
             </form>
         </footer>
 
-        <section class="task-section" th:if="${mission.state() == 'APPROVED'}" aria-labelledby="invite-heading">
+        <section class="task-section" th:if="${latestSession != null}" aria-labelledby="session-heading">
+            <p class="section-label">Interview Session</p>
+            <h2 id="session-heading">Current interview status</h2>
+            <p><span class="status-label status-active" th:text="${latestSession.state()}">ACTIVE</span></p>
+            <a class="button secondary" th:href="@{/app/interviews/{id}(id=${latestSession.id()})}">View interview status</a>
+        </section>
+
+        <section class="task-section" th:if="${mission.state() == 'APPROVED' and (latestSession == null or latestSession.state() == 'NOT_STARTED' or latestSession.state() == 'ACTIVE' or latestSession.state() == 'PAUSED' or latestSession.state() == 'AWAITING_CONFIRMATION' or latestSession.state() == 'RUNTIME_FAILED')}" aria-labelledby="invite-heading">
             <p class="section-label">Next action</p>
             <h2 id="invite-heading">Invite the interviewee</h2>
-            <p th:if="${!activeInvitation}">Enter the recipient, generate their secure link, then copy and send it yourself.</p>
-            <p th:if="${activeInvitation}">Generate a replacement only if the interviewee has lost access. Their previous link will stop working.</p>
+            <p th:if="${latestSession == null and emailDeliveryAvailable}">Confirm the recipient and email their invitation. They can create an account or use their existing account.</p>
+            <p th:if="${latestSession == null and !emailDeliveryAvailable}">Email delivery is unavailable. Generate a link to copy and share instead.</p>
+            <p th:if="${latestSession != null}">Email a replacement invitation to resume this same interview. Accepted answers stay saved; previous invitations and access are replaced. After accepting, the interviewee can return through their saved work without another invitation.</p>
             <form class="form" method="post" th:action="@{/app/missions/{id}/invite(id=${missionId})}">
                 <input type="hidden" name="version" th:value="${mission.version()}">
-                <label>Name<input name="name" autocomplete="name" required maxlength="120"></label>
-                <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
+                <label>Name<input name="name" autocomplete="name" required maxlength="120" th:value="${latestSession != null ? latestSession.name() : ''}" th:readonly="${latestSession != null and latestSession.state() != 'NOT_STARTED'}"></label>
+                <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" th:value="${latestSession != null ? latestSession.email() : ''}" th:readonly="${latestSession != null and latestSession.state() != 'NOT_STARTED'}"></label>
                 <div class="form-actions">
-                    <button class="button" type="submit" name="delivery" value="manual">Generate link</button>
-                    <button class="button secondary" th:if="${emailDeliveryAvailable}" type="submit" name="delivery" value="email">Send invitation</button>
+                    <button class="button" th:if="${emailDeliveryAvailable}" type="submit" name="delivery" value="email">Email invitation</button>
+                    <button class="button secondary" type="submit" name="delivery" value="manual">Generate link instead</button>
                 </div>
             </form>
         </section>
+        </div>
     </main>
 </div>
 </body>

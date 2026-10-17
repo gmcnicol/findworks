@@ -47,6 +47,57 @@ public class InvestigatorAccountRepository {
                 .optional();
     }
 
+    public Optional<AuthenticatedInvestigator> findActiveByClerkUserId(String clerkUserId, String pilotOrganizationSlug) {
+        return jdbcClient.sql("""
+                select
+                    u.id as user_id,
+                    u.email,
+                    u.display_name,
+                    m.id as membership_id,
+                    o.id as organization_id,
+                    o.slug as organization_slug,
+                    o.name as organization_name
+                from users u
+                join memberships m on m.user_id = u.id
+                join organizations o on o.id = m.organization_id
+                where u.clerk_user_id = :clerkUserId
+                  and o.slug = :organizationSlug
+                  and u.active = true
+                  and u.email_verified = true
+                  and m.active = true
+                  and o.active = true
+                """)
+                .param("clerkUserId", clerkUserId)
+                .param("organizationSlug", pilotOrganizationSlug)
+                .query((rs, rowNum) -> mapInvestigator(rs))
+                .optional();
+    }
+
+    public boolean hasClerkUserId(String clerkUserId) {
+        return jdbcClient.sql("select exists(select 1 from users where clerk_user_id=:id)")
+                .param("id", clerkUserId).query(Boolean.class).single();
+    }
+
+    public boolean linkClerkUserByVerifiedEmail(String clerkUserId, String email, String pilotOrganizationSlug) {
+        int linked = jdbcClient.sql("""
+                update users u set clerk_user_id=:clerkUserId
+                where lower(u.email)=lower(:email)
+                  and (select count(*) from users candidate where lower(candidate.email)=lower(:email))=1
+                  and u.email_verified=true
+                  and u.active=true
+                  and (u.clerk_user_id is null or u.clerk_user_id=:clerkUserId)
+                  and exists(
+                    select 1 from memberships m join organizations o on o.id=m.organization_id
+                    where m.user_id=u.id and m.active=true and o.active=true and o.slug=:organizationSlug
+                  )
+                """)
+                .param("clerkUserId", clerkUserId)
+                .param("email", email)
+                .param("organizationSlug", pilotOrganizationSlug)
+                .update();
+        return linked == 1;
+    }
+
     public Optional<AuthenticatedInvestigator> findActiveByMembershipId(UUID membershipId, String pilotOrganizationSlug) {
         return jdbcClient.sql("""
                 select

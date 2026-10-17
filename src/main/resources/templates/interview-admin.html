@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${interview.mission()} + ' · FindWorks'">Interview status · FindWorks</title>
+    <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <script type="module" th:src="@{/assets/hold-to-confirm.js}"></script>
+</head>
+<body class="app-body"><div class="app-frame">
+    <th:block th:replace="~{fragments/app-shell :: sidebar('missions', ${investigator})}"></th:block>
+    <main class="app-main review-shell">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+            <a th:href="@{/app/discoveries/{id}(id=${interview.discoveryId()})}" th:text="${interview.discovery()}">Discovery</a><span aria-hidden="true">/</span>
+            <a th:href="@{/app/missions/{id}/review(id=${interview.missionId()})}" th:text="${interview.mission()}">Mission</a><span aria-hidden="true">/</span><span>Interview status</span>
+        </nav>
+        <header class="workspace-header detail-header"><div>
+            <h1 th:text="${interview.resume().status()}">Interview status</h1>
+            <p th:text="${explanation}">Current state</p>
+        </div></header>
+
+        <section class="review-section" aria-labelledby="session-details-heading">
+            <h2 id="session-details-heading">Session details</h2>
+            <dl class="review-fields">
+                <div><dt>Interviewee</dt><dd><span th:text="${interview.participant()}">Name</span><br><span class="subtle" th:text="${interview.participantEmail()}">email@example.com</span></dd></div>
+                <div><dt>Accepted answers</dt><dd th:text="${interview.answerCount()}">0</dd></div>
+                <div><dt>Interview access</dt><dd th:text="${interview.accessActive() ? 'Active' : 'Not active'}">Active</dd></div>
+                <div th:if="${interview.lastAnswerAt() != null}"><dt>Last accepted answer</dt><dd><time th:datetime="${interview.lastAnswerAt()}" th:text="${#temporals.format(interview.lastAnswerAt(), 'd MMM yyyy, HH:mm')} + ' UTC'">Saved</time></dd></div>
+            </dl>
+        </section>
+
+        <section class="task-section" th:if="${canReissue}">
+            <h2>Reissue interview access</h2>
+            <p th:if="${clerkEnabled}">Interviewees return by signing in and opening their saved work on any device. Reissue only if access needs replacing: it revokes previous invitations and account access while preserving this Session and its Evidence.</p>
+            <p th:unless="${clerkEnabled}">If the interviewee cannot return, generate a replacement invitation. Reissue revokes every previous invitation and development browser grant while preserving this Session and its Evidence.</p>
+            <a class="button secondary" th:href="${'/app/missions/' + interview.missionId() + '/review#invite-heading'}">Open invitation controls</a>
+        </section>
+
+        <section class="task-section" th:if="${findingsAvailable}">
+            <h2>Continue with findings</h2>
+            <a class="button" th:href="${interview.resume().href()}" th:text="${interview.resume().label()}">Open findings</a>
+        </section>
+
+        <section class="danger-zone" th:if="${canTerminate}">
+            <h2>Terminate this interview</h2>
+            <p>This revokes participant access. Existing Evidence is preserved.</p>
+            <form method="post" th:action="@{/app/interviews/{id}/terminate(id=${interview.id()})}">
+                <button class="button danger hold-confirm" type="submit" data-hold-confirm data-hold-label="Hold to terminate interview"><span data-hold-label-text>Hold to terminate interview</span></button>
+                <span class="sr-only" role="status" aria-live="polite" data-hold-status></span>
+            </form>
+        </section>
+    </main>
+</div></body>
+</html>

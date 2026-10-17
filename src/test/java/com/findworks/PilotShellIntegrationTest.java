@@ -119,6 +119,100 @@ class PilotShellIntegrationTest {
     }
 
     @Test
+    void returning_investigator_resumes_first_unreviewed_checkpoint_then_approval() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var submitted = submitMission(access, UUID.randomUUID());
+        var mission = UUID.fromString(submitted.path("mission_id").asText());
+        var discovery = submitted.path("discovery_id").asText();
+        jdbcTemplate.update("insert into mission_review values(?,1,1)", mission);
+        jdbcTemplate.update("insert into mission_review values(?,1,3)", mission);
+        mockMvc.perform(get("/app/missions").session(access.session())).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/review#interviewee-heading")));
+        mockMvc.perform(get("/app/discoveries/" + discovery).session(access.session())).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/review#interviewee-heading")));
+        for (int checkpoint : new int[] {2,4,5}) jdbcTemplate.update("insert into mission_review values(?,1,?)", mission, checkpoint);
+        mockMvc.perform(get("/app").session(access.session())).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/review#approval-decision")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Ready for approval")));
+    }
+
+    @Test
+    void paused_interview_reopens_in_new_http_session_and_server_expiry_denies_the_old_grant() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var submitted = submitMission(access, UUID.randomUUID());
+        var mission = submitted.path("mission_id").asText();
+        approveMission(access, mission, 1);
+        var participant = beginInterview(access, mission, "continuity@example.com");
+        answerAndRun(participant, "A missing reference required a manual correction.");
+        mockMvc.perform(post("/interview/pause").session(participant.session()).cookie(participant.cookie())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().is3xxRedirection());
+        var reopened = mockMvc.perform(get("/interview").cookie(participant.cookie())).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Your place is saved"))).andReturn();
+        mockMvc.perform(post("/interview/resume").session((MockHttpSession) reopened.getRequest().getSession())
+                .cookie(participant.cookie()).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().is3xxRedirection());
+        mockMvc.perform(get("/app/interviews/" + participant.sessionId()).session(access.session()))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("Interview in progress")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Accepted answers")));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+        jdbcTemplate.update("update access_grants set expires_at=now()-interval '1 second' where session_id=?", participant.sessionId());
+        mockMvc.perform(get("/interview").cookie(participant.cookie())).andExpect(status().isForbidden());
+        mockMvc.perform(get("/app/discoveries/" + submitted.path("discovery_id").asText()).session(access.session()))
+                .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.containsString("Interview access needs reissue")));
+    }
+
+    @Test
+    void reissue_cannot_change_a_started_interviewees_evidence_attribution() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var mission = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, mission, 1);
+        var participant = beginInterview(access, mission, "original-owner@example.com");
+        mockMvc.perform(post("/app/missions/" + mission + "/invite").session(access.session())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .param("version", "1").param("name", "Another person").param("email", "different-owner@example.com"))
+                .andExpect(status().isConflict());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select p.email from participants p join interview_sessions s on s.participant_id=p.id where s.id=?", String.class, participant.sessionId()))
+                .isEqualTo("original-owner@example.com");
+        mockMvc.perform(get("/interview").cookie(participant.cookie())).andExpect(status().isOk());
+    }
+
+    @Test
+    void new_version_reissue_before_begin_uses_new_approved_version_in_the_same_session() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var mission = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, mission, 1);
+        mockMvc.perform(post("/app/missions/" + mission + "/invite").session(access.session())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .param("version", "1").param("name", "Clare").param("email", "version-reissue@example.com").param("delivery", "email"))
+                .andExpect(status().is3xxRedirection());
+        mockMvc.perform(post("/app/missions/" + mission + "/edit").session(access.session())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .param("version", "1").param("field", "objective").param("value", "Explore the revised objective"))
+                .andExpect(status().is3xxRedirection());
+        approveMission(access, mission, 2);
+        mockMvc.perform(post("/app/missions/" + mission + "/invite").session(access.session())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .param("version", "2").param("name", "Clare").param("email", "version-reissue@example.com").param("delivery", "email"))
+                .andExpect(status().is3xxRedirection());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select count(*) from interview_sessions where mission_id=?", Integer.class, UUID.fromString(mission))).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select mission_version from interview_sessions where mission_id=?", Integer.class, UUID.fromString(mission))).isEqualTo(2);
+    }
+
+    @Test
+    void meaningful_activity_updates_recency_but_reads_and_noop_updates_do_not() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var mission = UUID.fromString(submitMission(access, UUID.randomUUID()).path("mission_id").asText());
+        jdbcTemplate.update("update missions set last_activity_at=now()-interval '1 day' where id=?", mission);
+        var before = jdbcTemplate.queryForObject("select last_activity_at from missions where id=?", java.time.OffsetDateTime.class, mission);
+        mockMvc.perform(get("/app").session(access.session())).andExpect(status().isOk());
+        jdbcTemplate.update("update mission_versions set objective=objective where mission_id=?", mission);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select last_activity_at from missions where id=?", java.time.OffsetDateTime.class, mission)).isEqualTo(before);
+        jdbcTemplate.update("insert into mission_review values(?,1,1)", mission);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select last_activity_at from missions where id=?", java.time.OffsetDateTime.class, mission)).isAfter(before);
+    }
+
+    @Test
     void inactive_and_cross_organization_accounts_fail_closed() throws Exception {
         mockMvc.perform(post("/signin")
                         .param("username", "inactive.user@example.com")
@@ -241,7 +335,7 @@ class PilotShellIntegrationTest {
     }
 
     @Test
-    void oauth_refresh_token_rotates_and_revocation_ends_the_grant() throws Exception {
+    void oauth_refresh_token_survives_concurrent_clients_and_revocation_ends_the_grant() throws Exception {
         var access = authorizeHarness("findworks:read");
         jdbcTemplate.update("update oauth_tokens set expires_at=now()-interval '1 second' where hash=?",
                 com.findworks.platform.Ids.sha(access.token()));
@@ -257,7 +351,7 @@ class PilotShellIntegrationTest {
         var accessToken = refreshed.path("access_token").asText();
         var refreshToken = refreshed.path("refresh_token").asText();
         org.assertj.core.api.Assertions.assertThat(accessToken).isNotBlank();
-        org.assertj.core.api.Assertions.assertThat(refreshToken).isNotBlank().isNotEqualTo(access.refreshToken());
+        org.assertj.core.api.Assertions.assertThat(refreshToken).isEqualTo(access.refreshToken());
 
         mockMvc.perform(post("/mcp").header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON).content("""
@@ -269,7 +363,11 @@ class PilotShellIntegrationTest {
                         .param("grant_type", "refresh_token")
                         .param("client_id", access.clientId())
                         .param("refresh_token", access.refreshToken()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.refresh_token").value(access.refreshToken()));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select expires_at='infinity'::timestamptz from oauth_refresh_tokens where hash=?",
+                Boolean.class, com.findworks.platform.Ids.sha(access.refreshToken()))).isTrue();
 
         mockMvc.perform(post("/oauth/revoke")
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
@@ -300,6 +398,21 @@ class PilotShellIntegrationTest {
                                 {"redirect_uris":["http://127.0.0.1:49152/callback"],"scope":"findworks:read"}
                                 """))
                 .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void mission_tools_do_not_expose_duration_or_commitment() throws Exception {
+        var access = authorizeHarness("findworks:read");
+        mockMvc.perform(post("/mcp")
+                        .header("Authorization", "Bearer " + access.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"jsonrpc":"2.0","id":25,"method":"tools/list","params":{}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("expected_commitment"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("expected_minutes"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("time limit"))));
     }
 
     @Test
@@ -387,7 +500,6 @@ class PilotShellIntegrationTest {
                       "terminology":[],
                       "opening_questions":[],
                       "completion_criteria":[],
-                      "expected_commitment_minutes":20,
                       "data_use_summary":"Reviewed findings may be exported."
                     },
                     "origins":[],
@@ -436,21 +548,44 @@ class PilotShellIntegrationTest {
                         .session(access.session())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                         .param("version", "1"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isUnprocessableContent());
 
         for (int checkpoint = 1; checkpoint <= 5; checkpoint++) {
             mockMvc.perform(post("/app/missions/{missionId}/review/checkpoints/{checkpoint}", missionId, checkpoint)
                             .session(access.session())
+                            .header("Datastar-Request", "true")
                             .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                             .param("version", "1"))
-                    .andExpect(status().is3xxRedirection());
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Datastar-Selector", "#mission-review-state"))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("Reviewed ·")));
         }
+        mockMvc.perform(post("/app/missions/{missionId}/review/checkpoints/1", missionId)
+                        .session(access.session())
+                        .header("Datastar-Request", "true")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("version", "1"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("5 of 5 checkpoints reviewed")));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from mission_review where mission_id=? and version=1",
+                Integer.class, UUID.fromString(missionId))).isEqualTo(5);
 
         mockMvc.perform(post("/app/missions/{missionId}/approve", missionId)
                         .session(access.session())
+                        .header("Datastar-Request", "true")
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                         .param("version", "1"))
-                .andExpect(status().is3xxRedirection());
+                .andExpect(status().isOk())
+                .andExpect(header().string("Datastar-Selector", "#mission-review-state"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Approved · Version 1")));
+        mockMvc.perform(post("/app/missions/{missionId}/approve", missionId)
+                        .session(access.session())
+                        .header("Datastar-Request", "true")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("version", "1"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Approved · Version 1")));
         mockMvc.perform(get(reviewUrl).session(access.session()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Approved · Version 1")))
@@ -542,7 +677,6 @@ class PilotShellIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Gareth")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("FindWorks Pilot")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Understand Ledgerling reconciliation")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("20 minutes")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("90 days")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("privacy@findworks.test")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Begin interview")))
@@ -657,7 +791,8 @@ class PilotShellIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Answer accepted")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("The finance analyst checks the source ledger")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Preparing your next question")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("http-equiv=\"refresh\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-init=\"@get(&#39;/interview/events&#39;)\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("http-equiv=\"refresh\""))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Pi RPC"))));
 
         var persisted = jdbcTemplate.queryForMap("""
@@ -675,6 +810,13 @@ class PilotShellIntegrationTest {
         mockMvc.perform(post("/test/runtime/run-once"))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"event\":\"question_ready\"}"));
+
+        mockMvc.perform(get("/interview/state").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Datastar-Selector", "#interview-shell"))
+                .andExpect(header().string("Datastar-Mode", "outer"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id=\"interview-shell\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("What does the finance analyst check in the source ledger?")));
 
         for (int refresh = 0; refresh < 2; refresh++) {
             mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
@@ -763,6 +905,50 @@ class PilotShellIntegrationTest {
                 .contains("They decide which mismatch is acceptable.")
                 .contains("unresolved_source_url").doesNotContain("#evidence-null")
                 .doesNotContain("routes@example.com");
+    }
+
+    @Test
+    void investigator_can_explicitly_accept_findings_with_required_areas_still_open() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var submitted = submitMission(access, UUID.randomUUID());
+        var missionId = submitted.path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "open-findings@example.com");
+        jdbcTemplate.update("update questions set active=false where session_id=?", participant.sessionId());
+        jdbcTemplate.update("update interview_sessions set state='COMPLETED',completed_at=now() where id=?", participant.sessionId());
+
+        mockMvc.perform(post("/test/extraction/run-once")).andExpect(status().isOk());
+        mockMvc.perform(get("/app/findings/{sessionId}", participant.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("1 required area remains open")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Open · acceptance allowed")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Accept with 1 required area still open")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("id=\"accept-findings-package\" disabled"))));
+
+        mockMvc.perform(post("/app/findings/{sessionId}/accept", participant.sessionId()).session(access.session())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("version", "1"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/app/findings/{sessionId}/accept", participant.sessionId()).session(access.session())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("version", "1").param("acceptOpenAreas", "true").param("notes", "Useful findings are ready."))
+                .andExpect(status().is3xxRedirection());
+
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForMap("""
+                        select pv.state,pv.notes from findings_packages fp
+                        join package_versions pv on pv.package_id=fp.id and pv.version=fp.current_version
+                        where fp.session_id=?
+                        """, participant.sessionId()))
+                .containsEntry("state", "ACCEPTED");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("""
+                        select notes from findings_packages fp join package_versions pv
+                        on pv.package_id=fp.id and pv.version=fp.current_version where fp.session_id=?
+                        """, String.class, participant.sessionId()))
+                .contains("1 required Investigation Item still open", "Useful findings are ready.");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("""
+                        select count(*) from audit_events where action='FINDINGS_ACCEPTED_WITH_OPEN_AREAS'
+                          and resource_id=(select id from findings_packages where session_id=?)
+                        """, Integer.class, participant.sessionId())).isEqualTo(1);
     }
 
     @Test
@@ -1342,6 +1528,31 @@ class PilotShellIntegrationTest {
     }
 
     @Test
+    void runtime_context_excludes_withdrawn_unanswered_questions_but_retains_accepted_evidence() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var mission = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, mission, 1);
+        var participant = beginInterview(access, mission, "context-repair@example.com");
+        mockMvc.perform(post("/interview/answer").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("answer", "Our team tracks client deadlines manually."))
+                .andExpect(status().is3xxRedirection());
+        jdbcTemplate.update("""
+                insert into questions(id,organization_id,session_id,item_id,sequence,text,active)
+                select ?,organization_id,session_id,item_id,2,'Assess the unseen candidate inventory',false
+                from questions where session_id=? and sequence=1
+                """, UUID.randomUUID(), participant.sessionId());
+        var run = jdbcTemplate.queryForMap("select id,expected_revision from runtime_runs where session_id=?", participant.sessionId());
+        var context = runtimeTurnContext.project((UUID) run.get("id"), participant.sessionId(), 1,
+                ((Number) run.get("expected_revision")).intValue());
+        org.assertj.core.api.Assertions.assertThat(context.get("questions_and_evidence").toString())
+                .contains("Our team tracks client deadlines manually.")
+                .doesNotContain("Assess the unseen candidate inventory");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from questions where session_id=?", Integer.class, participant.sessionId())).isEqualTo(2);
+    }
+
+    @Test
     void turn_scoped_runtime_capability_commits_once_and_replays_only_the_stable_event() throws Exception {
         var access = authorizeHarness("findworks:read findworks:write");
         var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
@@ -1530,7 +1741,6 @@ class PilotShellIntegrationTest {
                     "terminology":[{"term":"Mismatch","meaning":"Imported data that does not reconcile automatically."}],
                     "opening_questions":["Walk me through the last mismatch you resolved."],
                     "completion_criteria":["Every required area has an explicit outcome."],
-                    "expected_commitment_minutes":20,
                     "data_use_summary":"Reviewed findings and bounded source excerpts may be exported to the Investigator project; later deletion cannot recall those copies."
                   },
                   "origins":[
@@ -1547,7 +1757,6 @@ class PilotShellIntegrationTest {
                     {"pointer":"/mission/terminology/0","authority":"CONFIRMED_AGENT_PROPOSAL"},
                     {"pointer":"/mission/opening_questions/0","authority":"CONFIRMED_AGENT_PROPOSAL"},
                     {"pointer":"/mission/completion_criteria/0","authority":"CONFIRMED_AGENT_PROPOSAL"},
-                    {"pointer":"/mission/expected_commitment_minutes","authority":"INVESTIGATOR_STATEMENT"},
                     {"pointer":"/mission/data_use_summary","authority":"INVESTIGATOR_STATEMENT"}
                   ],
                   "project_references":[{"kind":"repository_file","locator":"docs/domain.md","revision":"abc123"}],

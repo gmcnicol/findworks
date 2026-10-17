@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Your saved work · FindWorks</title>
+    <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <th:block th:replace="~{fragments/clerk :: scripts}"></th:block>
+</head>
+<body>
+<main class="shell">
+    <header class="participant-masthead">
+        <a class="participant-brand" th:href="@{/work}">FindWorks</a>
+        <button class="text-button" type="button" data-clerk-sign-out>Sign out</button>
+    </header>
+    <p hidden role="alert" data-clerk-sign-out-error>Sign-out failed. Check your connection and try again.</p>
+    <h1>Your saved work</h1>
+    <p class="subtle">Return here any time. Your progress is saved with your account.</p>
+
+    <section th:if="${investigator != null}" aria-labelledby="research-heading">
+        <h2 id="research-heading">Research you’re running</h2>
+        <p><a class="button secondary" th:href="@{/app}">Open research workspace</a></p>
+        <h3>Your Discoveries</h3>
+        <p th:if="${discoveries.isEmpty()}">No Discoveries yet. Shape your first Interview Mission in your agent harness.</p>
+        <ul class="work-list" th:unless="${discoveries.isEmpty()}">
+            <li th:each="discovery : ${discoveries}"><a th:href="@{/app/discoveries/{id}(id=${discovery.id()})}" th:text="${discovery.title()}">Discovery</a></li>
+        </ul>
+        <h3>Your Interview Missions</h3>
+        <p th:if="${missions.isEmpty()}">Your saved Missions will appear here.</p>
+        <article class="panel" th:each="mission : ${missions}">
+            <h3 th:text="${mission.label()}">Mission</h3>
+            <p class="subtle" th:text="${mission.status()}">Status</p>
+            <a class="button secondary" th:href="${mission.href()}" th:text="${mission.action()}">Continue</a>
+        </article>
+    </section>
+
+    <section aria-labelledby="interviews-heading">
+        <h2 id="interviews-heading">Interviews you’re answering</h2>
+        <p th:if="${interviews.isEmpty()}">No interviews linked yet. Open an invitation and sign in with the email address it was sent to. Once linked, the interview stays here—you won’t need the invitation again.</p>
+        <article class="panel" th:each="interview : ${interviews}">
+            <h3 th:text="${interview.objective()}">Interview purpose</h3>
+            <p class="subtle" th:text="${interview.status()}">In progress</p>
+            <a class="button" th:href="@{/interview/{id}(id=${interview.id()})}" th:text="${interview.action()}">Continue interview</a>
+        </article>
+        <p class="subtle">Missing an interview? Check that you used the invited email address, or ask the researcher to check your access.</p>
+    </section>
+    <p><button class="text-button" type="button" data-clerk-switch-account>Use a different account</button></p>
+</main>
+</body>
+</html>

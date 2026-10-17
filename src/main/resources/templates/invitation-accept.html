@@ -1,12 +1,14 @@
 <!doctype html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Open invitation · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Open invitation · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block></head>
 <body class="participant-body">
 <main class="shell centered">
+    <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
     <section class="panel state-panel">
         <p class="eyebrow">Private interview invitation</p>
         <h1>You’ve been invited</h1>
         <p>Continue to securely open your FindWorks interview invitation.</p>
+        <p th:if="${clerkEnabled}">Use the email address this invitation was sent to. Your interview will be linked to your account so you can return from any device.</p>
         <p class="subtle">The invitation works once. Opening this page does not use it.</p>
         <form method="post" th:action="@{/invite/{token}(token=${token})}"><button class="button" type="submit">Continue to invitation</button></form>
     </section>

@@ -12,14 +12,21 @@ public class HomeController {
     @GetMapping("/")
     String landing(@RequestParam(name = "signed_out", defaultValue = "false") boolean signedOut, Authentication authentication, Model model) {
         if (authentication != null && authentication.isAuthenticated() && !(authentication.getPrincipal() instanceof String)) {
-            return "redirect:/app";
+            return "redirect:/work";
         }
         model.addAttribute("signedOut", signedOut);
         return "landing";
     }
 
-    @GetMapping("/signin")
-    String signIn() {
+    @GetMapping({"/signin", "/signup"})
+    String signIn(@RequestParam(defaultValue = "/work") String returnTo,
+                  @RequestParam(name = "__clerk_status", defaultValue = "sign_in") String clerkStatus,
+                  Model model, jakarta.servlet.http.HttpServletRequest request,
+                  jakarta.servlet.http.HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        model.addAttribute("signInDestination", SignInDestination.safe(returnTo));
+        model.addAttribute("clerkAuthComponent", request.getRequestURI().equals("/signup") || clerkStatus.equals("sign_up")
+                ? "sign-up" : "sign-in");
         return "signin";
     }
 

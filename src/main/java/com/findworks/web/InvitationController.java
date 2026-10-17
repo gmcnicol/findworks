@@ -10,6 +10,7 @@ import com.findworks.platform.Ids;
 import com.findworks.platform.security.CurrentInvestigatorService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Controller
 public class InvitationController {
@@ -41,13 +43,21 @@ public class InvitationController {
     private final boolean testSupport;
     private final boolean secureCookie;
     private final EmailDeliveryService emailDelivery;
+    private final InterviewEventStream eventStream;
+    private final com.findworks.platform.config.ClerkProperties clerkProperties;
+    private final org.springframework.beans.factory.ObjectProvider<ClerkInterviewAccess> accountAccess;
+    private final HttpServletRequest currentRequest;
 
     public InvitationController(JdbcClient db, CurrentInvestigatorService currentInvestigator,
                                 TransactionTemplate transactions,
                                 @Value("${findworks.base-url}") String baseUrl,
                                 @Value("${findworks.test-support:false}") boolean testSupport,
                                 @Value("${findworks.cookie-secure:true}") boolean secureCookie,
-                                EmailDeliveryService emailDelivery) {
+                                EmailDeliveryService emailDelivery,
+                                InterviewEventStream interviewEvents,
+                                com.findworks.platform.config.ClerkProperties clerkProperties,
+                                org.springframework.beans.factory.ObjectProvider<ClerkInterviewAccess> accountAccess,
+                                HttpServletRequest currentRequest) {
         this.db = db;
         this.currentInvestigator = currentInvestigator;
         this.transactions = transactions;
@@ -55,6 +65,10 @@ public class InvitationController {
         this.testSupport = testSupport;
         this.secureCookie = secureCookie;
         this.emailDelivery = emailDelivery;
+        this.eventStream = interviewEvents;
+        this.clerkProperties = clerkProperties;
+        this.accountAccess = accountAccess;
+        this.currentRequest = currentRequest;
     }
 
     @PostMapping("/app/missions/{missionId}/invite")
@@ -70,6 +84,9 @@ public class InvitationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid recipient");
         }
         var created = transactions.execute(status -> {
+            // Serialise reissues for this Mission so concurrent sends cannot leave two valid invitations.
+            db.sql("select pg_advisory_xact_lock(hashtextextended(:mission,0))")
+                    .param("mission", missionId.toString()).query((rs, row) -> true).single();
             var approved = db.sql("""
                     select d.id,m.organization_id
                     from missions m join discoveries d on d.id=m.discovery_id and d.organization_id=m.organization_id
@@ -83,15 +100,31 @@ public class InvitationController {
                     .param("mission", missionId).query(Long.class).single();
             if (recent >= 10) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Try again later");
 
-            var existing = db.sql("select id,participant_id from interview_sessions where mission_id=:mission and deleted_at is null order by id limit 1")
-                    .param("mission", missionId)
-                    .query((rs, row) -> new ExistingSession(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)))
-                    .optional();
+            var existing = db.sql("""
+                    select s.id,s.participant_id,s.state,s.mission_version,p.name,p.email
+                    from interview_sessions s join participants p on p.id=s.participant_id
+                    where s.mission_id=:mission and s.deleted_at is null
+                    order by s.created_at desc,s.id desc limit 1 for update of s,p
+                    """).param("mission", missionId)
+                    .query((rs, row) -> new ExistingSession(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
+                            rs.getString(3), rs.getInt(4), rs.getString(5), rs.getString(6))).optional();
             UUID sessionId;
             if (existing.isPresent()) {
-                sessionId = existing.get().id();
-                db.sql("update participants set name=:name,email=:email where id=:id")
-                        .param("name", participantName).param("email", recipient).param("id", existing.get().participantId()).update();
+                if (java.util.Set.of("COMPLETED", "ENDED_EARLY", "TERMINATED").contains(existing.get().state())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "This Interview Session has ended");
+                }
+                var previous = existing.get();
+                sessionId = previous.id();
+                if (previous.state().equals("NOT_STARTED")) {
+                    db.sql("update participants set name=:name,email=:email where id=:id")
+                            .param("name", participantName).param("email", recipient).param("id", previous.participantId()).update();
+                    db.sql("update interview_sessions set mission_version=:version where id=:id")
+                            .param("version", version).param("id", sessionId).update();
+                } else if (previous.missionVersion() != version || !previous.email().equalsIgnoreCase(recipient)
+                        || !previous.name().equals(participantName)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Reissue must preserve the original interviewee and approved Mission version");
+                }
                 db.sql("update invitations set state='REVOKED',revoked_at=now() where session_id=:session and state<>'REVOKED'")
                         .param("session", sessionId).update();
                 db.sql("update access_grants set revoked_at=now() where session_id=:session and revoked_at is null")
@@ -143,6 +176,13 @@ public class InvitationController {
     Object invitation(@PathVariable String token, HttpServletRequest request, Model model) {
         var limited = invitationRateLimit(request);
         if (limited.isPresent()) return limited.get();
+        if (clerkProperties.enabled()) {
+            if (!(request.getUserPrincipal() instanceof Authentication authentication)) {
+                return "redirect:/signin?returnTo=" + java.net.URLEncoder.encode(request.getRequestURI(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+            var claimed = accountAccess.getObject().previouslyClaimed(token, ClerkInterviewAccess.subject(authentication));
+            if (claimed.isPresent()) return "redirect:/interview/" + claimed.get();
+        }
         var available = db.sql("""
                 select count(*) from invitations
                 where token_hash=:hash and state='DELIVERED' and redeemed_at is null
@@ -157,9 +197,32 @@ public class InvitationController {
     }
 
     @PostMapping("/invite/{token}")
-    ResponseEntity<String> redeem(@PathVariable String token, HttpServletRequest request) {
+    Object redeem(@PathVariable String token, HttpServletRequest request, HttpServletResponse response) {
         var limited = invitationRateLimit(request);
         if (limited.isPresent()) return limited.get();
+        if (clerkProperties.enabled()) {
+            if (!(request.getUserPrincipal() instanceof Authentication authentication)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+            try {
+                UUID sessionId = accountAccess.getObject().claim(token, ClerkInterviewAccess.subject(authentication));
+                return ResponseEntity.status(HttpStatus.FOUND).location(URI.create("/interview/" + sessionId)).build();
+            } catch (ResponseStatusException failure) {
+                recordDeniedInvitationAttempt(request);
+                denied("INVITATION_REDEMPTION_DENIED", null, null);
+                var view = new org.springframework.web.servlet.ModelAndView("invitation-access-denied");
+                view.setStatus(failure.getStatusCode());
+                view.addObject("signInDestination", request.getRequestURI());
+                return view;
+            } catch (com.findworks.platform.security.ClerkIdentityUnavailableException unavailable) {
+                response.setHeader("Retry-After", "5");
+                var view = new org.springframework.web.servlet.ModelAndView("invitation-access-denied");
+                view.setStatus(HttpStatus.SERVICE_UNAVAILABLE);
+                view.addObject("signInDestination", request.getRequestURI());
+                view.addObject("retryable", true);
+                return view;
+            }
+        }
         var rawGrant = Ids.token();
         var redeemed = transactions.execute(status -> db.sql("""
                 select i.id,i.organization_id,i.session_id
@@ -172,7 +235,7 @@ public class InvitationController {
                 .optional().map(invitation -> {
                     db.sql("update invitations set state='REDEEMED',redeemed_at=now() where id=:id")
                             .param("id", invitation.id()).update();
-                    db.sql("insert into access_grants values(:id,:organization,:session,:hash,null,now())")
+                    db.sql("insert into access_grants(id,organization_id,session_id,token_hash,last_used_at,expires_at) values(:id,:organization,:session,:hash,now(),now()+interval '7 days')")
                             .param("id", Ids.id()).param("organization", invitation.organizationId())
                             .param("session", invitation.sessionId()).param("hash", Ids.sha(rawGrant)).update();
                     return invitation;
@@ -214,8 +277,9 @@ public class InvitationController {
                 .body("<h1>This invitation can no longer be used.</h1><p>Ask Gareth to reissue access.</p>");
     }
 
-    @GetMapping("/interview")
+    @GetMapping({"/interview", "/interview/{sessionId}"})
     String interview(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token, Model model) {
+        if (clerkProperties.enabled() && scopedSessionId() == null) return "redirect:/interviews";
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         model.addAttribute("view", view);
         if (view.state().equals("NOT_STARTED")) return "interview-introduction";
@@ -255,7 +319,39 @@ public class InvitationController {
         return "interview-complete";
     }
 
-    @PostMapping("/interview/begin")
+    @GetMapping(value = {"/interview/events", "/interview/{sessionId}/events"}, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @ResponseBody
+    SseEmitter interviewEvents(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
+        var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
+        var emitter = eventStream.subscribe(view.sessionId(), InterviewRouting.base(currentRequest) + "/state");
+        if (!waitingForRuntime(view.sessionId())) eventStream.signal(emitter);
+        return emitter;
+    }
+
+    @GetMapping({"/interview/state", "/interview/{sessionId}/state"})
+    String interviewState(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                          Model model, HttpServletResponse response) {
+        var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
+        if (waitingForRuntime(view.sessionId())) {
+            response.setStatus(HttpStatus.NO_CONTENT.value());
+            return null;
+        }
+        var template = interview(token, model);
+        response.setContentType(MediaType.TEXT_HTML_VALUE);
+        response.setHeader("Datastar-Selector", "#interview-shell");
+        response.setHeader("Datastar-Mode", "outer");
+        return template + " :: interviewShell";
+    }
+
+    private boolean waitingForRuntime(UUID sessionId) {
+        return db.sql("""
+                select s.state='ACTIVE' and not exists(
+                    select 1 from questions q where q.session_id=s.id and q.active
+                ) from interview_sessions s where s.id=:session
+                """).param("session", sessionId).query(Boolean.class).single();
+    }
+
+    @PostMapping({"/interview/begin", "/interview/{sessionId}/begin"})
     String begin(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         transactions.executeWithoutResult(status -> {
@@ -280,7 +376,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/answer")
+    @PostMapping({"/interview/answer", "/interview/{sessionId}/answer"})
     String answer(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
                   @RequestParam String answer) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
@@ -291,7 +387,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/structured-answer")
+    @PostMapping({"/interview/structured-answer", "/interview/{sessionId}/structured-answer"})
     String structuredAnswer(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
                             @RequestParam String optionId,
                             @RequestParam(required = false, defaultValue = "") String explanation) {
@@ -310,19 +406,19 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/pause")
+    @PostMapping({"/interview/pause", "/interview/{sessionId}/pause"})
     String pause(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         changeState(token, "ACTIVE", "PAUSED");
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/resume")
+    @PostMapping({"/interview/resume", "/interview/{sessionId}/resume"})
     String resume(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         changeState(token, "PAUSED", "ACTIVE");
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/another-owner")
+    @PostMapping({"/interview/another-owner", "/interview/{sessionId}/another-owner"})
     String anotherOwner(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
                         @RequestParam String owner, @RequestParam String reason) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
@@ -343,7 +439,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/do-not-know")
+    @PostMapping({"/interview/do-not-know", "/interview/{sessionId}/do-not-know"})
     String doNotKnow(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
                      @RequestParam(required = false, defaultValue = "") String explanation) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
@@ -361,7 +457,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/discomfort")
+    @PostMapping({"/interview/discomfort", "/interview/{sessionId}/discomfort"})
     String discomfort(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         transactions.executeWithoutResult(status -> {
@@ -378,7 +474,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/clarify")
+    @PostMapping({"/interview/clarify", "/interview/{sessionId}/clarify"})
     String clarify(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         transactions.executeWithoutResult(status -> {
@@ -407,7 +503,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/revise")
+    @PostMapping({"/interview/revise", "/interview/{sessionId}/revise"})
     String revise(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
                   @RequestParam UUID evidenceId, @RequestParam String answer) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
@@ -431,7 +527,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/confirm-completion")
+    @PostMapping({"/interview/confirm-completion", "/interview/{sessionId}/confirm-completion"})
     String confirmCompletion(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         var incomplete = db.sql("""
@@ -446,7 +542,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/retry")
+    @PostMapping({"/interview/retry", "/interview/{sessionId}/retry"})
     String retry(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         transactions.executeWithoutResult(status -> {
@@ -464,7 +560,7 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping("/interview/end-early")
+    @PostMapping({"/interview/end-early", "/interview/{sessionId}/end-early"})
     String endEarly(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         db.sql("update interview_sessions set state='ENDED_EARLY',completed_at=now(),revision=revision+1 where id=:session and state in ('ACTIVE','PAUSED','RUNTIME_FAILED')")
@@ -674,30 +770,49 @@ public class InvitationController {
         return new EvidenceAccepted(evidenceId, turn.questionId());
     }
 
+    private UUID scopedSessionId() {
+        Object variables = currentRequest.getAttribute(org.springframework.web.servlet.HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
+        if (variables instanceof java.util.Map<?, ?> map && map.get("sessionId") instanceof String id) {
+            try { return UUID.fromString(id); } catch (IllegalArgumentException invalid) { return null; }
+        }
+        return null;
+    }
+
     private Optional<ParticipantView> participant(String token) {
-        if (token == null || token.isBlank()) return Optional.empty();
-        var result = db.sql("""
+        UUID sessionId = scopedSessionId();
+        String subject = null;
+        if (clerkProperties.enabled()) {
+            if (sessionId == null || !(currentRequest.getUserPrincipal() instanceof Authentication authentication)) return Optional.empty();
+            subject = ClerkInterviewAccess.subject(authentication);
+        } else if (token == null || token.isBlank()) return Optional.empty();
+        var query = db.sql("""
                 select s.id,s.organization_id,s.mission_id,s.mission_version,s.state,
-                       u.display_name,o.name,mv.objective,mv.expected_minutes,mv.data_use,o.retention_days,o.contact_email
-                from access_grants g
-                join interview_sessions s on s.id=g.session_id and s.organization_id=g.organization_id
+                       u.display_name,o.name,mv.objective,mv.data_use,o.retention_days,o.contact_email
+                from interview_sessions s
+                """ + (clerkProperties.enabled()
+                    ? " join interview_account_access a on a.session_id=s.id and a.organization_id=s.organization_id "
+                    : " join access_grants g on s.id=g.session_id and s.organization_id=g.organization_id ") + """
                 join missions m on m.id=s.mission_id
                 join discoveries d on d.id=s.discovery_id
                 join memberships owner on owner.id=d.owner_membership_id
                 join users u on u.id=owner.user_id
                 join organizations o on o.id=s.organization_id
                 join mission_versions mv on mv.mission_id=s.mission_id and mv.version=s.mission_version
-                where g.token_hash=:hash and g.revoked_at is null and s.deleted_at is null and s.state<>'TERMINATED'
-                """).param("hash", Ids.sha(token))
-                .query((rs, row) -> new ParticipantView(
+                where s.deleted_at is null and s.state<>'TERMINATED' and d.state='ACTIVE'
+                """ + (clerkProperties.enabled()
+                    ? " and a.clerk_user_id=:subject and a.revoked_at is null and s.id=:session "
+                    : " and g.token_hash=:hash and g.revoked_at is null and g.expires_at>now() "));
+        if (clerkProperties.enabled()) query.param("subject", subject).param("session", sessionId);
+        else query.param("hash", Ids.sha(token));
+        var result = query.query((rs, row) -> new ParticipantView(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class),
                         rs.getInt(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8),
-                        rs.getInt(9), rs.getString(10), rs.getInt(11), rs.getString(12)))
+                        rs.getString(9), rs.getInt(10), rs.getString(11)))
                 .optional();
-        if (result.isPresent()) {
+        if (result.isPresent() && !clerkProperties.enabled()) {
             db.sql("update access_grants set last_used_at=now() where token_hash=:hash")
                     .param("hash", Ids.sha(token)).update();
-        } else {
+        } else if (result.isEmpty()) {
             denied("PARTICIPANT_ACCESS_DENIED", null, null);
         }
         return result;
@@ -727,7 +842,7 @@ public class InvitationController {
 
     public record CreatedInvitation(UUID missionId, String recipient, String link) {}
     private record ApprovedMission(UUID discoveryId, UUID organizationId) {}
-    private record ExistingSession(UUID id, UUID participantId) {}
+    private record ExistingSession(UUID id, UUID participantId, String state, int missionVersion, String name, String email) {}
     private record Redeemable(UUID id, UUID organizationId, UUID sessionId) {}
     private record AnswerTurn(UUID questionId, UUID participantId, int revision) {}
     private record PendingRun(UUID id, UUID organizationId, UUID sessionId, UUID evidenceId,
@@ -741,5 +856,5 @@ public class InvitationController {
     private record OwnedSession(UUID organizationId, UUID missionId) {}
     public record ParticipantView(UUID sessionId, UUID organizationId, UUID missionId, int missionVersion,
                                   String state, String investigator, String organization, String objective,
-                                  int expectedMinutes, String dataUse, int retentionDays, String contactEmail) {}
+                                  String dataUse, int retentionDays, String contactEmail) {}
 }

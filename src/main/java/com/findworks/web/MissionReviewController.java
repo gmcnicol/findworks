@@ -8,8 +8,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.findworks.platform.security.CurrentInvestigatorService;
-import org.springframework.beans.factory.annotation.Value;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -18,6 +19,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,12 +33,11 @@ public class MissionReviewController {
 
     public MissionReviewController(JdbcClient db, CurrentInvestigatorService currentInvestigator,
                                    TransactionTemplate transactions,
-                                   @Value("${findworks.test-support:false}") boolean testSupport,
-                                   @Value("${findworks.email-endpoint:disabled}") String emailEndpoint) {
+                                   EmailDeliveryService emailDelivery) {
         this.db = db;
         this.currentInvestigator = currentInvestigator;
         this.transactions = transactions;
-        this.emailDeliveryAvailable = testSupport || !emailEndpoint.equals("disabled");
+        this.emailDeliveryAvailable = emailDelivery.invitationDeliveryAvailable();
     }
 
     @GetMapping("/app/missions/{missionId}/review")
@@ -96,6 +97,13 @@ public class MissionReviewController {
                       and i.state='DELIVERED' and i.redeemed_at is null and i.revoked_at is null and i.expires_at>now()
                 )
                 """).param("mission", missionId).param("version", mission.version()).query(Boolean.class).single());
+        model.addAttribute("latestSession", db.sql("""
+                select s.id,s.state,p.name,p.email from interview_sessions s join participants p on p.id=s.participant_id
+                where s.mission_id=:mission and s.deleted_at is null
+                order by s.created_at desc,s.id desc limit 1
+                """).param("mission", missionId)
+                .query((rs, row) -> new SessionSummary(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), rs.getString(4)))
+                .optional().orElse(null));
         model.addAttribute("originBindingsComplete", originBindingsComplete(missionId, mission.version()));
         model.addAttribute("checkpoints", List.of(
                 new Checkpoint(1, "Purpose", reviewed.contains(1)),
@@ -108,7 +116,6 @@ public class MissionReviewController {
                 new EditableField("desired_outcome", "Desired outcome", mission.desiredOutcome()),
                 new EditableField("interviewee_role", "Interviewee role", mission.intervieweeRole()),
                 new EditableField("interviewee_relevance", "Interviewee relevance", mission.intervieweeRelevance()),
-                new EditableField("expected_minutes", "Expected minutes", Integer.toString(mission.expectedMinutes())),
                 new EditableField("data_use", "Data use", mission.dataUse())));
         model.addAttribute("origins", db.sql("select pointer,authority from mission_origins where mission_id=:id and version=:version order by pointer")
                 .param("id", missionId).param("version", mission.version())
@@ -118,38 +125,47 @@ public class MissionReviewController {
 
     @PostMapping("/app/missions/{missionId}/review/checkpoints/{checkpoint}")
     String reviewCheckpoint(@PathVariable UUID missionId, @PathVariable int checkpoint,
-                            @RequestParam int version, Authentication authentication) {
+                            @RequestParam int version,
+                            @RequestHeader(value = "Datastar-Request", defaultValue = "false") boolean datastarRequest,
+                            Authentication authentication, Model model, HttpServletResponse response) {
         if (checkpoint < 1 || checkpoint > 5) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         var investigator = currentInvestigator.require(authentication);
-        var mission = findOwnedMission(missionId, investigator.organizationId(), investigator.membershipId());
-        if (mission.version() != version || !mission.state().equals("DRAFT")) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Mission version changed");
-        }
-        db.sql("insert into mission_review(mission_id,version,checkpoint) values(:id,:version,:checkpoint) on conflict do nothing")
+        findOwnedMission(missionId, investigator.organizationId(), investigator.membershipId());
+        db.sql("""
+                insert into mission_review(mission_id,version,checkpoint)
+                select m.id,m.current_version,:checkpoint
+                from missions m
+                join mission_versions mv on mv.mission_id=m.id and mv.version=m.current_version
+                where m.id=:id and m.current_version=:version and mv.state='DRAFT'
+                on conflict do nothing
+                """)
                 .param("id", missionId)
                 .param("version", version)
                 .param("checkpoint", checkpoint)
                 .update();
-        return redirect(missionId);
+        return mutationResult(missionId, datastarRequest, authentication, model, response);
     }
 
     @PostMapping("/app/missions/{missionId}/approve")
-    String approve(@PathVariable UUID missionId, @RequestParam int version, Authentication authentication) {
+    String approve(@PathVariable UUID missionId, @RequestParam int version,
+                   @RequestHeader(value = "Datastar-Request", defaultValue = "false") boolean datastarRequest,
+                   Authentication authentication, Model model, HttpServletResponse response) {
         var investigator = currentInvestigator.require(authentication);
         transactions.executeWithoutResult(status -> {
             var mission = findOwnedMission(missionId, investigator.organizationId(), investigator.membershipId());
+            if (mission.version() != version || mission.state().equals("APPROVED")) return;
+            if (!mission.state().equals("DRAFT")) return;
             var reviews = db.sql("select count(*) from mission_review where mission_id=:id and version=:version")
                     .param("id", missionId).param("version", version).query(Integer.class).single();
-            if (mission.version() != version || !mission.state().equals("DRAFT") || reviews != 5
-                    || !originBindingsComplete(missionId, version)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Complete all five checkpoints first");
+            if (reviews != 5 || !originBindingsComplete(missionId, version)) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Complete all five checkpoints first");
             }
-            db.sql("update mission_versions set state='APPROVED',approved_by=:member,approved_at=now() where mission_id=:id and version=:version")
+            db.sql("update mission_versions set state='APPROVED',approved_by=:member,approved_at=now() where mission_id=:id and version=:version and state='DRAFT'")
                     .param("member", investigator.membershipId()).param("id", missionId).param("version", version).update();
-            db.sql("update missions set approved_version=:version where id=:id")
+            db.sql("update missions set approved_version=:version where id=:id and current_version=:version")
                     .param("version", version).param("id", missionId).update();
         });
-        return redirect(missionId);
+        return mutationResult(missionId, datastarRequest, authentication, model, response);
     }
 
     @PostMapping("/app/missions/{missionId}/label")
@@ -172,30 +188,21 @@ public class MissionReviewController {
                 "desired_outcome", "desired_outcome",
                 "interviewee_role", "interviewee_role",
                 "interviewee_relevance", "interviewee_relevance",
-                "expected_minutes", "expected_minutes",
                 "data_use", "data_use");
         var column = columns.get(field);
         var clean = value.trim();
         if (column == null || clean.isEmpty() || clean.length() > 4_000) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }
-        if (field.equals("expected_minutes")) {
-            try {
-                var minutes = Integer.parseInt(clean);
-                if (minutes < 5 || minutes > 120) throw new NumberFormatException();
-            } catch (NumberFormatException exception) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Expected minutes must be from 5 through 120");
-            }
-        }
         transactions.executeWithoutResult(status -> {
             var next = copyAsDraft(missionId, version, investigator.organizationId(), investigator.membershipId());
-            db.sql("update mission_versions set " + column + "=cast(:value as " + (field.equals("expected_minutes") ? "integer" : "text") + ") where mission_id=:id and version=:version")
+            db.sql("update mission_versions set " + column + "=cast(:value as text) where mission_id=:id and version=:version")
                     .param("value", clean).param("id", missionId).param("version", next).update();
             var pointer = Map.of(
                     "objective", "objective", "desired_outcome", "desired_outcome",
                     "interviewee_role", "intended_interviewee_role",
                     "interviewee_relevance", "intended_interviewee_relevance",
-                    "expected_minutes", "expected_commitment_minutes", "data_use", "data_use_summary").get(field);
+                    "data_use", "data_use_summary").get(field);
             markDirectOrigin(missionId, next, "/mission/" + pointer, investigator.membershipId());
         });
         return redirect(missionId);
@@ -256,7 +263,7 @@ public class MissionReviewController {
     private Mission findOwnedMission(UUID missionId, UUID organizationId, UUID membershipId) {
         return db.sql("""
                 select m.label, m.current_version, mv.state, mv.objective, mv.desired_outcome,
-                       mv.interviewee_role, mv.interviewee_relevance, mv.expected_minutes, mv.data_use,
+                       mv.interviewee_role, mv.interviewee_relevance, mv.data_use,
                        exists(select 1 from mission_versions old where old.mission_id=m.id and old.version<m.current_version and old.approved_at is not null) as approval_superseded
                 from missions m
                 join discoveries d on d.id = m.discovery_id and d.organization_id = m.organization_id
@@ -277,7 +284,6 @@ public class MissionReviewController {
                         rs.getString("desired_outcome"),
                         rs.getString("interviewee_role"),
                         rs.getString("interviewee_relevance"),
-                        rs.getInt("expected_minutes"),
                         rs.getString("data_use"),
                         rs.getBoolean("approval_superseded")))
                 .optional()
@@ -287,8 +293,7 @@ public class MissionReviewController {
     private boolean originBindingsComplete(UUID missionId, int version) {
         var required = new HashSet<>(List.of(
                 "/mission/objective", "/mission/desired_outcome", "/mission/intended_interviewee_role",
-                "/mission/intended_interviewee_relevance", "/mission/expected_commitment_minutes",
-                "/mission/data_use_summary"));
+                "/mission/intended_interviewee_relevance", "/mission/data_use_summary"));
         db.sql("select position from investigation_items where mission_id=:id and version=:version")
                 .param("id", missionId).param("version", version).query(Integer.class).list()
                 .forEach(position -> required.add("/mission/investigation_items/" + position));
@@ -310,9 +315,9 @@ public class MissionReviewController {
         var to = from + 1;
         db.sql("""
                 insert into mission_versions(mission_id,organization_id,version,state,objective,desired_outcome,
-                    interviewee_role,interviewee_relevance,expected_minutes,data_use,created_by)
+                    interviewee_role,interviewee_relevance,data_use,created_by)
                 select mission_id,organization_id,:to,'DRAFT',objective,desired_outcome,interviewee_role,
-                    interviewee_relevance,expected_minutes,data_use,:member
+                    interviewee_relevance,data_use,:member
                 from mission_versions where mission_id=:id and version=:from
                 """).param("to", to).param("member", membershipId).param("id", missionId).param("from", from).update();
         cloneVersion(missionId, from, to);
@@ -364,16 +369,27 @@ public class MissionReviewController {
                 """).param("id", missionId).update();
     }
 
+    private String mutationResult(UUID missionId, boolean datastarRequest, Authentication authentication,
+                                  Model model, HttpServletResponse response) {
+        if (!datastarRequest) return redirect(missionId);
+        review(missionId, authentication, model);
+        response.setContentType(MediaType.TEXT_HTML_VALUE);
+        response.setHeader("Datastar-Selector", "#mission-review-state");
+        response.setHeader("Datastar-Mode", "outer");
+        return "mission-review :: missionReviewState";
+    }
+
     private String redirect(UUID missionId) {
         return "redirect:/app/missions/" + missionId + "/review";
     }
 
     public record Mission(String label, int version, String state, String objective, String desiredOutcome,
-                          String intervieweeRole, String intervieweeRelevance, int expectedMinutes,
+                          String intervieweeRole, String intervieweeRelevance,
                           String dataUse, boolean approvalSuperseded) {}
 
     public record Entry(String kind, int position, String value, String detail) {}
     public record Checkpoint(int number, String label, boolean reviewed) {}
     public record EditableField(String name, String label, String value) {}
     public record Origin(String pointer, String authority) {}
+    public record SessionSummary(UUID id, String state, String name, String email) {}
 }

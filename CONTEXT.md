@@ -14,7 +14,7 @@ The product must stay broader than a requirements questionnaire. The underlying 
 2. Grill the Investigator there to clarify what must be learned and from whom.
 3. Produce an **Interview Mission**: the deliberate package of knowledge-seeking work handed to one interviewee.
 4. Investigator reviews and approves the mission.
-5. Interviewee receives a simple web session, ideally via a low-friction invite or magic link.
+5. Interviewee receives a Clerk-delivered invitation, creates or reuses their Clerk account, and explicitly links the interview to that account.
 6. A skill-driven agent conducts an adaptive interview rather than replaying a fixed form.
 7. Answers are retained as evidence while useful knowledge is extracted into structured findings.
 8. Findings return to the investigator as confirmed knowledge, assumptions, conflicts, unknowns, ownership/delegation, and suggested follow-ups.
@@ -50,7 +50,7 @@ The MCP submission is semantically idempotent through a client-generated submiss
 
 ### Discovery Participant
 
-An external person represented only within one Discovery. A Discovery Participant is not an authenticated User and is never silently linked to the same email address in another Discovery.
+A person represented within one Discovery for Evidence attribution. This Discovery-scoped record is distinct from their authenticated Clerk account. Redeeming an invitation explicitly assigns that Interview Session to the signed-in account; matching email addresses never silently merge Participants or grant access across Discoveries. One account may be both an Investigator and an interviewee.
 
 ### Interview Mission
 
@@ -64,7 +64,7 @@ A runtime interaction with one participant under one Interview Mission.
 
 ### Interview Access Grant
 
-A revocable browser credential created when an Invitation is redeemed. Invitation reissue revokes prior Invitations and Interview Access Grants while preserving the same Interview Session.
+A revocable account assignment created when a signed-in person redeems an Invitation using its server-verified recipient email. It authorises only the assigned Interview Session and survives sign-out, browser closure, device changes, and invitation expiry. Invitation reissue revokes prior Invitations and account access while preserving the same Interview Session. The old seven-day browser credential exists only in development/test authentication mode; production never accepts it instead of Clerk.
 
 ### Investigation Item
 
@@ -143,7 +143,7 @@ Pi may retry a transient model failure up to three total attempts. A process dea
 
 Every runtime start reconciles against FindWorks first. A committed turn replays its stable application event without another model call. An uncommitted turn may resume only from a checkpoint matching the Interview Session, approved Interview Mission version, and expected revision. Missing, corrupt, stale, or mismatched checkpoints are discarded and rebuilt from authoritative FindWorks context. FindWorks state is never reversed to match Pi.
 
-Live Pi context contains only the approved shared Interview Mission, questions and accepted Evidence from the current Interview Session, current Investigation Item coverage and explicit outcomes, progress, and expected commitment. It excludes private Investigator context, other Interview Sessions, unrelated Discovery records, findings review, participant access data, email addresses, audit data, and operational metadata. Recovery may reconstruct the conversation from all accepted Evidence in that Interview Session.
+Live Pi context contains only the approved shared Interview Mission, questions and accepted Evidence from the current Interview Session, current Investigation Item coverage and explicit outcomes, and progress. It excludes private Investigator context, other Interview Sessions, unrelated Discovery records, findings review, participant access data, email addresses, audit data, and operational metadata. Recovery may reconstruct the conversation from all accepted Evidence in that Interview Session.
 
 ## Architecture direction, not yet all decisions
 
@@ -205,7 +205,7 @@ The harness may submit the draft Interview Mission only when its objective, inte
 
 M0 administers an imported Interview Mission through a focused review flow rather than a document workspace. Draft review presents one checkpoint at a time: purpose, intended interviewee, Investigation Items, shared context and boundaries, then completion and data use. Each checkpoint shows inline source authority without exposing the shaping transcript, while persistent review progress, readiness, exact Mission version, and lifecycle status keep the handoff understandable. A scoped edit creates a new immutable draft version on save. Approval remains a separate exact-version action that sends nothing; invitation, Interview Session, findings, and recovery states each present one clear primary administrative task. When an edit supersedes approval before an Interview Session starts, FindWorks explains that the prior immutable version remains in history, unused access was revoked, and the revised draft requires review, approval, and invitation again.
 
-An M0 Interview Mission contains its objective and desired outcome; intended interviewee and their relevance; required Investigation Items; shared known context; boundaries and prohibited topics; terminology; proposed opening questions; completion criteria; expected commitment; and data-use summary.
+An M0 Interview Mission contains its objective and desired outcome; intended interviewee and their relevance; required Investigation Items; shared known context; boundaries and prohibited topics; terminology; proposed opening questions; completion criteria; and data-use summary.
 
 Each Investigation Item states the knowledge gap, why it matters, its priority, relevant known context, and the evidence or detail that would count as sufficiently explored. It is not a fixed question. Knowledge, Unknown, Conflict, and Ownership Gap always remain honest terminal outcomes; required means an explicit outcome is required before mission completion, not that a preferred answer must be obtained. Optional items may remain uncovered.
 
@@ -221,15 +221,17 @@ Sending an invitation is separate from approval and requires confirmation of the
 
 Interview Mission versions have draft, approved, or superseded lifecycle states. Invitation delivery and Interview Session progress have separate lifecycles rather than being overloaded onto the Mission.
 
-M0 supports Investigator-controlled delivery of the approved invitation. The owning Investigator may send it by configured email delivery or generate a secure invitation link in FindWorks to copy and send through another channel. A manually generated link is shown only at generation time, expires after seven days, works once, and is revoked when reissued. FindWorks audits manual generation without claiming that the recipient controlled the entered email address. Before starting, the interviewee sees the Investigator's identity, organisation, Interview Mission purpose, expected commitment, a data-use summary, and an explicit choice to begin. They do not receive the Investigator's raw transcript or a fixed list of every proposed question.
+M0 supports Investigator-controlled delivery of the approved invitation. The owning Investigator may send it by configured email delivery or generate a secure invitation link in FindWorks to copy and send through another channel. A manually generated link is shown only at generation time, expires after seven days, works once, and is revoked when reissued. FindWorks audits manual generation without claiming that the recipient controlled the entered email address. Before starting, the interviewee sees the Investigator's identity, organisation, Interview Mission purpose, a data-use summary, and an explicit choice to begin. They do not receive the Investigator's raw transcript or a fixed list of every proposed question.
 
 The Investigator uses an authenticated account with verified email and membership in the pilot organisation. They may access all M0 records for Discoveries they own in that organisation, but nothing belonging to another organisation.
 
-An external interviewee needs no account. Their emailed invitation is a single-use magic link bound to the exact recipient and approved Interview Mission version. It expires after seven days and exchanges once for a secure browser session that may resume on the same browser. Expired, revoked, previously redeemed, or lost-browser access requires Investigator reissue, which invalidates previous access.
+Clerk supplies the standard sign-in/signup UI for both Investigators and interviewees. Ordinary sign-in uses email verification codes, without passwords. Emailed interview invitations use Clerk's native application-invitation flow: a new recipient creates an account on acceptance; a returning recipient uses their existing account. The native email link can authenticate that account. These are capabilities of one account, not mutually exclusive account types. FindWorks retains its own User, organisation membership, Discovery ownership, Discovery Participants, and record-level authorisation. On first access, a Clerk subject may bind to one existing active pilot User through Clerk's server-verified primary email; signup never creates or grants organisation membership. Research operations recheck local membership; interview operations check the account's explicit Session assignment. MCP continues to use its separate OAuth credential. Local seeded password sign-in and account-free browser grants are development/test modes, not production fallbacks.
+
+Interviewees authenticate through Clerk's standard screens and then explicitly claim their FindWorks invitation. For emailed delivery, FindWorks queues a native Clerk invitation with existing-account support and a redirect back to the exact FindWorks invitation. A manual FindWorks link uses ordinary email-code sign-in/signup. Clerk only delivers/authenticates; it does not own the Mission, Participant, Session grant, expiry/reissue policy, or saved work. FindWorks freshly retrieves the verified primary email from Clerk's backend and requires it to match the invited recipient, for both email and manual delivery. An unclaimed invitation expires after seven days. A claimed interview remains in the account's saved work, independently of the invitation and browser, until access is revoked or retention/deletion applies. A second account cannot take it over by claiming the same email address. Expired or revoked invitations require Investigator reissue; ordinary sign-out, cookie expiry, or changing devices does not. Reissuing a started Interview Session cannot change its interviewee or approved Mission version; changing those would misattribute retained Evidence.
 
 The interviewee may access only the mission introduction, active question, their own previous answers, clarification flow, and completion acknowledgement. They cannot access private Investigator context, findings, other Discoveries or participants, or internal metadata.
 
-Before explicitly starting, the interviewee sees the Investigator identity, purpose, expected commitment, data-use summary, retention period, and contact route. M0 does not add a dense legal workflow.
+Before explicitly starting, the interviewee sees the Investigator identity, purpose, data-use summary, retention period, and contact route. M0 does not add a dense legal workflow.
 
 At pilot setup, the organisation selects one data-retention period, defaulting to 90 days after the Investigator accepts or rejects the findings package. A Discovery that never reaches review is deleted after 180 days without activity unless support extends it. The interviewee sees the applicable retention rule before starting. FindWorks warns the Investigator 14 days before deletion; manual support may extend it in M0.
 
@@ -239,7 +241,7 @@ Audit records actor, time, organisation, resource, and outcome for authenticatio
 
 M0 accepts text answers only. The Evidence model may support attachment references later, but M0 has no file-upload feature.
 
-M0 requires TLS, encryption at rest, hashed invitation tokens, secure browser cookies, rate limits, least privilege, and no secrets or interview content in logs. For email delivery, FindWorks records only that the interviewee controlled the invited email link; for manual delivery, it records only that the owning Investigator generated the link and a bearer redeemed it. Neither route claims real-world identity verification.
+M0 requires TLS, encryption at rest, hashed invitation tokens, secure browser cookies, rate limits, least privilege, and no secrets or interview content in logs. For either delivery route, redemption records that the authenticated Clerk account controlled the currently verified primary email matching the recipient and explicitly claimed the invitation. This is not real-world identity verification. A FindWorks invitation token alone cannot grant production interview access. A native Clerk invitation email also contains an authentication credential and must not be forwarded; use the separately generated FindWorks link for manual sharing, which still requires recipient authentication.
 
 During the Interview Session, the interviewee sees one clear natural-language question at a time, brief human context when needed, an answer input, simple ways to say they do not know, name another owner, or request clarification, and simple progress and completion cues. The SME interacts with the FindWorks Interview agent, which runs on Pi with the approved Interview Mission context; this is distinct from the Investigator's project-aware Pi or other harness. Structured responses suggested by the FindWorks Interview agent are non-binding conveniences: FindWorks always lets the interviewee answer in their own words. For an ordinary M0 Question, the agent may suggest yes/no, yes/no/partly, paraphrase confirmation, or one choice from two to five short question-specific options. Every structured choice permits optional explanatory text in the same answer. `I don't know` and `someone else owns this` remain visually secondary but available on every substantive Question regardless of the suggested response mode. A structured answer is one immutable Evidence item that preserves the exact displayed option and its stable identity separately from the interviewee's optional verbatim explanation, with the Question supplying context. Selecting an option never asks the interviewee to classify Knowledge Items or Investigation Results. FindWorks asks them to confirm a paraphrase only when an answer is ambiguous, contradictory, inferred, or materially important.
 
@@ -247,13 +249,15 @@ Structured findings and provenance review are exclusively Investigator-facing in
 
 M0 uses a calm, focused interaction with one primary task at a time and minimal surrounding chrome across Interview Mission approval, Interview Session, and findings review. The Interview Session includes a simple progress bar and plain-language coverage summary. Avoid document-first workspace navigation and dense multi-panel presentation as the default experience.
 
+Continuity is a first-class requirement for both roles. After Clerk sign-in, `/work` shows the account's owned Discoveries and Interview Missions alongside its assigned interviews; the same person may use both without switching accounts or choosing an exclusive role. Research resumes from its persisted administrative checkpoint. An interviewee can sign out, close the browser, or use another device, sign in with the same account, find their interviews, and continue after the last accepted answer without losing or duplicating Evidence or recovering the invitation. Sign-in preserves the requested work, invitation, interview, or OAuth consent destination. Expired Clerk tokens are refreshed and verified rather than converted into a long-lived FindWorks authentication session. Membership and interview assignment remain separate permissions, both checked server-side. Mission, Discovery, and interview recency reflects meaningful persisted work, not page views or background access checks.
+
 The Investigator receives findings grouped by Investigation Item. Each group shows its outcome, Knowledge Items, unresolved gaps, and review state; the package also shows mission-level coverage. Each claim shows a short source excerpt and participant, with one action to open the surrounding answer context. The reconstructed transcript remains secondary Evidence rather than the primary findings view.
 
-Before accepting the findings package, the Investigator reviews every required Investigation Item outcome; optional findings may remain unreviewed. They accept the package with notes or reject it and record required follow-up. Corrections append Investigator Evidence and never alter the interviewee's original Evidence.
+Before accepting the findings package, the Investigator reviews every available required Investigation Item outcome; optional findings may remain unreviewed. Required Investigation Items without a reviewable answer remain visibly open and do not block acceptance when the Investigator explicitly confirms the override. They accept the package with notes or reject it and record required follow-up. Corrections append Investigator Evidence and never alter the interviewee's original Evidence.
 
 Acceptance must show adaptive behaviour in both human interactions. Interview Mission Shaping in the engineer's harness asks answer-dependent follow-ups, exposes vague requirements, and converts clarified needs into Investigation Items. The Interview Session asks answer-dependent follow-ups, skips irrelevant planned questions, records uncertainty and ownership gaps, and stops only when every Investigation Item has an outcome.
 
-During an Interview Session, the agent prioritises unresolved required Investigation Items, follows useful new information, clarifies ambiguity or contradiction, avoids already answered ground, and considers optional items only when required coverage and the expected commitment allow. It asks one plain-language question at a time, explains why only when useful, and adapts wording to the interviewee's vocabulary.
+During an Interview Session, the agent prioritises unresolved required Investigation Items, follows useful new information, clarifies ambiguity or contradiction, avoids already answered ground, and considers optional items after required coverage. It asks one plain-language question at a time, explains why only when useful, and adapts wording to the interviewee's vocabulary.
 
 Submitting an answer immediately creates immutable Evidence. Later revisions append rather than overwrite. FindWorks may update internal candidate findings after each answer to guide follow-up questions.
 
@@ -261,13 +265,13 @@ When an answer is vague, uncertain, inferred, or contradictory, the agent asks f
 
 The agent may restate approved shared context and clarify its question. It must never supply the domain answer, resolve a Conflict itself, or speak for the Investigator or interviewee.
 
-FindWorks tracks each Investigation Item internally as unaddressed, exploring, or having an explicit outcome. The interviewee sees only simple progress language. The agent monitors expected commitment, prioritises required items, and near the limit asks whether the interviewee wants to continue or finish.
+FindWorks tracks each Investigation Item internally as unaddressed, exploring, or having an explicit outcome. The interviewee sees only simple progress language. The agent prioritises required items.
 
 The interviewee may pause, resume, request clarification, revise an earlier answer, or end at any time. The agent proposes normal completion only when every required Investigation Item has an explicit outcome, gives a brief natural-language recap of unresolved points, and asks the interviewee to confirm. Unknown, Conflict, and Ownership Gap count as explicit outcomes rather than false resolution.
 
 If the interviewee stops before required coverage, the Interview Session ends early, preserves all Evidence, and exposes remaining Investigation Items to the Investigator. A normally completed session still flags Investigator follow-up for any required Unknown, Conflict, or Ownership Gap. Repeated clarification without useful new information, or interviewee discomfort, ends that line of questioning with the best honest unresolved outcome.
 
-The agent pursues emergent information only when it helps resolve approved Investigation Items and remains within Interview Mission boundaries and expected commitment. Other useful information becomes a suggested follow-up rather than silently expanding the Mission.
+The agent pursues emergent information only when it helps resolve approved Investigation Items and remains within Interview Mission boundaries. Other useful information becomes a suggested follow-up rather than silently expanding the Mission.
 
 If an interviewee volunteers out-of-scope content, FindWorks retains the submitted answer as Evidence but does not follow or extract it unless relevant to the Mission. The existing deletion route remains available.
 
@@ -283,7 +287,7 @@ Only investigator and interviewee require product UI in M0. Organisation setup a
 
 M0 acceptance is anchored in a real requirements and domain discovery for a bounded software change. Evidence must combine one live end-to-end pilot with repeatable scripted checks for agreed boundary and failure scenarios.
 
-The Investigator may accept the result only when every required Investigation Item ends as supported Knowledge, an explicit Unknown, a Conflict, or an Ownership Gap; every asserted Knowledge Item links to Evidence; and no critical fabrication or misattribution exists.
+The Investigator may accept the result when every available required outcome has been reviewed, every asserted Knowledge Item links to Evidence, and no critical fabrication or misattribution exists. They may explicitly accept with unanswered required Investigation Items still open; the package must preserve and disclose those open areas rather than inventing outcomes for them.
 
 Boundary checks must cover an interviewee who does not know, identifies another owner, contradicts known context, revises an earlier answer, or offers an unsupported assumption. Failure checks must cover an expired or reused invitation, an interrupted Interview Session, a model or runtime failure, and a findings extraction failure. Accepted answers must never disappear, duplicate, or become detached from their Evidence.
 

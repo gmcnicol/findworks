@@ -25,12 +25,12 @@ public class RuntimeTurnContext {
         result.put("mission_version", missionVersion);
         result.put("expected_revision", expectedRevision);
         result.put("mission", db.sql("""
-                select mv.objective,mv.desired_outcome,mv.expected_minutes,mv.data_use
+                select mv.objective,mv.desired_outcome,mv.data_use
                 from interview_sessions s join mission_versions mv on mv.mission_id=s.mission_id and mv.version=s.mission_version
                 where s.id=:session
                 """).param("session", sessionId).query((rs, row) -> Map.of(
                 "objective", rs.getString(1), "desired_outcome", rs.getString(2),
-                "expected_minutes", rs.getInt(3), "data_use", rs.getString(4))).single());
+                "data_use", rs.getString(3))).single());
         result.put("shared_mission_entries", db.sql("""
                 select e.kind,e.position,e.value,e.detail from interview_sessions s join mission_entries e on e.mission_id=s.mission_id and e.version=s.mission_version
                 where s.id=:session order by e.kind,e.position
@@ -80,13 +80,16 @@ public class RuntimeTurnContext {
             return resultView;
         }).list());
         result.put("questions_and_evidence", db.sql("""
-                select q.id,q.sequence,q.text,e.id,e.source_type,e.exact_text,e.option_id,e.option_label,e.explanation
-                from questions q left join evidence e on e.question_id=q.id where q.session_id=:session order by q.sequence,e.created_at,e.id
+                select q.id,q.sequence,q.text,e.id,e.source_type,e.exact_text,e.option_id,e.option_label,e.explanation,q.active
+                from questions q left join evidence e on e.question_id=q.id
+                where q.session_id=:session and (q.active or e.id is not null)
+                order by q.sequence,e.created_at,e.id
                 """).param("session", sessionId).query((rs, row) -> {
             var turn = new LinkedHashMap<String, Object>();
             turn.put("question_id", rs.getObject(1));
             turn.put("sequence", rs.getInt(2));
             turn.put("question", rs.getString(3));
+            turn.put("active", rs.getBoolean(10));
             if (rs.getObject(4) != null) {
                 turn.put("evidence_id", rs.getObject(4));
                 turn.put("source_type", rs.getString(5));

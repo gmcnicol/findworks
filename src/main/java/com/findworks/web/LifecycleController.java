@@ -31,16 +31,18 @@ public class LifecycleController {
     private final EmailDeliveryService email;
     private final String operatorToken;
     private final String baseUrl;
+    private final MissionWorkQuery missionWork;
 
     LifecycleController(JdbcClient db, CurrentInvestigatorService current, TransactionTemplate transactions,
                         EmailDeliveryService email, @Value("${findworks.operator-token}") String operatorToken,
-                        @Value("${findworks.base-url}") String baseUrl) {
+                        @Value("${findworks.base-url}") String baseUrl, MissionWorkQuery missionWork) {
         this.db = db;
         this.current = current;
         this.transactions = transactions;
         this.email = email;
         this.operatorToken = operatorToken;
         this.baseUrl = baseUrl;
+        this.missionWork = missionWork;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -63,9 +65,7 @@ public class LifecycleController {
                         rs.getObject(4), rs.getInt(5), rs.getBoolean(6))).optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         model.addAttribute("discovery", view);
-        model.addAttribute("missions", db.sql("select id,label,current_version,approved_version from missions where discovery_id=:id order by created_at")
-                .param("id", discoveryId).query((rs, row) -> Map.of("id", rs.getObject(1), "label", rs.getString(2),
-                        "version", rs.getInt(3), "approved", rs.getObject(4) != null)).list());
+        model.addAttribute("missions", missionWork.listForDiscovery(investigator, discoveryId));
         return "discovery-detail";
     }
 

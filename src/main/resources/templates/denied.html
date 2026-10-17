@@ -5,14 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Access denied · FindWorks</title>
     <link rel="stylesheet" th:href="@{/assets/app.css}">
+    <th:block th:replace="~{fragments/clerk :: scripts}"></th:block>
 </head>
 <body>
 <main class="shell centered">
     <section class="panel focus-panel">
         <p class="eyebrow">Access denied</p>
-        <h1>This account cannot open FindWorks.</h1>
-        <p>FindWorks only allows verified pilot Investigator memberships in the active Organisation.</p>
-        <a class="button secondary" th:href="@{/signin}">Try another account</a>
+        <h1 th:if="${clerkEnabled}">This account cannot open that work.</h1>
+        <h1 th:unless="${clerkEnabled}">This account cannot open FindWorks.</h1>
+        <p>You need permission for this Discovery or interview. Research access requires an active Organisation membership.</p>
+        <p th:if="${clerkEnabled}"><a th:href="@{/work}">Return to your saved work and interviews</a></p>
+        <button th:if="${clerkEnabled}" class="button secondary" type="button" data-clerk-switch-account>Use a different account</button>
+        <p hidden role="alert" data-clerk-sign-out-error>Sign-out failed. Check your connection and try again.</p>
+        <a th:unless="${clerkEnabled}" class="button secondary" th:href="@{/signin}">Try another account</a>
     </section>
 </main>
 </body>
