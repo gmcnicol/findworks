@@ -16,11 +16,18 @@ Branch: `ticket/68-conversational-interview-ui`
 
 ## Automated evidence
 
-- JVM suite: 95 tests passed in the `mvn clean test` phase of `bash scripts/test.sh`.
-- Browser suite: `FINDWORKS_E2E_PORT=8168 npm test` — 31 tests passed.
-- The bundled browser phase of `bash scripts/test.sh` could not bind its default port because local port 8080 was already in use; the complete browser suite was rerun successfully on isolated port 8168.
-- Browser coverage includes a realistic 21-answered-turn/22-question session with an appended revision, exclusive answer/revision composers, fresh mobile landing focus without manual scrolling, long paused/runtime-failed/confirmation/completed states, lifecycle offline protection, no repeated complementary landmarks or duplicate Question announcer, computed small-text contrast, narrow and wide overflow checks, draft recovery, correction history, and Clerk continuity.
-- JVM coverage verifies the server-rendered exclusive revision mode, original-plus-appended Evidence, `expectedRevision` stale protection, and progress language across unaddressed, exploring, and terminal Investigation Result states.
+- Focused accessibility-tree acceptance: `FINDWORKS_E2E_PORT=8168 npx playwright test tests/e2e/interview-accessibility.spec.ts` — 2 tests passed.
+- Full suite: `FINDWORKS_E2E_PORT=8168 bash scripts/test.sh` — 95 JVM tests and 33 Playwright browser tests passed.
+- [`tests/e2e/interview-accessibility.spec.ts`](../../tests/e2e/interview-accessibility.spec.ts) reads Chromium's complete exposed accessibility tree with CDP `Accessibility.getFullAXTree`; it does not infer semantics only from DOM attributes.
+- Initial Question, working, next Question, paused, runtime-failed, confirmation, completed, and revision surfaces each expose exactly one `data-focus-target` and exactly one focused accessibility-tree heading with the expected accessible name. The deliberately held submitting state instead exposes exactly one focused `Sending…` button with `disabled=true`, the visible `Waiting for FindWorks to confirm…` status, and exactly one polite/assertive live-region source.
+- Every stable surface has at most one polite/assertive live-region source, and the focused heading is not duplicated as a live-region name. Every surface exposes exactly one `log` transcript and zero `complementary` landmarks, including fixtures containing 21 saved turns and an appended revision.
+- The tree check rejects unnamed buttons, disclosure controls, links, radios, or textboxes. It verifies the initial required own-words textbox; enabled submit, uncertainty, clarification, pause, discomfort, early-end, resume, retry, completion, and revision controls; collapsed ownership disclosure; unchecked named structured-response radios; and the optional named explanation textbox.
+- Revision mode exposes exactly one required `Add a correction` textbox, one revision form, no current-answer form, and no own-words or structured-answer editor. Paused, runtime-failed, confirmation, and completed states expose no textbox.
+- Existing browser coverage additionally includes a realistic 21-answered-turn/22-question session with an appended revision, fresh mobile landing focus without manual scrolling, lifecycle offline protection, computed small-text contrast, narrow and wide overflow checks, draft recovery, correction history, and Clerk continuity. JVM coverage verifies server-rendered exclusive revision mode, original-plus-appended Evidence, `expectedRevision` stale protection, and progress language across unaddressed, exploring, and terminal Investigation Result states.
+
+## Residual assistive-technology limitation
+
+This headless Linux host cannot run the requested manual NVDA or VoiceOver journey. No NVDA speech transcript, VoiceOver transcript, or human screen-reader usability result was produced, and this record does not present Chromium's accessibility tree as a substitute for one. The automated evidence rigorously verifies the browser semantics delivered to assistive technology and guards against the specific duplicate-focus, duplicate-live-source, landmark, naming/state, and competing-editor failures; actual announcement timing, verbosity, and usability in NVDA on Windows or VoiceOver on macOS remain unverified residual risk.
 
 ## Visual evidence
 
@@ -41,7 +48,7 @@ The warnings were reviewed as non-blocking:
 - the existing global Inter declaration;
 - two flat-type-hierarchy false positives from scanning Thymeleaf templates/fragments without their resolved stylesheet. The batched rendered inspection shows the actual serif Question hierarchy.
 
-Most advisories identify literal colors/type steps already present across the shared stylesheet. `DESIGN.md` now records the Interviewee warm-paper palette, durable transcript layout, editorial Question type, Evidence cards, composer, progress, and lifecycle rules. The raw original detector result was retained at `/tmp/issue68-impeccable-detector.json` for that run. This fix batch adds automated DOM, focus, offline, ordering, and contrast checks; it does not claim a new NVDA or VoiceOver transcript.
+Most advisories identify literal colors/type steps already present across the shared stylesheet. `DESIGN.md` now records the Interviewee warm-paper palette, durable transcript layout, editorial Question type, Evidence cards, composer, progress, and lifecycle rules. The raw original detector result was retained at `/tmp/issue68-impeccable-detector.json` for that run. This final acceptance batch adds the Chromium full-accessibility-tree checks recorded above. It does not claim a new NVDA or VoiceOver transcript.
 
 ## Integration
 
