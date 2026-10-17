@@ -248,16 +248,25 @@ public class LifecycleController {
                                    @PathVariable UUID runId) {
         operator(token);
         var retry = transactions.execute(status -> {
-            var failed = db.sql("select organization_id,session_id,evidence_id,expected_revision from runtime_runs where id=:id and state='FAILED' for update")
-                    .param("id", runId).query((rs, row) -> new FailedRun(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
-                            rs.getObject(3, UUID.class), rs.getInt(4))).optional()
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT));
+            var source = db.sql("select organization_id,session_id,evidence_id,expected_revision,state from runtime_runs where id=:id for update")
+                    .param("id", runId).query((rs, row) -> new RetrySource(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
+                            rs.getObject(3, UUID.class), rs.getInt(4), rs.getString(5))).optional()
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+            var existing = db.sql("select id from runtime_runs where session_id=:session and state in ('PENDING','RUNNING') order by created_at desc limit 1")
+                    .param("session", source.sessionId()).query(UUID.class).optional();
+            if (!source.state().equals("FAILED") || existing.isPresent()) {
+                if (existing.isPresent() && source.state().equals("FAILED")) {
+                    db.sql("update runtime_runs set state='SUPERSEDED' where id=:id and state='FAILED'").param("id", runId).update();
+                }
+                return existing.orElse(runId);
+            }
             var id = Ids.id();
+            db.sql("update runtime_runs set state='SUPERSEDED' where id=:id and state='FAILED'").param("id", runId).update();
             db.sql("insert into runtime_runs(id,organization_id,session_id,evidence_id,expected_revision,state) values(:id,:organization,:session,:evidence,:revision,'PENDING')")
-                    .param("id", id).param("organization", failed.organizationId()).param("session", failed.sessionId())
-                    .param("evidence", failed.evidenceId()).param("revision", failed.expectedRevision()).update();
-            db.sql("update interview_sessions set state='ACTIVE' where id=:id and state='RUNTIME_FAILED'").param("id", failed.sessionId()).update();
-            audit(failed.organizationId(), null, "RUNTIME_RETRY_REQUESTED", "RUNTIME_RUN", runId, "SUCCEEDED");
+                    .param("id", id).param("organization", source.organizationId()).param("session", source.sessionId())
+                    .param("evidence", source.evidenceId()).param("revision", source.expectedRevision()).update();
+            db.sql("update interview_sessions set state='ACTIVE' where id=:id and state='RUNTIME_FAILED'").param("id", source.sessionId()).update();
+            audit(source.organizationId(), null, "RUNTIME_RETRY_REQUESTED", "RUNTIME_RUN", runId, "SUCCEEDED");
             return id;
         });
         return ResponseEntity.ok(Map.of("retry_run", retry));
@@ -268,9 +277,11 @@ public class LifecycleController {
     ResponseEntity<?> retryExtraction(@RequestHeader(value = "X-Operator-Token", required = false) String token,
                                       @PathVariable UUID sessionId) {
         operator(token);
-        var organization = db.sql("update interview_sessions set extraction_state='PENDING' where id=:id and extraction_state='FAILED' returning organization_id")
-                .param("id", sessionId).query(UUID.class).optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT));
-        audit(organization, null, "EXTRACTION_RETRY_REQUESTED", "INTERVIEW_SESSION", sessionId, "SUCCEEDED");
+        var organization = db.sql("select organization_id from interview_sessions where id=:id")
+                .param("id", sessionId).query(UUID.class).optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        var changed = db.sql("update interview_sessions set extraction_state='PENDING' where id=:id and extraction_state='FAILED'")
+                .param("id", sessionId).update();
+        if (changed == 1) audit(organization, null, "EXTRACTION_RETRY_REQUESTED", "INTERVIEW_SESSION", sessionId, "SUCCEEDED");
         return ResponseEntity.ok(Map.of("retry_extraction", sessionId));
     }
 
@@ -328,5 +339,5 @@ public class LifecycleController {
     private record InvitationOwner(UUID organizationId, UUID sessionId) {}
     private record PurgeItem(UUID id, UUID organizationId, String kind, UUID resourceId) {}
     private record RetentionWarning(UUID discoveryId, UUID organizationId, String recipient) {}
-    private record FailedRun(UUID organizationId, UUID sessionId, UUID evidenceId, int expectedRevision) {}
+    private record RetrySource(UUID organizationId, UUID sessionId, UUID evidenceId, int expectedRevision, String state) {}
 }

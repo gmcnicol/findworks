@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Action not completed · FindWorks</title>
+    <link rel="stylesheet" th:href="@{/assets/app.css}">
+</head>
+<body>
+<main class="shell centered">
+    <section class="panel state-panel" role="alert">
+        <p class="eyebrow" th:text="|Error ${status}|">Error</p>
+        <h1 th:text="${title}">We couldn’t complete that action</h1>
+        <p th:text="${message}">Your accepted work is safe.</p>
+        <div class="form-actions">
+            <a class="button" href="/work">Return to saved work</a>
+            <a class="button secondary" href="/">Go home</a>
+        </div>
+    </section>
+</main>
+</body>
+</html>

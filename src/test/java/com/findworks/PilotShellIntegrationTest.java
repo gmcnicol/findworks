@@ -64,6 +64,15 @@ class PilotShellIntegrationTest {
     RuntimeTurnContext runtimeTurnContext;
 
     @Test
+    void browser_errors_have_a_recoverable_findworks_page_instead_of_the_framework_fallback() throws Exception {
+        mockMvc.perform(get("/error").requestAttr(jakarta.servlet.RequestDispatcher.ERROR_STATUS_CODE, 409))
+                .andExpect(status().isConflict())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("That action is already out of date")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Return to saved work")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Whitelabel Error Page"))));
+    }
+
+    @Test
     void verified_investigator_can_sign_in_and_load_empty_home() throws Exception {
         var login = mockMvc.perform(post("/signin")
                         .param("username", "gareth@example.com")
@@ -171,7 +180,7 @@ class PilotShellIntegrationTest {
         mockMvc.perform(post("/app/missions/" + mission + "/invite").session(access.session())
                 .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                 .param("version", "1").param("name", "Another person").param("email", "different-owner@example.com"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isUnprocessableEntity());
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("select p.email from participants p join interview_sessions s on s.participant_id=p.id where s.id=?", String.class, participant.sessionId()))
                 .isEqualTo("original-owner@example.com");
         mockMvc.perform(get("/interview").cookie(participant.cookie())).andExpect(status().isOk());
@@ -1050,7 +1059,7 @@ class PilotShellIntegrationTest {
         mockMvc.perform(post("/app/findings/{sessionId}/accept", participant.sessionId()).session(access.session())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                         .param("version", "1"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isUnprocessableEntity());
         mockMvc.perform(post("/app/findings/{sessionId}/accept", participant.sessionId()).session(access.session())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                         .param("version", "1").param("acceptOpenAreas", "true").param("notes", "Useful findings are ready."))
@@ -1210,7 +1219,10 @@ class PilotShellIntegrationTest {
         mockMvc.perform(post("/app/findings/{sessionId}/reject", participant.sessionId()).session(access.session())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                         .param("version", "1").param("notes", "Try again."))
-                .andExpect(status().isConflict());
+                .andExpect(status().is3xxRedirection());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select notes from package_versions where package_id=(select id from findings_packages where session_id=?) and version=1",
+                String.class, participant.sessionId())).isEqualTo("Follow up with the reconciliation owner.");
     }
 
     @Test
@@ -1322,9 +1334,13 @@ class PilotShellIntegrationTest {
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
 
-        mockMvc.perform(post("/interview/retry").session(participant.session()).cookie(participant.cookie())
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
-                .andExpect(status().is3xxRedirection());
+        for (int replay = 0; replay < 2; replay++) {
+            mockMvc.perform(post("/interview/retry").session(participant.session()).cookie(participant.cookie())
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                    .andExpect(status().is3xxRedirection());
+        }
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from runtime_runs where session_id=? and state='PENDING'", Integer.class, participant.sessionId())).isEqualTo(1);
         mockMvc.perform(post("/test/runtime/run-once")).andExpect(status().isOk())
                 .andExpect(content().json("{\"event\":\"question_ready\"}"));
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
@@ -1339,6 +1355,11 @@ class PilotShellIntegrationTest {
                 .andExpect(content().json("{\"event\":\"findings_failed\"}"));
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from findings_packages where session_id=?", Integer.class, participant.sessionId())).isZero();
+        for (int replay = 0; replay < 2; replay++) {
+            mockMvc.perform(post("/app/findings/{sessionId}/retry", participant.sessionId()).session(access.session())
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                    .andExpect(status().is3xxRedirection());
+        }
         mockMvc.perform(post("/test/extraction/run-once")).andExpect(status().isOk())
                 .andExpect(content().json("{\"event\":\"findings_ready\"}"));
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(

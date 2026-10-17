@@ -311,7 +311,7 @@ public class MissionReviewController {
 
     private int copyAsDraft(UUID missionId, int from, UUID organizationId, UUID membershipId) {
         var mission = findOwnedMission(missionId, organizationId, membershipId);
-        if (mission.version() != from) throw new ResponseStatusException(HttpStatus.CONFLICT, "Mission version changed");
+        if (mission.version() != from) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Mission version changed");
         var to = from + 1;
         db.sql("""
                 insert into mission_versions(mission_id,organization_id,version,state,objective,desired_outcome,
@@ -325,7 +325,7 @@ public class MissionReviewController {
                 .param("id", missionId).param("from", from).update();
         if (db.sql("update missions set current_version=:to,approved_version=null where id=:id and current_version=:from")
                 .param("to", to).param("id", missionId).param("from", from).update() != 1) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Mission version changed");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Mission version changed");
         }
         revokeUnusedAccess(missionId);
         return to;
