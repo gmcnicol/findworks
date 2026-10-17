@@ -920,6 +920,31 @@ test("summary distributions expose benchmark quality, safety, turns, latency, an
   });
 });
 
+test("reviewer latency distributions exclude ordinary turns without a review", () => {
+  const summary = summariseRuns([{
+    scenarioId: "review-cadence",
+    repeat: 1,
+    durationMs: 50,
+    turns: [{
+      durationMs: 30,
+      reviewerDurationMs: 20,
+      contractViolations: [],
+      semanticQuality: { passed: 1, total: 1, checks: [] },
+      trace: { review: { accepted: true, trigger: "INITIAL_EVIDENCE" } },
+    }, {
+      durationMs: 20,
+      reviewerDurationMs: 0,
+      contractViolations: [],
+      semanticQuality: { passed: 1, total: 1, checks: [] },
+      trace: { review: null },
+    }],
+  }]);
+  assert.equal(summary.reviewer.invocations, 1);
+  assert.deepEqual(summary.reviewer.latencyMs, {
+    count: 1, min: 20, p25: 20, p50: 20, p75: 20, p95: 20, max: 20, mean: 20,
+  });
+});
+
 test("repeat summaries compare deterministic and graded results with a baseline", () => {
   const runs = [
     { scenarioId: "morning-sort", repeat: 1, durationMs: 100, turns: [{ contractViolations: [], semanticQuality: { passed: 3, total: 3 } }] },

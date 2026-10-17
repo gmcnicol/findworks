@@ -704,7 +704,8 @@ export function summariseRuns(runs) {
   const contradictionsMissed = turns.reduce((total, turn) => total + (turn.semanticQuality?.checks ?? [])
     .filter(check => check.rule === "expected-outcome:CONFLICT" && !check.passed).length, 0);
   const reviewInvocations = turns.filter(turn => turn.trace?.review).length;
-  const reviewDurations = turns.map(turn => turn.reviewerDurationMs).filter(value => typeof value === "number");
+  const reviewDurations = turns.filter(turn => turn.trace?.review)
+    .map(turn => turn.reviewerDurationMs).filter(value => typeof value === "number");
   const reviewTriggers = {};
   for (const turn of turns.filter(value => value.trace?.review)) {
     const trigger = turn.trace.review.trigger;
