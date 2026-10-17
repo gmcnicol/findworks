@@ -590,25 +590,33 @@ public class InvitationController {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         if (answer.isBlank() || answer.length() > 10_000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         var result = transactions.execute(status -> {
+            // The Session and source Question are the serialisation boundary for a
+            // correction. Replay detection must happen only after both authoritative
+            // rows are locked, otherwise concurrent legacy retries can both append.
+            var context = db.sql("""
+                    select s.state,s.revision,e.question_id,e.participant_id
+                    from interview_sessions s
+                    join evidence e on e.session_id=s.id and e.id=:evidence and e.participant_id is not null
+                    join questions q on q.id=e.question_id and q.session_id=s.id
+                    where s.id=:session
+                    for update of s,q
+                    """).param("evidence", evidenceId).param("session", view.sessionId())
+                    .query((rs, row) -> new RevisionContext(rs.getString(1), rs.getInt(2),
+                            rs.getObject(3, UUID.class), rs.getObject(4, UUID.class))).optional()
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
             var replayed = db.sql("select exists(select 1 from evidence where session_id=:session and revises=:evidence and exact_text=:text)")
                     .param("session", view.sessionId()).param("evidence", evidenceId).param("text", answer).query(Boolean.class).single();
             if (replayed) return RevisionResult.REPLAYED;
-            var session = db.sql("select state,revision from interview_sessions where id=:session for update")
-                    .param("session", view.sessionId()).query((rs, row) -> new RevisionState(rs.getString(1), rs.getInt(2))).single();
-            if (!session.state().equals("ACTIVE")) return RevisionResult.NOOP;
-            if (expectedRevision != null && session.revision() != expectedRevision) return RevisionResult.STALE;
-            var prior = db.sql("select question_id,participant_id from evidence where id=:evidence and session_id=:session and participant_id is not null")
-                    .param("evidence", evidenceId).param("session", view.sessionId())
-                    .query((rs, row) -> new PriorEvidence(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class))).optional()
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+            if (!context.state().equals("ACTIVE")) return RevisionResult.NOOP;
+            if (expectedRevision != null && context.revision() != expectedRevision) return RevisionResult.STALE;
             db.sql("update questions set active=false where session_id=:session and active").param("session", view.sessionId()).update();
-            var revision = session.revision() + 1;
+            var revision = context.revision() + 1;
             db.sql("update interview_sessions set revision=:revision where id=:session")
                     .param("revision", revision).param("session", view.sessionId()).update();
             var newEvidence = Ids.id();
             db.sql("insert into evidence(id,organization_id,session_id,question_id,participant_id,source_type,exact_text,revises) values(:id,:organization,:session,:question,:participant,'REVISION',:text,:revises)")
                     .param("id", newEvidence).param("organization", view.organizationId()).param("session", view.sessionId())
-                    .param("question", prior.questionId()).param("participant", prior.participantId()).param("text", answer).param("revises", evidenceId).update();
+                    .param("question", context.questionId()).param("participant", context.participantId()).param("text", answer).param("revises", evidenceId).update();
             db.sql("insert into runtime_runs(id,organization_id,session_id,evidence_id,expected_revision,state) values(:id,:organization,:session,:evidence,:revision,'PENDING')")
                     .param("id", Ids.id()).param("organization", view.organizationId()).param("session", view.sessionId())
                     .param("evidence", newEvidence).param("revision", revision).update();
@@ -1004,8 +1012,7 @@ public class InvitationController {
     }
     public record ConversationProgress(long outcomes, long total, long responses, int percent, String summary) {}
     private record Clarifiable(UUID id, UUID itemId, int sequence, String text, UUID clarifies) {}
-    private record PriorEvidence(UUID questionId, UUID participantId) {}
-    private record RevisionState(String state, int revision) {}
+    private record RevisionContext(String state, int revision, UUID questionId, UUID participantId) {}
     private enum RevisionResult { APPENDED, REPLAYED, STALE, NOOP }
     private record EvidenceAccepted(UUID id, UUID questionId) {}
     private record OwnedSession(UUID organizationId, UUID missionId) {}

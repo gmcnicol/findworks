@@ -175,7 +175,7 @@ class TestSupportController {
     @PostMapping("/test/interviews/{sessionId}/state")
     @ResponseBody
     Map<String, Object> interviewState(@PathVariable UUID sessionId, @RequestParam String state) {
-        if (!java.util.Set.of("PAUSED", "RUNTIME_FAILED", "AWAITING_CONFIRMATION", "COMPLETED").contains(state)) {
+        if (!java.util.Set.of("PAUSED", "RUNTIME_FAILED", "AWAITING_CONFIRMATION", "COMPLETED", "UNAVAILABLE").contains(state)) {
             throw new IllegalArgumentException("Unsupported test Interview Session state");
         }
         var changed = db.sql("""
@@ -187,6 +187,16 @@ class TestSupportController {
                 .param("state", state).param("session", sessionId).update();
         if (changed != 1) throw new IllegalArgumentException("Unknown Interview Session");
         return Map.of("session_id", sessionId, "state", state);
+    }
+
+    @PostMapping("/test/interviews/{sessionId}/revoke-access")
+    @ResponseBody
+    Map<String, Object> revokeInterviewAccess(@PathVariable UUID sessionId) {
+        db.sql("update access_grants set revoked_at=now() where session_id=:session")
+                .param("session", sessionId).update();
+        db.sql("update interview_account_access set revoked_at=now() where session_id=:session")
+                .param("session", sessionId).update();
+        return Map.of("session_id", sessionId, "revoked", true);
     }
 
     @PostMapping("/test/fixtures/non-owner")

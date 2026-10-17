@@ -11,9 +11,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Connection;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import javax.sql.DataSource;
 
 import com.findworks.web.RuntimeTurnContext;
 import org.junit.jupiter.api.Test;
@@ -27,6 +33,7 @@ import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -62,6 +69,9 @@ class PilotShellIntegrationTest {
 
     @Autowired
     RuntimeTurnContext runtimeTurnContext;
+
+    @Autowired
+    DataSource dataSource;
 
     @Test
     void browser_errors_have_a_recoverable_findworks_page_instead_of_the_framework_fallback() throws Exception {
@@ -899,6 +909,107 @@ class PilotShellIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-focus-key=\"revision-conflict\"")));
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(2);
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void concurrent_identical_legacy_revisions_append_one_evidence_and_one_runtime_work_item() throws Exception {
+        var email = "concurrent-revision-" + UUID.randomUUID() + "@example.com";
+        var fixtureBody = mockMvc.perform(post("/test/fixtures/approved-mission").param("email", email))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var fixture = tools.jackson.databind.json.JsonMapper.builder().build().readTree(fixtureBody);
+        var discoveryId = UUID.fromString(fixture.path("discovery_id").asText());
+        var sessionId = UUID.fromString(fixture.path("session_id").asText());
+        var invitationUrl = fixture.path("invitation_url").asText();
+        var redemption = mockMvc.perform(post(invitationUrl)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().is3xxRedirection()).andReturn();
+        var cookie = redemption.getResponse().getCookie("findworks_interview");
+
+        try {
+            mockMvc.perform(post("/interview/begin").cookie(cookie)
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                    .andExpect(status().is3xxRedirection());
+            mockMvc.perform(post("/interview/answer").cookie(cookie)
+                            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                            .param("answer", "Every imported amount needs approval."))
+                    .andExpect(status().is3xxRedirection());
+            mockMvc.perform(post("/test/runtime/run-once").param("sessionId", sessionId.toString()))
+                    .andExpect(status().isOk());
+            var evidenceId = jdbcTemplate.queryForObject(
+                    "select id from evidence where session_id=? and source_type='ANSWER'", UUID.class, sessionId);
+            var correction = "Only unmatched imported amounts need approval.";
+            var start = new CyclicBarrier(3);
+
+            try (Connection blocker = dataSource.getConnection();
+                 var lock = blocker.prepareStatement("select id from interview_sessions where id=? for update");
+                 var executor = Executors.newFixedThreadPool(2)) {
+                blocker.setAutoCommit(false);
+                lock.setObject(1, sessionId);
+                lock.executeQuery().close();
+
+                var first = executor.submit(() -> {
+                    start.await();
+                    return mockMvc.perform(post("/interview/revise").cookie(cookie)
+                                    .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                                    .param("evidenceId", evidenceId.toString()).param("answer", correction))
+                            .andReturn().getResponse().getStatus();
+                });
+                var second = executor.submit(() -> {
+                    start.await();
+                    return mockMvc.perform(post("/interview/revise").cookie(cookie)
+                                    .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                                    .param("evidenceId", evidenceId.toString()).param("answer", correction))
+                            .andReturn().getResponse().getStatus();
+                });
+                start.await();
+                var deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (System.nanoTime() < deadline && jdbcTemplate.queryForObject("""
+                        select count(*) from pg_stat_activity
+                        where datname=current_database() and wait_event_type='Lock'
+                          and query like '%interview_sessions%'
+                        """, Integer.class) < 2) Thread.sleep(10);
+                blocker.commit();
+
+                org.assertj.core.api.Assertions.assertThat(first.get(5, TimeUnit.SECONDS)).isEqualTo(302);
+                org.assertj.core.api.Assertions.assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo(302);
+            }
+
+            org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                    "select count(*) from evidence where session_id=? and source_type='REVISION'", Integer.class, sessionId))
+                    .isEqualTo(1);
+            org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("""
+                    select count(*) from runtime_runs r join evidence e on e.id=r.evidence_id
+                    where r.session_id=? and e.source_type='REVISION'
+                    """, Integer.class, sessionId)).isEqualTo(1);
+        } finally {
+            jdbcTemplate.update("delete from discoveries where id=?", discoveryId);
+        }
+    }
+
+    @Test
+    void authorised_unavailable_interview_retains_transcript_but_revoked_access_leaks_nothing() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "unavailable-transcript@example.com");
+        var accepted = "Priya compares the cashbook with the source ledger.";
+        mockMvc.perform(post("/interview/answer").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .param("answer", accepted))
+                .andExpect(status().is3xxRedirection());
+        jdbcTemplate.update("update interview_sessions set state='UNAVAILABLE' where id=?", participant.sessionId());
+
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Conversation transcript")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(accepted)))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-clear-session-drafts")));
+
+        jdbcTemplate.update("update access_grants set revoked_at=now() where session_id=?", participant.sessionId());
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isForbidden())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(accepted))));
     }
 
     @Test
