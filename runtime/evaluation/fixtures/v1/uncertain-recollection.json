@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.1.0",
+  "fixtureVersion": "1.2.0",
   "id": "uncertain-recollection",
   "title": "Uncertain recollection is checked once then retained as an Assumption",
   "minimumSemanticPassRate": 1,
@@ -48,7 +48,7 @@
         "action": "ASK_QUESTION",
         "resultId": "10000000-0000-0000-0000-000000000111",
         "semantic": {
-          "vocabularyAnchors": ["manager", "remember", "joined"],
+          "vocabularyAnchors": ["manager", "remember", "joined", "month-end", "invoice", "waiting"],
           "focusAnchors": ["seen", "seeing", "observed", "handled", "written", "source", "where did", "remember", "hearing", "based on"],
           "pressureTerms": ["guess", "must", "probably means", "just confirm"],
           "maxQuestionLength": 220
@@ -80,7 +80,7 @@
           ],
           "summaryAnchorGroups": [
             ["manager"],
-            ["never seen", "not seen", "personally seen", "neither seen", "seen the check"],
+            ["never seen", "not seen", "personally seen", "neither seen", "seen the check", "not observed", "neither observed"],
             ["not written", "written down", "documented"]
           ]
         }],
