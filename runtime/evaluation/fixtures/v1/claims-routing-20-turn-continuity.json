@@ -1,0 +1,750 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "claims-routing-20-turn-continuity",
+  "title": "Household claims routing remains coherent across twenty turns",
+  "minimumSemanticPassRate": 0.9,
+  "persona": {
+    "name": "Leah",
+    "role": "Senior household claims handler",
+    "brief": "Explain the desk’s actual language and correct old limits when they surface."
+  },
+  "assertions": {
+    "minimumTurns": 20,
+    "forbiddenQuestionTerms": [
+      "investigation item",
+      "sufficient evidence",
+      "completion criterion",
+      "mission boundary",
+      "design tree",
+      "coverage status",
+      "runtime context"
+    ],
+    "forbiddenClaims": [
+      "machine-learning score",
+      "automatic claim rejection",
+      "blockchain ledger",
+      "facial recognition"
+    ],
+    "criticalEvidenceIds": [
+      "41000000-0000-0000-0000-000000000009",
+      "41000000-0000-0000-0000-000000000017",
+      "41000000-0000-0000-0000-000000000020"
+    ]
+  },
+  "context": {
+    "run_id": "21000000-0000-0000-0000-000000000001",
+    "session_id": "31000000-0000-0000-0000-000000000001",
+    "mission_version": 4,
+    "expected_revision": 8,
+    "mission": {
+      "objective": "Understand how urgent household claims are routed and made safe.",
+      "desired_outcome": "A grounded routing and emergency-authority rule with ownership, exceptions, correction history, and observable completion.",
+      "data_use": "The Investigator will review the synthetic findings to design a claims-workflow change."
+    },
+    "shared_mission_entries": [
+      {
+        "kind": "TERM",
+        "position": 0,
+        "value": "Intake triage",
+        "detail": "The Mission’s starting term for the first routing screen; use the handler’s current term when supplied."
+      },
+      {
+        "kind": "BOUNDARY",
+        "position": 0,
+        "value": "Do not investigate final claim coverage, fraud decisions, or settlement valuation."
+      },
+      {
+        "kind": "COMPLETION_CRITERION",
+        "position": 0,
+        "value": "Routing trigger, owner, timing, duplicate handling, escalation authority, exceptions, audit record, and observable safety completion are explicit."
+      }
+    ],
+    "investigation_results": [
+      {
+        "result_id": "11000000-0000-0000-0000-000000000001",
+        "knowledge_gap": "How does the first screen route a newly arrived urgent household claim?",
+        "why_it_matters": "A workflow change must preserve safe and timely routing.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "The desk receives household claims through a shared queue.",
+        "sufficient_evidence": "Current desk term; live-loss trigger; urgency marker; decision owner; destination; measured time rule and target distinction; duplicate exception; recent example; and saved completion signal are explicit.",
+        "coverage": "EXPLORING",
+        "current_outcomes": []
+      },
+      {
+        "result_id": "11000000-0000-0000-0000-000000000002",
+        "knowledge_gap": "What authority and completion rule govern the emergency-safety team after urgent routing?",
+        "why_it_matters": "The workflow must not invent spending authority or close safety work too early.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "Urgent claims move to a specialist team after first routing.",
+        "sufficient_evidence": "Current team term; ownership; hotel and emergency-work limits; higher approver; habitability trigger; pet exception; changed limit; contractor signal; customer confirmation; and audit fields are explicit.",
+        "coverage": "UNADDRESSED",
+        "current_outcomes": []
+      }
+    ],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "21000000-0000-0000-0000-000000000001",
+      "sourceQuestion": "When a new household claim arrives, what do you do first?",
+      "stressor": "vocabulary-change",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000001",
+        "sourceType": "ANSWER",
+        "text": "We used to call it intake triage, but nobody on the desk says that now. We call the first screen the front porch, and the claim itself appears as a claim card. I open the card before touching any attachments because the porch shows whether the customer is safe and whether the loss is still happening."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "front porch",
+            "claim card"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000002",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000002",
+        "sourceType": "ANSWER",
+        "text": "The first trigger I look for is whether the incident is still live. If water is still entering, a fire crew is present, or the home cannot be secured, I put a red ribbon on the claim card. A red ribbon means it must not sit in the ordinary queue."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "still live",
+            "red ribbon"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000003",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000003",
+        "sourceType": "ANSWER",
+        "text": "The porch keeper owns that first decision during the day. That is whichever senior handler is on the rota, not the person who happened to open the email. They can add or remove the red ribbon after checking the customer’s description."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "porch keeper",
+            "red ribbon"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000004",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "cross-thread",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000004",
+        "sourceType": "ANSWER",
+        "text": "A red ribbon goes to the rapid-help lane. Separately, during a named storm the storm room sometimes phones us about whole postcodes, but that is later escalation work and I do not decide what the storm room accepts. For the front porch I only need to move the live-loss card into rapid-help."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "storm room",
+            "red ribbon"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000005",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000005",
+        "sourceType": "ANSWER",
+        "text": "A recent example was the Mills Road burst pipe. The customer wrote a long message about ruined flooring, hotel costs, photographs, and a plumber who might arrive after lunch. I did not try to assess all of that on the porch. The sentence that mattered was that water was still coming through the kitchen ceiling, so I added the red ribbon, wrote “stop the leak first” in the handover, and moved the card to rapid-help. The rapid-help handler called within eleven minutes and arranged an emergency plumber. Only after the leak was isolated did the ordinary coverage questions begin. That example is how I explain the difference between immediate safety routing and deciding whether every part of a claim is covered."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "Mills Road",
+            "stop the leak"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000006",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "interruption",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000006",
+        "sourceType": "ANSWER",
+        "text": "Sorry, the evacuation alarm interrupted me and I had to leave the desk. The timing rule I was about to give you is our porch clock: every new card should be screened within fifteen minutes while the desk is open. The clock measures arrival to the first saved routing decision."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "porch clock",
+            "fifteen minutes"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000007",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000007",
+        "sourceType": "ANSWER",
+        "text": "The main exception is a duplicate card. We do not route both copies. I link the newer card to the older card, leave the older card in its existing lane, and record that the duplicate was closed without a second routing decision."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "duplicate card",
+            "older card"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000008",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000008",
+        "sourceType": "ANSWER",
+        "text": "We know the porch step is finished when the card has a saved lane, a named porch keeper, and a porch-clock timestamp. A coloured ribbon on screen without a saved lane is not complete because it can disappear on refresh."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "saved lane",
+            "porch clock"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000009",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "prior-statement-revision",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000009",
+        "sourceType": "ANSWER",
+        "text": "I need to correct what I said about fifteen minutes. Fifteen is the team target shown on the wallboard, but the actual service rule is twenty minutes. We investigate misses against twenty; fifteen is only the internal ambition. Please keep both meanings clear."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "twenty minutes",
+            "fifteen"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000010",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000001",
+        "evidenceId": "41000000-0000-0000-0000-000000000010",
+        "sourceType": "ANSWER",
+        "text": "So the front porch is sufficiently done when the porch keeper has checked whether the loss is live, dealt with any duplicate, saved the correct lane, and left the timestamp. The enforceable limit is twenty minutes, while fifteen remains the desk target. That is the complete first-screen rule."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "twenty-minute",
+            "front porch"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        },
+        "outcomes": [
+          {
+            "resultId": "11000000-0000-0000-0000-000000000001",
+            "coverage": "SUPPORTED",
+            "category": "RULE",
+            "evidenceIds": [
+              "41000000-0000-0000-0000-000000000001",
+              "41000000-0000-0000-0000-000000000002",
+              "41000000-0000-0000-0000-000000000003",
+              "41000000-0000-0000-0000-000000000004",
+              "41000000-0000-0000-0000-000000000005",
+              "41000000-0000-0000-0000-000000000006",
+              "41000000-0000-0000-0000-000000000007",
+              "41000000-0000-0000-0000-000000000008",
+              "41000000-0000-0000-0000-000000000009",
+              "41000000-0000-0000-0000-000000000010"
+            ],
+            "summaryIncludes": [
+              "front porch",
+              "twenty minutes",
+              "red ribbon"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000011",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "vocabulary-change",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000011",
+        "sourceType": "ANSWER",
+        "text": "Once a red-ribbon card leaves the front porch, the team it reaches is called the rescue desk now; rapid-help is the old system label. The rescue desk takes ownership of making the property safe, although the claim card still displays rapid-help in one field."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "rescue desk",
+            "rapid-help"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000012",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000012",
+        "sourceType": "ANSWER",
+        "text": "The rescue lead may authorise emergency work and up to two hotel nights without another approval. The handler gathers the quote, but the rescue lead is the person who commits the spend."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "rescue lead",
+            "two nights"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000013",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "interruption",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000013",
+        "sourceType": "ANSWER",
+        "text": "A generator test made the call drop for a moment. To finish the approval point: above two hotel nights, or for emergency work above two thousand pounds, the rescue lead must ask the duty claims manager before promising anything."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "generator test",
+            "rescue lead"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000014",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "cross-thread",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000014",
+        "sourceType": "ANSWER",
+        "text": "The rescue desk can see the porch timestamp, which is useful for checking the earlier service rule, but it does not reopen the front-porch routing unless the card was sent to the wrong lane. Its own record is the rescue log."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "porch timestamp",
+            "rescue log"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000015",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000015",
+        "sourceType": "ANSWER",
+        "text": "The hotel trigger is that the home is uninhabitable tonight, not merely inconvenient. We use the customer’s account plus the contractor’s safety view. If there is no safe place to sleep, the rescue lead can use the two-night authority."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "uninhabitable",
+            "safe place"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000016",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000016",
+        "sourceType": "ANSWER",
+        "text": "A practical exception is pet boarding. It is not part of the hotel allowance, so even a small boarding cost needs the duty claims manager to approve it. We learned that after the rescue desk assumed the two-night rule covered the whole household."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "pet boarding",
+            "hotel allowance"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000017",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "prior-statement-revision",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000017",
+        "sourceType": "ANSWER",
+        "text": "I also need to revise the emergency-work amount I gave you. Two thousand pounds was last year’s authority. Since April the rescue lead limit is one thousand five hundred pounds, and anything above that goes to the duty claims manager. The two-night hotel limit did not change."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "one thousand five hundred",
+            "two thousand"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000018",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000018",
+        "sourceType": "ANSWER",
+        "text": "The rescue desk watches for the contractor to mark the emergency job accepted. Acceptance alone is not closure; the handler then confirms with the customer that the property is safe for the night or that the hotel has been booked."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "job accepted",
+            "safe"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000019",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000019",
+        "sourceType": "ANSWER",
+        "text": "The handoff is auditable because the rescue log records the approving person, the amount or hotel nights, the contractor job reference, and the customer confirmation. Missing any one of those keeps the rescue task open."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "rescue log",
+            "reference"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "21000000-0000-0000-0000-000000000020",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "11000000-0000-0000-0000-000000000002",
+        "evidenceId": "41000000-0000-0000-0000-000000000020",
+        "sourceType": "ANSWER",
+        "text": "That completes the rescue-desk rule: it owns immediate safety after a red ribbon, the rescue lead has two hotel nights and one thousand five hundred pounds of emergency-work authority, pet boarding and larger commitments go to the duty claims manager, and closure requires the job reference plus the customer’s safety or hotel confirmation."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [
+          {
+            "resultId": "11000000-0000-0000-0000-000000000002",
+            "coverage": "SUPPORTED",
+            "category": "RULE",
+            "evidenceIds": [
+              "41000000-0000-0000-0000-000000000011",
+              "41000000-0000-0000-0000-000000000012",
+              "41000000-0000-0000-0000-000000000013",
+              "41000000-0000-0000-0000-000000000014",
+              "41000000-0000-0000-0000-000000000015",
+              "41000000-0000-0000-0000-000000000016",
+              "41000000-0000-0000-0000-000000000017",
+              "41000000-0000-0000-0000-000000000018",
+              "41000000-0000-0000-0000-000000000019",
+              "41000000-0000-0000-0000-000000000020"
+            ],
+            "summaryIncludes": [
+              "rescue desk",
+              "one thousand five hundred",
+              "two hotel nights"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

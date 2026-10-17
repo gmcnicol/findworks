@@ -152,6 +152,13 @@ test("repeated questions and premature completion are deterministic violations",
   assert.equal(evaluation.trace.repeatedQuestion, true);
   assert.ok(evaluation.contractViolations.some(item => item.rule === "repeated-question"));
 
+  repeated.nextAction.text = "What makes a red job get priority during Maya's morning sort?";
+  evaluation = evaluateSubmission({
+    fixture: fixture(), turnIndex: 0, context: context(), submission: repeated, previousQuestions: [first],
+  });
+  assert.equal(evaluation.trace.repeatedQuestion, true);
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "semantically-repeated-question"));
+
   const completion = validSubmission();
   completion.outcomes = [];
   completion.nextAction = { type: "PROPOSE_COMPLETION" };
@@ -180,6 +187,35 @@ test("fixture-defined focus and pressure checks make bounded follow-ups reviewab
   const pressure = evaluation.semanticQuality.checks.find(check => check.rule === "no-pressure-or-recruitment");
   assert.equal(pressure.passed, false);
   assert.match(pressure.detail, /guess, email, invite/);
+});
+
+test("long-scenario assertions reject planning leaks, fabricated specifics, and ungrounded choices", () => {
+  const scenario = fixture({
+    assertions: {
+      forbiddenQuestionTerms: ["sufficiency criterion"],
+      forbiddenClaims: ["automatic cancellation"],
+    },
+  });
+  const submission = validSubmission();
+  submission.nextAction = {
+    type: "ASK_QUESTION",
+    resultId,
+    text: "Does Priya's sufficiency criterion mean automatic cancellation above £500?",
+    responseMode: "CHOICE",
+    options: [
+      { id: "auto", label: "Automatically cancel it" },
+      { id: "manual", label: "Send it to the robot queue" },
+    ],
+  };
+
+  const evaluation = evaluateSubmission({
+    fixture: scenario, turnIndex: 0, context: context(), submission, previousQuestions: [],
+  });
+
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "mission-language-leak"));
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "fabricated-fact"));
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "unsupported-specific"));
+  assert.ok(evaluation.contractViolations.some(item => item.rule === "ungrounded-choice"));
 });
 
 test("a terminal outcome may close the current thread and ask the next result in one turn", () => {
@@ -396,6 +432,24 @@ test("the refund completion fixture resolves the exact five-hundred-pound bounda
   assert.match(refund.turns[1].answer.text, /five hundred pounds (?:or (?:more|above)|and above)/i);
 });
 
+test("versioned long fixtures cover 20 and 40 turns plus continuity stressors", async () => {
+  const fixtures = await loadFixtures(new URL("./fixtures/v1", import.meta.url).pathname);
+  const twenty = fixtures.find(value => value.id === "claims-routing-20-turn-continuity");
+  const forty = fixtures.find(value => value.id === "permit-handover-40-turn-compaction");
+
+  assert.ok(twenty.turns.length >= 20);
+  assert.ok(forty.turns.length >= 40);
+  for (const scenario of [twenty, forty]) {
+    assert.ok(scenario.turns.some(turn => turn.answer.text.length >= 300));
+    for (const stressor of ["vocabulary-change", "interruption", "cross-thread", "prior-statement-revision"]) {
+      assert.ok(scenario.turns.some(turn => turn.stressor === stressor), `${scenario.id} lacks ${stressor}`);
+    }
+  }
+  assert.ok(forty.contextPolicy.maxQuestionEvidenceRecords < forty.turns.length);
+  assert.equal(twenty.assertions.minimumTurns, 20);
+  assert.equal(forty.assertions.minimumTurns, 40);
+});
+
 test("a scenario drives every answer through the Runtime Turn seam and records available usage", async () => {
   const submissions = [];
   const scenario = fixture({
@@ -463,6 +517,78 @@ test("a fixture can preserve hard semantic acceptance without reclassifying it a
   assert.equal(run.semanticGatePassed, false);
 });
 
+test("long runs measure continuity, compaction, coverage, evidence yield, phases, and latency percentiles", async () => {
+  const scenario = fixture({
+    fixtureVersion: "2.0.0",
+    assertions: {
+      minimumTurns: 4,
+      criticalEvidenceIds: [
+        "40000000-0000-0000-0000-000000000001",
+        "40000000-0000-0000-0000-000000000002",
+      ],
+    },
+    contextPolicy: { maxQuestionEvidenceRecords: 2 },
+    turns: Array.from({ length: 4 }, (_, index) => ({
+      runId: `20000000-0000-0000-0000-00000000000${index + 1}`,
+      sourceQuestion: `Question ${index + 1}?`,
+      answer: {
+        resultId,
+        evidenceId: `40000000-0000-0000-0000-00000000000${index + 1}`,
+        sourceType: "ANSWER",
+        text: `The morning sort fact number ${index + 1} is grounded in this synthetic answer.`,
+      },
+      expected: {
+        action: index === 3 ? "PROPOSE_COMPLETION" : "ASK_QUESTION",
+        resultId: index === 3 ? undefined : resultId,
+      },
+    })),
+  });
+  let turn = 0;
+  const run = await runScenario({
+    fixture: scenario,
+    repeat: 1,
+    executeRuntime: async suppliedContext => {
+      const index = turn++;
+      const currentEvidenceId = scenario.turns[index].answer.evidenceId;
+      return {
+        durationMs: [10, 20, 30, 100][index],
+        usage: { inputTokens: 100 + index, outputTokens: 10, costUsd: 0.001 },
+        submission: {
+          runId: suppliedContext.run_id,
+          expectedRevision: suppliedContext.expected_revision,
+          outcomes: [{
+            resultId,
+            coverage: "SUPPORTED",
+            category: "FACT",
+            evidenceIds: [currentEvidenceId],
+            summary: `Grounded fact ${index + 1}`,
+          }],
+          nextAction: index === 3
+            ? { type: "PROPOSE_COMPLETION" }
+            : { type: "ASK_QUESTION", resultId, text: `What is new fact ${index + 2}?`, responseMode: "FREE_TEXT" },
+        },
+      };
+    },
+  });
+
+  assert.equal(run.turns.length, 4);
+  assert.deepEqual(run.metrics.requiredCoverage, { total: 1, terminal: 1, completionRate: 1 });
+  assert.equal(run.metrics.usefulEvidence.questions, 4);
+  assert.equal(run.metrics.usefulEvidence.answersLinkedToOutcomes, 4);
+  assert.equal(run.metrics.usefulEvidence.perQuestion, 1);
+  assert.deepEqual(run.metrics.latencyMs, { p50: 25, p95: 89.5 });
+  assert.deepEqual(run.metrics.compaction, {
+    enabled: true,
+    recordsDropped: 2,
+    criticalEvidenceRetained: true,
+    missingCriticalEvidenceIds: [],
+  });
+  assert.equal(run.metrics.continuity.allInvestigatedItemsTraceable, true);
+  assert.equal(run.metrics.qualityByPhase.length, 3);
+  assert.equal(run.continuityGatePassed, true);
+  assert.ok(run.turns.some(value => value.trace.compactedEvidenceIds.length > 0));
+});
+
 test("runtime failures remain reviewable and stop only the affected scenario", async () => {
   const run = await runScenario({
     fixture: fixture(),
@@ -490,9 +616,13 @@ test("repeat summaries compare deterministic and graded results with a baseline"
     deterministicPasses: 2,
     deterministicFailures: 0,
     semanticGateFailures: 0,
+    continuityGateFailures: 0,
     semanticPassed: 5,
     semanticTotal: 6,
     semanticPassRate: 5 / 6,
+    requiredCoverageCompletionRate: null,
+    usefulEvidencePerQuestion: null,
+    latencyMs: { p50: null, p95: null },
     durationMs: 220,
   });
   const comparison = compareWithBaseline(summary, { semanticPassRate: 0.8, deterministicFailures: 0 });

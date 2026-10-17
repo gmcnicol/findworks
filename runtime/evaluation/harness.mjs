@@ -6,6 +6,12 @@ const COVERAGES = new Set(["SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OW
 const CATEGORIES = new Set(["FACT", "RULE", "DECISION", "TERM", "EXCEPTION", "ASSUMPTION"]);
 const RESPONSE_MODES = new Set(["FREE_TEXT", "YES_NO", "YES_NO_PARTLY", "PARAPHRASE", "CHOICE"]);
 const OPEN_COVERAGES = new Set(["UNADDRESSED", "EXPLORING", "PARTIAL"]);
+const TERMINAL_COVERAGES = new Set(["SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OWNERSHIP_GAP"]);
+const QUESTION_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "at", "be", "by", "can", "could", "describe", "did", "do", "does", "for", "from", "get", "gets",
+  "has", "have", "how", "i", "if", "in", "is", "it", "of", "on", "or", "please", "should", "tell", "that", "the", "this", "to", "was", "were", "what",
+  "when", "where", "which", "who", "why", "with", "would", "you", "your",
+]);
 
 export async function loadFixtures(directory) {
   const names = (await readdir(directory)).filter(name => name.endsWith(".json")).sort();
@@ -30,6 +36,16 @@ export function validateFixture(fixture, source = "fixture") {
   }
   if (!fixture.context || !Array.isArray(fixture.context.investigation_results)) throw new Error(`${source}: missing context`);
   if (!Array.isArray(fixture.turns) || fixture.turns.length === 0) throw new Error(`${source}: turns must not be empty`);
+  if (fixture.assertions?.minimumTurns !== undefined
+      && (!Number.isInteger(fixture.assertions.minimumTurns) || fixture.assertions.minimumTurns < 1
+        || fixture.turns.length < fixture.assertions.minimumTurns)) {
+    throw new Error(`${source}: turns do not satisfy assertions.minimumTurns`);
+  }
+  if (fixture.contextPolicy?.maxQuestionEvidenceRecords !== undefined
+      && (!Number.isInteger(fixture.contextPolicy.maxQuestionEvidenceRecords)
+        || fixture.contextPolicy.maxQuestionEvidenceRecords < 1)) {
+    throw new Error(`${source}: contextPolicy.maxQuestionEvidenceRecords must be a positive integer`);
+  }
   if (fixture.minimumSemanticPassRate !== undefined
       && (typeof fixture.minimumSemanticPassRate !== "number"
         || fixture.minimumSemanticPassRate < 0 || fixture.minimumSemanticPassRate > 1)) {
@@ -63,7 +79,10 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
   const violations = [];
   const qualityChecks = [];
   const resultIds = new Set(context.investigation_results.map(result => result.result_id));
-  const evidenceIds = new Set(context.questions_and_evidence.map(record => record.evidence_id).filter(Boolean));
+  const evidenceIds = new Set([
+    ...context.questions_and_evidence.map(record => record.evidence_id).filter(Boolean),
+    ...context.investigation_results.flatMap(result => (result.current_outcomes ?? []).flatMap(outcome => outcome.evidence_ids ?? [])),
+  ]);
   const addViolation = (rule, message) => violations.push({
     turn: turnNumber,
     rule,
@@ -95,6 +114,8 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
           || outcome.evidenceIds.some(id => !evidenceIds.has(id))) {
         addViolation("outcome-evidence-scope", `Outcome ${index + 1} did not link only supplied Session Evidence`);
       }
+      const fabricated = matchingTerms(outcome?.summary, fixture.assertions?.forbiddenClaims);
+      if (fabricated.length > 0) addViolation("fabricated-fact", `Outcome introduced unsupported specifics: ${fabricated.join(", ")}`);
     }
 
     if (!action || !["ASK_QUESTION", "PROPOSE_COMPLETION"].includes(action.type)) {
@@ -105,6 +126,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
         projectedCoverage: projectCoverage(context, submission.outcomes ?? []),
         previousQuestions,
         expected,
+        assertions: fixture.assertions ?? {},
         addViolation,
         grade,
       });
@@ -122,7 +144,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
   gradeForbiddenOutcomes(submission?.outcomes ?? [], expected.forbiddenOutcomes ?? [], grade);
   const coverageChanges = calculateCoverageChanges(context, submission?.outcomes ?? []);
   const repeatedQuestion = action?.type === "ASK_QUESTION"
-    && previousQuestions.some(question => normaliseQuestion(question) === normaliseQuestion(action.text));
+    && previousQuestions.some(question => questionsSemanticallyRepeat(question, action.text));
   const outcomeProvenance = (submission?.outcomes ?? []).map(outcome => ({
     resultId: outcome.resultId,
     coverage: outcome.coverage,
@@ -146,6 +168,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
       submittedRevision: submission?.expectedRevision ?? null,
       sourceQuestion: fixture.turns[turnIndex]?.sourceQuestion,
       sourceAnswer,
+      stressor: fixture.turns[turnIndex]?.stressor ?? null,
       action: action ?? null,
       outcomeProvenance,
       repeatedQuestion,
@@ -153,7 +176,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
   };
 }
 
-function evaluateQuestion(action, { context, projectedCoverage, previousQuestions, expected, addViolation, grade }) {
+function evaluateQuestion(action, { context, projectedCoverage, previousQuestions, expected, assertions, addViolation, grade }) {
   if (!context.investigation_results.some(result => result.result_id === action.resultId)) {
     addViolation("question-result-scope", "Question used a result outside this Interview Session");
   }
@@ -167,8 +190,22 @@ function evaluateQuestion(action, { context, projectedCoverage, previousQuestion
   }
   const questionCount = (action.text.match(/\?/g) ?? []).length;
   if (questionCount !== 1) addViolation("one-question", `Question contained ${questionCount} question marks`);
-  if (previousQuestions.some(question => normaliseQuestion(question) === normaliseQuestion(action.text))) {
-    addViolation("repeated-question", "Question repeats an earlier Question");
+  const exactRepeat = previousQuestions.some(question => normaliseQuestion(question) === normaliseQuestion(action.text));
+  if (exactRepeat) addViolation("repeated-question", "Question repeats an earlier Question");
+  if (!exactRepeat && previousQuestions.some(question => questionsSemanticallyRepeat(question, action.text))) {
+    addViolation("semantically-repeated-question", "Question repeats an earlier information need in different wording");
+  }
+  const planningTerms = matchingTerms(action.text, assertions.forbiddenQuestionTerms);
+  if (planningTerms.length > 0) {
+    addViolation("mission-language-leak", `Question exposed private Mission language: ${planningTerms.join(", ")}`);
+  }
+  const fabricatedTerms = matchingTerms(action.text, assertions.forbiddenClaims);
+  if (fabricatedTerms.length > 0) {
+    addViolation("fabricated-fact", `Question introduced unsupported specifics: ${fabricatedTerms.join(", ")}`);
+  }
+  const unsupported = unsupportedSpecifics(action.text, context);
+  if (unsupported.length > 0) {
+    addViolation("unsupported-specific", `Question introduced names or numeric facts absent from supplied context: ${unsupported.join(", ")}`);
   }
   const mode = action.responseMode ?? "FREE_TEXT";
   if (!RESPONSE_MODES.has(mode)) addViolation("response-mode", `Unsupported response mode ${mode}`);
@@ -178,6 +215,15 @@ function evaluateQuestion(action, { context, projectedCoverage, previousQuestion
     } else if (new Set(action.options.map(option => option.id)).size !== action.options.length
         || action.options.some(option => !option.id || !option.label)) {
       addViolation("choice-options", "CHOICE option identities and labels must be non-empty and unique");
+    } else {
+      const groundedWords = groundedVocabulary(context);
+      const ungrounded = action.options.filter(option => {
+        const words = contentWords(option.label);
+        return words.length > 0 && !words.some(word => groundedWords.has(word));
+      });
+      if (ungrounded.length > 0) {
+        addViolation("ungrounded-choice", `Choice labels were not grounded in supplied Mission or interviewee wording: ${ungrounded.map(option => option.label).join(", ")}`);
+      }
     }
   }
   if (expected.resultId && action.resultId !== expected.resultId) {
@@ -325,30 +371,41 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
   const turns = [];
   const previousQuestions = [];
   const usages = [];
+  const acceptedEvidenceIds = new Set(context.questions_and_evidence.map(record => record.evidence_id).filter(Boolean));
+  const coverageProgress = [];
   let durationMs = 0;
   let previousActionQuestion;
+  let previousActionResultId;
+  let recordsDropped = 0;
+  let usefulAnswers = 0;
 
   for (let turnIndex = 0; turnIndex < fixture.turns.length; turnIndex++) {
     const fixtureTurn = fixture.turns[turnIndex];
     context.run_id = fixtureTurn.runId;
     const sourceQuestion = previousActionQuestion ?? fixtureTurn.sourceQuestion;
+    const sourceResultId = previousActionResultId
+      ?? fixtureTurn.answer.resultId
+      ?? context.conversation_state?.current_thread_result_id
+      ?? fixtureTurn.expected.resultId
+      ?? context.investigation_results.find(result => OPEN_COVERAGES.has(result.coverage))?.result_id;
     context.questions_and_evidence.push({
       question_id: fixtureTurn.answer.questionId ?? randomUUID(),
-      sequence: context.questions_and_evidence.length + 1,
+      sequence: turnIndex + 1,
       question: sourceQuestion,
       active: false,
       evidence_id: fixtureTurn.answer.evidenceId,
       source_type: fixtureTurn.answer.sourceType,
       exact_text: fixtureTurn.answer.text,
     });
+    acceptedEvidenceIds.add(fixtureTurn.answer.evidenceId);
     context.conversation_state = {
       ...context.conversation_state,
-      current_thread_result_id: fixtureTurn.expected.resultId
-        ?? context.conversation_state?.current_thread_result_id
-        ?? context.investigation_results.find(result => OPEN_COVERAGES.has(result.coverage))?.result_id,
+      current_thread_result_id: sourceResultId,
       last_question: sourceQuestion,
       latest_interviewee_wording: fixtureTurn.answer.text,
     };
+    const compactedEvidenceIds = compactQuestionEvidence(context, fixture.contextPolicy?.maxQuestionEvidenceRecords);
+    recordsDropped += compactedEvidenceIds.length;
 
     const effectiveFixture = structuredClone(fixture);
     effectiveFixture.turns[turnIndex].sourceQuestion = sourceQuestion;
@@ -374,6 +431,8 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
       evaluation.usage = null;
       evaluation.runtimeEvent = null;
       evaluation.executionError = error.message;
+      evaluation.trace.compactedEvidenceIds = compactedEvidenceIds;
+      evaluation.trace.contextEvidenceRecords = context.questions_and_evidence.length;
       turns.push(evaluation);
       break;
     }
@@ -389,23 +448,43 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
     evaluation.durationMs = executed.durationMs ?? null;
     evaluation.usage = executed.usage ?? null;
     evaluation.runtimeEvent = executed.event ?? null;
+    evaluation.trace.compactedEvidenceIds = compactedEvidenceIds;
+    evaluation.trace.contextEvidenceRecords = context.questions_and_evidence.length;
     turns.push(evaluation);
 
+    const linkedCurrentAnswer = (executed.submission?.outcomes ?? [])
+      .some(outcome => outcome.evidenceIds?.includes(fixtureTurn.answer.evidenceId));
+    if (linkedCurrentAnswer) usefulAnswers += 1;
     context = applySubmission(context, executed.submission ?? {});
     context.expected_revision += 1;
+    const required = context.investigation_results.filter(result => result.required);
+    const terminal = required.filter(result => TERMINAL_COVERAGES.has(result.coverage)).length;
+    coverageProgress.push({ turn: turnIndex + 1, terminal, total: required.length, completionRate: rate(terminal, required.length) });
     if (executed.submission?.nextAction?.type === "ASK_QUESTION") {
       previousActionQuestion = executed.submission.nextAction.text;
+      previousActionResultId = executed.submission.nextAction.resultId;
       previousQuestions.push(previousActionQuestion);
     } else {
       previousActionQuestion = undefined;
+      previousActionResultId = undefined;
     }
   }
 
   const semanticPassed = turns.reduce((total, turn) => total + turn.semanticQuality.passed, 0);
   const semanticTotal = turns.reduce((total, turn) => total + turn.semanticQuality.total, 0);
   const semanticPassRate = semanticTotal === 0 ? 1 : semanticPassed / semanticTotal;
+  const metrics = scenarioMetrics({
+    fixture,
+    context,
+    turns,
+    acceptedEvidenceIds,
+    coverageProgress,
+    recordsDropped,
+    usefulAnswers,
+  });
   return {
     scenarioId: fixture.id,
+    title: fixture.title,
     fixtureVersion: fixture.fixtureVersion,
     persona: fixture.persona,
     repeat,
@@ -414,7 +493,80 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
     minimumSemanticPassRate: fixture.minimumSemanticPassRate ?? null,
     semanticGatePassed: fixture.minimumSemanticPassRate === undefined
       || semanticPassRate >= fixture.minimumSemanticPassRate,
+    continuityGatePassed: metrics.continuity.allInvestigatedItemsTraceable
+      && metrics.compaction.criticalEvidenceRetained
+      && turns.length >= (fixture.assertions?.minimumTurns ?? 1),
+    metrics,
     turns,
+  };
+}
+
+function compactQuestionEvidence(context, maximumRecords) {
+  if (!maximumRecords || context.questions_and_evidence.length <= maximumRecords) return [];
+  const removed = context.questions_and_evidence.splice(0, context.questions_and_evidence.length - maximumRecords);
+  return removed.map(record => record.evidence_id).filter(Boolean);
+}
+
+function scenarioMetrics({ fixture, context, turns, acceptedEvidenceIds, coverageProgress, recordsDropped, usefulAnswers }) {
+  const required = context.investigation_results.filter(result => result.required);
+  const requiredTerminal = required.filter(result => TERMINAL_COVERAGES.has(result.coverage)).length;
+  const retainedEvidenceIds = new Set([
+    ...context.questions_and_evidence.map(record => record.evidence_id).filter(Boolean),
+    ...context.investigation_results.flatMap(result => (result.current_outcomes ?? []).flatMap(outcome => outcome.evidence_ids ?? [])),
+  ]);
+  const criticalEvidenceIds = fixture.assertions?.criticalEvidenceIds ?? [];
+  const missingCriticalEvidenceIds = criticalEvidenceIds.filter(id => !retainedEvidenceIds.has(id));
+  const untraceableResultIds = context.investigation_results.filter(result => {
+    if (!TERMINAL_COVERAGES.has(result.coverage)) return true;
+    const linked = new Set((result.current_outcomes ?? []).flatMap(outcome => outcome.evidence_ids ?? []));
+    return linked.size === 0 || [...linked].some(id => !acceptedEvidenceIds.has(id));
+  }).map(result => result.result_id);
+  const durations = turns.map(turn => turn.durationMs).filter(value => typeof value === "number");
+  return {
+    requiredCoverage: {
+      total: required.length,
+      terminal: requiredTerminal,
+      completionRate: rate(requiredTerminal, required.length),
+    },
+    requiredCoverageProgress: coverageProgress,
+    usefulEvidence: {
+      questions: turns.length,
+      answersLinkedToOutcomes: usefulAnswers,
+      perQuestion: rate(usefulAnswers, turns.length),
+    },
+    latencyMs: { p50: percentile(durations, 0.5), p95: percentile(durations, 0.95) },
+    compaction: {
+      enabled: Boolean(fixture.contextPolicy?.maxQuestionEvidenceRecords),
+      recordsDropped,
+      criticalEvidenceRetained: missingCriticalEvidenceIds.length === 0,
+      missingCriticalEvidenceIds,
+    },
+    continuity: {
+      allInvestigatedItemsTraceable: untraceableResultIds.length === 0,
+      untraceableResultIds,
+    },
+    qualityByPhase: qualityByPhase(turns),
+    qualityDegradation: qualityDegradation(turns),
+  };
+}
+
+function qualityByPhase(turns) {
+  const names = ["early", "middle", "late"];
+  return names.map((phase, phaseIndex) => {
+    const selected = turns.filter((_, index) => Math.min(2, Math.floor(index * 3 / Math.max(1, turns.length))) === phaseIndex);
+    const passed = selected.reduce((total, turn) => total + turn.semanticQuality.passed, 0);
+    const total = selected.reduce((sum, turn) => sum + turn.semanticQuality.total, 0);
+    return { phase, turns: selected.length, passed, total, passRate: total === 0 ? 1 : passed / total };
+  });
+}
+
+function qualityDegradation(turns) {
+  const phases = qualityByPhase(turns);
+  const failedRules = turns.slice(Math.floor(turns.length * 2 / 3))
+    .flatMap(turn => turn.semanticQuality.checks.filter(check => !check.passed).map(check => check.rule));
+  return {
+    lateVsEarlySemanticDelta: phases[2].passRate - phases[0].passRate,
+    lateFailedRules: [...new Set(failedRules)].sort(),
   };
 }
 
@@ -439,6 +591,9 @@ export function summariseRuns(runs) {
   const deterministicPasses = runs.filter(run => (run.turns ?? []).every(turn => turn.contractViolations.length === 0)).length;
   const semanticPassed = turns.reduce((total, turn) => total + (turn.semanticQuality?.passed ?? 0), 0);
   const semanticTotal = turns.reduce((total, turn) => total + (turn.semanticQuality?.total ?? 0), 0);
+  const coverage = runs.map(run => run.metrics?.requiredCoverage?.completionRate).filter(value => typeof value === "number");
+  const evidenceYield = runs.map(run => run.metrics?.usefulEvidence?.perQuestion).filter(value => typeof value === "number");
+  const durations = turns.map(turn => turn.durationMs).filter(value => typeof value === "number");
   return {
     scenarios: new Set(runs.map(run => run.scenarioId)).size,
     runs: runs.length,
@@ -446,9 +601,13 @@ export function summariseRuns(runs) {
     deterministicPasses,
     deterministicFailures: runs.length - deterministicPasses,
     semanticGateFailures: runs.filter(run => run.semanticGatePassed === false).length,
+    continuityGateFailures: runs.filter(run => run.continuityGatePassed === false).length,
     semanticPassed,
     semanticTotal,
     semanticPassRate: semanticTotal === 0 ? 1 : semanticPassed / semanticTotal,
+    requiredCoverageCompletionRate: averageOrNull(coverage),
+    usefulEvidencePerQuestion: averageOrNull(evidenceYield),
+    latencyMs: { p50: percentile(durations, 0.5), p95: percentile(durations, 0.95) },
     durationMs: runs.reduce((total, run) => total + (run.durationMs ?? 0), 0),
   };
 }
@@ -478,8 +637,10 @@ export function formatSummary(report) {
     `- Token usage: ${metadata.tokenUsage?.available ? `${metadata.tokenUsage.inputTokens ?? "?"} input / ${metadata.tokenUsage.outputTokens ?? "?"} output / ${metadata.tokenUsage.cacheWriteTokens ?? "?"} cache-write` : "unavailable"}; cost: ${typeof metadata.costUsd === "number" ? `$${metadata.costUsd.toFixed(6)}` : "unavailable"}`,
     `- Scenarios: ${summary.scenarios}; repeat runs: ${summary.runs}; turns: ${summary.turns}`,
     `- Deterministic: ${summary.deterministicPasses}/${summary.runs} runs passed`,
-    `- Required semantic gates: ${summary.semanticGateFailures ?? 0} failed`,
+    `- Required semantic gates: ${summary.semanticGateFailures ?? 0} failed; continuity gates: ${summary.continuityGateFailures ?? 0} failed`,
     `- Semantic quality: ${summary.semanticPassed}/${summary.semanticTotal} checks passed (${(summary.semanticPassRate * 100).toFixed(1)}%)`,
+    `- Required coverage: ${formatPercent(summary.requiredCoverageCompletionRate)}; useful Evidence/question: ${formatNumber(summary.usefulEvidencePerQuestion)}`,
+    `- Turn latency: p50 ${formatMilliseconds(summary.latencyMs?.p50)}, p95 ${formatMilliseconds(summary.latencyMs?.p95)}`,
     `- Duration: ${summary.durationMs} ms`,
   ];
   if (comparison) lines.push(`- Baseline: semantic ${(comparison.semanticDelta * 100).toFixed(1)} points; deterministic failures ${signed(comparison.deterministicFailureDelta)}`);
@@ -493,6 +654,12 @@ export function formatSummary(report) {
     lines.push(`- Semantic: ${passed}/${total}${run.minimumSemanticPassRate === null || run.minimumSemanticPassRate === undefined
       ? ""
       : `; required ${(run.minimumSemanticPassRate * 100).toFixed(1)}% — ${run.semanticGatePassed ? "pass" : "fail"}`}`);
+    if (run.metrics) {
+      lines.push(`- Continuity: ${run.continuityGatePassed ? "pass" : "fail"}; required coverage ${formatPercent(run.metrics.requiredCoverage.completionRate)}; useful Evidence/question ${formatNumber(run.metrics.usefulEvidence.perQuestion)}`);
+      lines.push(`- Latency: p50 ${formatMilliseconds(run.metrics.latencyMs.p50)}, p95 ${formatMilliseconds(run.metrics.latencyMs.p95)}; compacted records ${run.metrics.compaction.recordsDropped}`);
+      lines.push(`- Context-growth quality: early/middle/late ${run.metrics.qualityByPhase.map(phase => `${phase.phase} ${(phase.passRate * 100).toFixed(1)}%`).join(", ")}; late-vs-early ${(run.metrics.qualityDegradation.lateVsEarlySemanticDelta * 100).toFixed(1)} points`);
+      if (run.metrics.qualityDegradation.lateFailedRules.length > 0) lines.push(`- Late quality failures: ${run.metrics.qualityDegradation.lateFailedRules.join(", ")}`);
+    }
     for (const failure of failures) {
       lines.push(`- **Turn ${failure.turn}, ${failure.rule}:** ${failure.message}`);
       lines.push(`  - Source answer: ${failure.sourceAnswer}`);
@@ -510,6 +677,96 @@ export function formatSummary(report) {
 
 export function normaliseQuestion(value) {
   return String(value ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function questionsSemanticallyRepeat(first, second) {
+  if (normaliseQuestion(first) === normaliseQuestion(second)) return true;
+  const firstWords = new Set(contentWords(first));
+  const secondWords = new Set(contentWords(second));
+  if (firstWords.size < 3 || secondWords.size < 3) return false;
+  const intersection = [...firstWords].filter(word => secondWords.has(word)).length;
+  const overlap = intersection / Math.min(firstWords.size, secondWords.size);
+  const union = new Set([...firstWords, ...secondWords]).size;
+  return overlap >= 0.72 || intersection / union >= 0.55;
+}
+
+function unsupportedSpecifics(value, context) {
+  const grounded = [
+    ...Object.values(context.mission ?? {}),
+    ...(context.shared_mission_entries ?? []).flatMap(entry => [entry.value, entry.detail]),
+    ...(context.questions_and_evidence ?? []).flatMap(record => [record.question, record.exact_text, record.option_label, record.explanation]),
+    ...(context.investigation_results ?? []).flatMap(result => (result.current_outcomes ?? []).map(outcome => outcome.summary)),
+  ].join(" ").toLowerCase();
+  const input = String(value ?? "");
+  const numeric = input.match(/(?:£|\$|€)?\d[\d,.]*/g) ?? [];
+  const names = (input.match(/\b[A-Z][a-z]{2,}(?:'[a-z]+)?\b/g) ?? [])
+    .filter(word => !QUESTION_STOP_WORDS.has(stemWord(word.toLowerCase())));
+  return [...new Set([...numeric, ...names].filter(specific => !grounded.includes(specific.toLowerCase())))];
+}
+
+function groundedVocabulary(context) {
+  const values = [
+    ...Object.values(context.mission ?? {}),
+    ...(context.shared_mission_entries ?? []).flatMap(entry => [entry.value, entry.detail]),
+    ...(context.questions_and_evidence ?? []).flatMap(record => [record.question, record.exact_text, record.option_label, record.explanation]),
+    ...(context.investigation_results ?? []).flatMap(result => [
+      result.knowledge_gap,
+      result.why_it_matters,
+      result.relevant_context,
+      result.sufficient_evidence,
+      ...(result.current_outcomes ?? []).map(outcome => outcome.summary),
+    ]),
+  ];
+  return new Set(values.flatMap(contentWords));
+}
+
+function contentWords(value) {
+  return String(value ?? "").toLowerCase().match(/[a-z0-9]+/g)?.map(stemWord)
+    .filter(word => word.length > 1 && !QUESTION_STOP_WORDS.has(word)) ?? [];
+}
+
+function stemWord(word) {
+  if (word.endsWith("ies") && word.length > 4) return `${word.slice(0, -3)}y`;
+  if (word.endsWith("ing") && word.length > 5) return word.slice(0, -3);
+  if (word.endsWith("ed") && word.length > 4) return word.slice(0, -2);
+  if (word.endsWith("es") && word.length > 4) return word.slice(0, -2);
+  if (word.endsWith("s") && word.length > 3) return word.slice(0, -1);
+  return word;
+}
+
+function matchingTerms(value, terms = []) {
+  const lower = String(value ?? "").toLowerCase();
+  return terms.filter(term => lower.includes(String(term).toLowerCase()));
+}
+
+function rate(numerator, denominator) {
+  return denominator === 0 ? 1 : numerator / denominator;
+}
+
+function averageOrNull(values) {
+  return values.length === 0 ? null : values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function percentile(values, quantile) {
+  if (values.length === 0) return null;
+  const ordered = [...values].sort((a, b) => a - b);
+  const position = (ordered.length - 1) * quantile;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return ordered[lower];
+  return Number((ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)).toFixed(3));
+}
+
+function formatPercent(value) {
+  return typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "unavailable";
+}
+
+function formatNumber(value) {
+  return typeof value === "number" ? value.toFixed(3) : "unavailable";
+}
+
+function formatMilliseconds(value) {
+  return typeof value === "number" ? `${value.toFixed(1)} ms` : "unavailable";
 }
 
 function signed(value) {
