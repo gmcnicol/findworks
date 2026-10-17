@@ -78,17 +78,31 @@ test("own words are the default and finite choices preserve interviewee language
   assert.match(runner, /"--thinking", process\.env\.FINDWORKS_REASONING_EFFORT \|\| "low"/);
 });
 
+test("ambiguity handling distinguishes uncertainty, conflict, refusal, and ownership", () => {
+  assert.match(skill, /Ask one bounded clarification when a vague, partial, or uncertain answer could materially improve the result/);
+  assert.match(skill, /Do not turn uncertain recollection or hearsay into observed fact/);
+  assert.match(skill, /UNKNOWN.*does not know, declines to answer, available Evidence is insufficient, or no owner can be identified/s);
+  assert.match(skill, /OWNERSHIP_GAP.*another person or role owns the answer/s);
+  assert.match(skill, /An incomplete owner description is still an Ownership Gap/);
+  assert.match(skill, /CONFLICT.*incompatible claims/s);
+  assert.match(skill, /Never choose a side or manufacture a reconciliation/);
+  assert.match(skill, /Do not request contact details, offer an invitation, or keep questioning the current interviewee for the other owner's answer/);
+});
+
 test("interview outcomes are deltas against durable current outcomes", () => {
   assert.match(skill, /current_outcomes/);
   assert.match(skill, /outcomes array is a delta/);
   assert.match(skill, /Do not resubmit an unchanged claim or a paraphrase of it/);
   assert.match(runner, /outcomes as a delta against current_outcomes/);
+  assert.match(runner, /Do not emit terminal coverage for partial support/);
   assert.match(extension, /Only new or materially changed outcomes/);
+  assert.match(extension, /Omit terminal outcomes for a result when nextAction asks a follow-up on that result/);
 });
 
 test("runner explicitly expands and activates bounded design-tree grilling", () => {
   assert.match(runner, /dependency-aware design-tree grilling method/);
   assert.match(runner, /ask one respectful non-leading question at a time/);
+  assert.match(runner, /Do not append a second request to an example question/);
   assert.match(runner, /\/skill:findworks-interview/);
 });
 

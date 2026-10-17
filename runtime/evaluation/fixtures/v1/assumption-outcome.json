@@ -3,6 +3,7 @@
   "fixtureVersion": "1.1.0",
   "id": "assumption-outcome",
   "title": "Unsupported hearsay is marked as an Assumption",
+  "minimumSemanticPassRate": 1,
   "persona": {
     "name": "Owen",
     "role": "Returns coordinator",
@@ -50,6 +51,10 @@
         "category": "ASSUMPTION",
         "evidenceIds": ["40000000-0000-0000-0000-000000000051"],
         "summaryIncludes": ["assume", "unconfirmed", "never handled", "not documented"]
+      }],
+      "forbiddenOutcomes": [{
+        "resultId": "10000000-0000-0000-0000-000000000006",
+        "coverage": "SUPPORTED"
       }]
     }
   }]
