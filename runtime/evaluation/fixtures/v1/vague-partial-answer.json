@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "vague-partial-answer",
   "title": "A vague partial answer gets one focused request for an observed example",
   "minimumSemanticPassRate": 1,
@@ -37,6 +37,7 @@
   "turns": [
     {
       "runId": "20000000-0000-0000-0000-000000000101",
+      "sourceResultId": "10000000-0000-0000-0000-000000000101",
       "sourceQuestion": "What makes a repair move ahead of the normal queue?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000101",
@@ -63,6 +64,7 @@
     },
     {
       "runId": "20000000-0000-0000-0000-000000000102",
+      "sourceResultId": "10000000-0000-0000-0000-000000000101",
       "sourceQuestion": "Can you give me a recent example of a hot job?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000102",

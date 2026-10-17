@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "parked-thread-transition",
+  "title": "Useful volunteered information is parked until the current thread closes",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Tessa",
+    "role": "Fulfilment coordinator",
+    "brief": "Mention the blue cancellation notes while explaining a shipping hold, but finish each topic only when asked."
+  },
+  "context": {
+    "run_id": "22000000-0000-0000-0000-000000000001",
+    "session_id": "32000000-0000-0000-0000-000000000001",
+    "mission_version": 2,
+    "expected_revision": 3,
+    "mission": {
+      "objective": "Understand shipping holds and cancellation notes before changing fulfilment routing.",
+      "desired_outcome": "Supported rules for clearing a shipping hold and completing a cancellation.",
+      "data_use": "The Investigator will review the findings for fulfilment routing."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [
+      {
+        "result_id": "12000000-0000-0000-0000-000000000001",
+        "knowledge_gap": "How is a shipping hold cleared?",
+        "why_it_matters": "Held parcels must not leave without the right check.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "Coordinators review held parcels.",
+        "sufficient_evidence": "The hold trigger, owner, release check, and completion signal are explicit.",
+        "coverage": "EXPLORING",
+        "current_outcomes": []
+      },
+      {
+        "result_id": "12000000-0000-0000-0000-000000000002",
+        "knowledge_gap": "How is a cancellation note completed?",
+        "why_it_matters": "Cancellation work needs its own route.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "Blue notes are associated with cancellations.",
+        "sufficient_evidence": "The cancellation owner, required check, and observable completion signal are explicit.",
+        "coverage": "UNADDRESSED",
+        "current_outcomes": []
+      }
+    ],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "22000000-0000-0000-0000-000000000001",
+      "sourceResultId": "12000000-0000-0000-0000-000000000001",
+      "sourceQuestion": "What happens when a parcel gets a shipping hold?",
+      "answer": {
+        "evidenceId": "42000000-0000-0000-0000-000000000001",
+        "sourceType": "ANSWER",
+        "text": "When the carrier cannot validate the delivery address, I am the fulfilment coordinator who puts the parcel on the hold rack. I clear it only after the customer confirms the corrected address. Separately, blue notes are cancellations and Noor handles those."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "openResultIds": [
+          "12000000-0000-0000-0000-000000000001",
+          "12000000-0000-0000-0000-000000000002"
+        ],
+        "semantic": {
+          "vocabularyAnchors": ["hold rack", "delivery address", "customer", "corrected address", "shipping hold"],
+          "ownWords": true,
+          "maxQuestionLength": 240
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000002",
+      "sourceResultId": "12000000-0000-0000-0000-000000000001",
+      "sourceQuestion": "What lets you take the parcel off the hold rack?",
+      "answer": {
+        "evidenceId": "42000000-0000-0000-0000-000000000002",
+        "sourceType": "ANSWER",
+        "text": "The green carrier tick tells me the parcel has been released from the hold rack. Damaged parcels are the exception and stay held for the claims team."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "openResultIds": ["12000000-0000-0000-0000-000000000002"],
+        "outcomes": [{
+          "resultId": "12000000-0000-0000-0000-000000000001",
+          "coverage": "SUPPORTED",
+          "category": "RULE",
+          "evidenceIds": [
+            "42000000-0000-0000-0000-000000000001",
+            "42000000-0000-0000-0000-000000000002"
+          ],
+          "summaryIncludes": ["hold rack", "customer", "green carrier tick", "damaged"]
+        }],
+        "semantic": {
+          "vocabularyAnchors": ["blue", "cancellation", "Noor"],
+          "ownWords": true,
+          "maxQuestionLength": 240
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000003",
+      "sourceResultId": "12000000-0000-0000-0000-000000000002",
+      "sourceQuestion": "What does Noor check before a blue cancellation note is finished?",
+      "answer": {
+        "evidenceId": "42000000-0000-0000-0000-000000000003",
+        "sourceType": "ANSWER",
+        "text": "She checks that the parcel has not been scanned by the carrier, then cancels the label. The blue note is finished when the label number is crossed out; if it was already scanned, she sends it to returns instead."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [{
+          "resultId": "12000000-0000-0000-0000-000000000002",
+          "coverage": "SUPPORTED",
+          "category": "RULE",
+          "evidenceIds": [
+            "42000000-0000-0000-0000-000000000001",
+            "42000000-0000-0000-0000-000000000003"
+          ],
+          "summaryIncludes": ["Noor", "carrier", "crossed out", "returns"]
+        }]
+      }
+    }
+  ]
+}

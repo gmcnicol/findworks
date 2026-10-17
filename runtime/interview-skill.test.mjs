@@ -57,6 +57,19 @@ test("drilling stays on one thread and uses the answer to shape the follow-up", 
   assert.match(skill, /Do not ask for information the interviewee has already supplied/);
 });
 
+test("coverage transitions close one thread durably before moving to the next", () => {
+  assert.match(skill, /Do not emit terminal coverage for a useful partial claim/);
+  assert.match(skill, /same turn that asks the first Question for the next thread/);
+  assert.match(skill, /Do not ask another Question for a terminal result/);
+  assert.match(skill, /Unaddressed optional results do not block Mission completion/);
+  assert.match(runner, /Do not emit terminal coverage for partial support/);
+});
+
+test("unresolved outcomes distinguish an unidentified owner from a known external owner", () => {
+  assert.match(skill, /Use `OWNERSHIP_GAP` only when the Evidence identifies another owner or an owner description/);
+  assert.match(skill, /use `UNKNOWN` when the required owner remains unidentified/);
+});
+
 test("own words are the default and finite choices preserve interviewee language", () => {
   assert.match(skill, /FREE_TEXT is the default response mode/);
   assert.match(skill, /genuinely finite decision or paraphrase confirmation/);
@@ -81,7 +94,7 @@ test("interview outcomes are deltas against durable current outcomes", () => {
   assert.match(skill, /outcomes array is a delta/);
   assert.match(skill, /Do not resubmit an unchanged claim or a paraphrase of it/);
   assert.match(runner, /outcomes as a delta against current_outcomes/);
-  assert.match(runner, /When asking a follow-up, do not submit a terminal outcome for that result/);
+  assert.match(runner, /Do not emit terminal coverage for partial support/);
   assert.match(extension, /Only new or materially changed outcomes/);
   assert.match(extension, /Omit terminal outcomes for a result when nextAction asks a follow-up on that result/);
 });

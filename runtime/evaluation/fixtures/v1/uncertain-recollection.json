@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "uncertain-recollection",
   "title": "Uncertain recollection is checked once then retained as an Assumption",
   "minimumSemanticPassRate": 1,
@@ -37,6 +37,7 @@
   "turns": [
     {
       "runId": "20000000-0000-0000-0000-000000000111",
+      "sourceResultId": "10000000-0000-0000-0000-000000000111",
       "sourceQuestion": "What happens before month-end invoices are sent?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000111",
@@ -60,6 +61,7 @@
     },
     {
       "runId": "20000000-0000-0000-0000-000000000112",
+      "sourceResultId": "10000000-0000-0000-0000-000000000111",
       "sourceQuestion": "Have you seen that manager check happen yourself?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000112",

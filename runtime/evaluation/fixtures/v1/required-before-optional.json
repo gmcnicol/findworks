@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "required-before-optional",
+  "title": "Required work takes priority over an attractive optional tangent",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Dev",
+    "role": "Facilities coordinator",
+    "brief": "Volunteer an interesting dashboard detail, but do not know the required emergency owner."
+  },
+  "context": {
+    "run_id": "23000000-0000-0000-0000-000000000001",
+    "session_id": "33000000-0000-0000-0000-000000000001",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Understand alarm acknowledgement and emergency escalation.",
+      "desired_outcome": "Required alarm and escalation outcomes, with dashboard preferences only if time remains.",
+      "data_use": "The Investigator will review the findings for facilities workflow changes."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [
+      {
+        "result_id": "13000000-0000-0000-0000-000000000001",
+        "knowledge_gap": "How is an alarm acknowledged?",
+        "why_it_matters": "An acknowledged alarm must be observable.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "Facilities coordinators receive alarms.",
+        "sufficient_evidence": "The actor, action, exception, and acknowledgement signal are explicit.",
+        "coverage": "EXPLORING",
+        "current_outcomes": []
+      },
+      {
+        "result_id": "13000000-0000-0000-0000-000000000002",
+        "knowledge_gap": "Who owns emergency escalation?",
+        "why_it_matters": "An unresolved emergency must reach an accountable owner.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "The owner is not documented in shared context.",
+        "sufficient_evidence": "The owner is identified or the interviewee's inability to identify one is explicit.",
+        "coverage": "UNADDRESSED",
+        "current_outcomes": []
+      },
+      {
+        "result_id": "13000000-0000-0000-0000-000000000003",
+        "knowledge_gap": "Which dashboard colour would be easiest to scan?",
+        "why_it_matters": "This may improve presentation but does not block the workflow.",
+        "priority": "LOW",
+        "required": false,
+        "relevant_context": "Dashboard styling is optional.",
+        "sufficient_evidence": "The interviewee's preference and reason are explicit.",
+        "coverage": "UNADDRESSED",
+        "current_outcomes": []
+      }
+    ],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "23000000-0000-0000-0000-000000000001",
+      "sourceResultId": "13000000-0000-0000-0000-000000000001",
+      "sourceQuestion": "How do you acknowledge an alarm?",
+      "answer": {
+        "evidenceId": "43000000-0000-0000-0000-000000000001",
+        "sourceType": "ANSWER",
+        "text": "The coordinator presses acknowledge after reading the location. A green tick appears in the alarm list; if the location is blank, we leave it unacknowledged. By the way, I would love a purple dashboard because it is easier on my eyes."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "13000000-0000-0000-0000-000000000002",
+        "openResultIds": ["13000000-0000-0000-0000-000000000002"],
+        "outcomes": [{
+          "resultId": "13000000-0000-0000-0000-000000000001",
+          "coverage": "SUPPORTED",
+          "category": "RULE",
+          "evidenceIds": ["43000000-0000-0000-0000-000000000001"],
+          "summaryIncludes": ["coordinator", "location", "green tick", "blank"]
+        }],
+        "semantic": {
+          "forbiddenTerms": ["purple", "dashboard"],
+          "ownWords": true,
+          "maxQuestionLength": 220
+        }
+      }
+    },
+    {
+      "runId": "23000000-0000-0000-0000-000000000002",
+      "sourceResultId": "13000000-0000-0000-0000-000000000002",
+      "sourceQuestion": "Who takes ownership when an alarm needs emergency escalation?",
+      "answer": {
+        "evidenceId": "43000000-0000-0000-0000-000000000002",
+        "sourceType": "DONT_KNOW",
+        "text": "I don't know. I have never seen an emergency escalation and I cannot identify who owns it."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [{
+          "resultId": "13000000-0000-0000-0000-000000000002",
+          "coverage": "UNKNOWN",
+          "evidenceIds": ["43000000-0000-0000-0000-000000000002"],
+          "summaryIncludes": ["don't know", "never seen", "owner"]
+        }]
+      }
+    }
+  ]
+}

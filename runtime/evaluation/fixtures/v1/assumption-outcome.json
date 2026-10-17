@@ -36,6 +36,7 @@
   },
   "turns": [{
     "runId": "20000000-0000-0000-0000-000000000006",
+    "sourceResultId": "10000000-0000-0000-0000-000000000006",
     "sourceQuestion": "What happens when a customer returns an opened package?",
     "answer": {
       "evidenceId": "40000000-0000-0000-0000-000000000051",

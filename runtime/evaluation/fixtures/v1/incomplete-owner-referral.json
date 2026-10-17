@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "incomplete-owner-referral",
   "title": "An incomplete referral stops with an Ownership Gap and no recruitment",
   "minimumSemanticPassRate": 1,
@@ -36,6 +36,7 @@
   },
   "turns": [{
     "runId": "20000000-0000-0000-0000-000000000141",
+    "sourceResultId": "10000000-0000-0000-0000-000000000141",
     "sourceQuestion": "How do you decide whether a high-risk account block can be removed?",
     "answer": {
       "evidenceId": "40000000-0000-0000-0000-000000000141",

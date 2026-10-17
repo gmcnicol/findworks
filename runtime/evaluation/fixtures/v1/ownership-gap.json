@@ -36,6 +36,7 @@
   },
   "turns": [{
     "runId": "20000000-0000-0000-0000-000000000004",
+    "sourceResultId": "10000000-0000-0000-0000-000000000004",
     "sourceQuestion": "How do you decide whether a customer should be marked tax exempt?",
     "answer": {
       "evidenceId": "40000000-0000-0000-0000-000000000031",

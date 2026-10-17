@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.1.0",
+  "fixtureVersion": "1.2.0",
   "id": "disputed-terminology",
   "title": "Ambiguous Mission language is clarified in the interviewee's terminology",
   "minimumSemanticPassRate": 1,
@@ -50,6 +50,7 @@
   "turns": [
     {
       "runId": "20000000-0000-0000-0000-000000000131",
+      "sourceResultId": "10000000-0000-0000-0000-000000000131",
       "sourceQuestion": "When is a payment released?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000131",
@@ -70,6 +71,7 @@
     },
     {
       "runId": "20000000-0000-0000-0000-000000000132",
+      "sourceResultId": "10000000-0000-0000-0000-000000000131",
       "sourceQuestion": "What has happened when your team calls a payment green?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000132",

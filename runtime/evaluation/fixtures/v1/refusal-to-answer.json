@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "refusal-to-answer",
   "title": "A refusal is recorded as Unknown without repeated pressure",
   "minimumSemanticPassRate": 1,
@@ -41,6 +41,7 @@
   },
   "turns": [{
     "runId": "20000000-0000-0000-0000-000000000151",
+    "sourceResultId": "10000000-0000-0000-0000-000000000151",
     "sourceQuestion": "What triggered escalation in the most recent disciplinary case?",
     "answer": {
       "evidenceId": "40000000-0000-0000-0000-000000000151",

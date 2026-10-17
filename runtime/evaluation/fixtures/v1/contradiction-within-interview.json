@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "fixtureVersion": "1.0.0",
+  "fixtureVersion": "1.1.0",
   "id": "contradiction-within-interview",
   "title": "Contradictory statements in one Interview Session remain a Conflict",
   "minimumSemanticPassRate": 1,
@@ -37,6 +37,7 @@
   "turns": [
     {
       "runId": "20000000-0000-0000-0000-000000000121",
+      "sourceResultId": "10000000-0000-0000-0000-000000000121",
       "sourceQuestion": "How quickly does an amber alert need to be acknowledged?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000121",
@@ -57,6 +58,7 @@
     },
     {
       "runId": "20000000-0000-0000-0000-000000000122",
+      "sourceResultId": "10000000-0000-0000-0000-000000000121",
       "sourceQuestion": "What deadline does the on-call rota use for amber alerts?",
       "answer": {
         "evidenceId": "40000000-0000-0000-0000-000000000122",
