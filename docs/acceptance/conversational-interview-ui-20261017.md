@@ -56,4 +56,4 @@ Most advisories identify literal colors/type steps already present across the sh
 
 ## Integration
 
-`integration/adaptive-interview-evaluation` was merged after completion; Git reported the ticket branch was already up to date.
+After correction commit `8e353ce`, the latest local `integration/adaptive-interview-evaluation` was merged as required; Git reported `review/web-corrections` was already up to date at integration SHA `7cdc850`.
