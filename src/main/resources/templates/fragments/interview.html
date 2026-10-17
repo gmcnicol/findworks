@@ -3,7 +3,7 @@
 <body>
 <header th:fragment="masthead" class="participant-masthead">
     <a class="participant-brand" th:href="@{${interviewBase}}">FindWorks</a>
-    <span class="participant-context">A private conversation with <span th:text="${view.investigator()}">the Investigator</span></span>
+    <span class="participant-context">An interview requested by <span th:text="${view.investigator()}">the Investigator</span></span>
     <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
 </header>
 
@@ -23,7 +23,7 @@
                 <p class="speaker-label">FindWorks interviewer</p>
                 <h2 th:text="${turn.question()}">Interview question</h2>
             </article>
-            <aside class="transcript-response" th:each="response : ${turn.responses()}" aria-label="Your saved response">
+            <div class="transcript-response" th:each="response : ${turn.responses()}">
                 <div class="response-meta">
                     <span>You</span>
                     <span class="saved-state" th:text="${response.status()}">Answer · saved</span>
@@ -33,22 +33,24 @@
                 <p class="response-explanation" th:if="${response.explanation() != null && !response.explanation().isBlank()}" th:text="${response.explanation()}">Explanation</p>
                 <p class="revision-note" th:if="${response.revises() != null}"
                    th:attr="data-clear-draft-key=|findworks:correction:${view.sessionId()}:${response.revises()}|">This correction was appended. The earlier response remains in the transcript.</p>
-                <details class="correction-disclosure" th:if="${view.state() == 'ACTIVE' && response.revises() == null}">
-                    <summary>Correct this response</summary>
-                    <form class="correction-form" method="post" th:action="@{${interviewBase + '/revise'}}" data-draft-form>
-                        <input type="hidden" name="evidenceId" th:value="${response.id()}">
-                        <input type="hidden" name="expectedRevision" th:value="${view.revision()}">
-                        <label th:for="|correction-${response.id()}|">Add a correction</label>
-                        <textarea th:id="|correction-${response.id()}|" name="answer" rows="3" required maxlength="10000"
-                                  th:attr="data-draft-key=|findworks:correction:${view.sessionId()}:${response.id()}|"
-                                  placeholder="Write the corrected response. Your earlier answer will stay visible."></textarea>
-                        <div class="correction-actions">
-                            <span class="form-status" role="status" aria-live="polite"></span>
-                            <button class="button secondary compact" type="submit">Append correction</button>
-                        </div>
-                    </form>
-                </details>
-            </aside>
+                <a class="correction-link" th:if="${view.state() == 'ACTIVE' && !working && response.revises() == null && revisionEvidenceId != response.id()}"
+                   th:href="|${interviewBase}?revise=${response.id()}|">Correct this response</a>
+                <form class="correction-form" method="post" th:action="@{${interviewBase + '/revise'}}" data-draft-form data-revision-form
+                      th:if="${revisionEvidenceId == response.id()}" th:id="|revision-composer-${response.id()}|">
+                    <h3 data-focus-target th:attr="data-focus-key=|revision-${response.id()}|" tabindex="-1">Correct your saved response</h3>
+                    <input type="hidden" name="evidenceId" th:value="${response.id()}">
+                    <input type="hidden" name="expectedRevision" th:value="${view.revision()}">
+                    <label th:for="|correction-${response.id()}|">Add a correction</label>
+                    <textarea th:id="|correction-${response.id()}|" name="answer" rows="3" required maxlength="10000"
+                              th:attr="data-draft-key=|findworks:correction:${view.sessionId()}:${response.id()}|"
+                              placeholder="Write the corrected response. Your earlier answer will stay visible."></textarea>
+                    <div class="correction-actions">
+                        <a class="button secondary compact" th:href="${interviewBase}">Cancel correction</a>
+                        <span class="form-status" role="status" aria-live="polite"></span>
+                        <button class="button secondary compact" type="submit">Append correction</button>
+                    </div>
+                </form>
+            </div>
         </li>
     </ol>
 </section>
@@ -56,6 +58,5 @@
 <div th:fragment="connection" class="connection-notice" data-connection-notice role="status" aria-live="polite" hidden>
     <strong>You’re offline.</strong> Your draft is saved in this browser. Reconnect before sending.
 </div>
-<div th:fragment="announcer" class="sr-only" data-question-announcer role="status" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>

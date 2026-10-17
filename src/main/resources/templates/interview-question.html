@@ -15,25 +15,26 @@
     <th:block th:replace="~{fragments/interview :: progress}"></th:block>
     <th:block th:replace="~{fragments/interview :: connection}"></th:block>
 
-    <div class="conversation-alert" role="alert" th:if="${revisionConflict == true}">
+    <div class="conversation-alert" th:if="${revisionConflict == true}" tabindex="-1" data-focus-target data-focus-key="revision-conflict">
         <strong>The conversation moved on before that correction was saved.</strong>
         Review the latest transcript and append your correction again if it is still needed.
     </div>
 
     <th:block th:replace="~{fragments/interview :: transcript}"></th:block>
 
-    <section class="working-state" th:if="${working}" role="status" aria-live="polite" aria-atomic="true">
+    <section class="working-state" th:if="${working}">
         <div id="interview-stream" th:attr="data-init=|@get('${interviewBase}/events')|"></div>
         <div id="interview-state-trigger"></div>
         <div class="thinking-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-        <h1>Preparing your next question</h1>
+        <h1 tabindex="-1" data-focus-target th:attr="data-focus-key=|working-${view.revision()}|">Preparing your next question</h1>
         <p>Your response is saved. FindWorks is considering what to ask next.</p>
     </section>
 
-    <section class="conversation-current" th:unless="${working}" data-active-question th:attr="data-question-id=${questionId}" aria-labelledby="active-question">
+    <section class="conversation-current" th:if="${!working && revisionEvidenceId == null}" data-active-question th:attr="data-question-id=${questionId}" aria-labelledby="active-question">
         <article class="transcript-turn transcript-interviewer is-current">
             <p class="speaker-label">FindWorks interviewer</p>
-            <h1 class="interview-question" id="active-question" tabindex="-1" th:text="${question}">Question</h1>
+            <h1 class="interview-question" id="active-question" tabindex="-1" data-focus-target
+                th:attr="data-focus-key=|question-${questionId}|" th:text="${question}">Question</h1>
         </article>
 
         <form class="answer-composer" method="post" th:action="@{${interviewBase + '/answer'}}" data-answer-form data-draft-form th:attr="data-response-mode=${questionMode}">
@@ -49,7 +50,7 @@
             </fieldset>
             <label class="composer-label" for="answer-composer" th:text="${questionMode == 'FREE_TEXT' ? 'Your answer in your own words' : 'Anything to add?'}">Your answer in your own words</label>
             <textarea id="answer-composer" name="answer" rows="5" maxlength="10000"
-                      th:required="${questionMode == 'FREE_TEXT'}" autofocus
+                      th:required="${questionMode == 'FREE_TEXT'}"
                       th:attr="data-draft-key=|findworks:answer:${view.sessionId()}:${questionId}|"
                       placeholder="Write naturally — a few words or a detailed answer are both fine."></textarea>
             <div class="composer-footer">
@@ -85,7 +86,6 @@
             </details>
         </div>
     </section>
-    <th:block th:replace="~{fragments/interview :: announcer}"></th:block>
 </main>
 </body>
 </html>

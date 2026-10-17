@@ -13,7 +13,7 @@ colors:
   primary-ink: "#172033"
   secondary-ink: "#68778e"
   interview-ink: "#263449"
-  interview-secondary-ink: "#76726b"
+  interview-secondary-ink: "#706c65"
   divider: "#d8e0ec"
   interview-divider: "#d8d3ca"
   attention-ink: "#984018"

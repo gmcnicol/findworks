@@ -281,7 +281,9 @@ public class InvitationController {
     }
 
     @GetMapping({"/interview", "/interview/{sessionId}"})
-    String interview(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token, Model model) {
+    String interview(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token,
+                     @RequestParam(required = false) UUID revise,
+                     Model model) {
         if (clerkProperties.enabled() && scopedSessionId() == null) return "redirect:/interviews";
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         model.addAttribute("view", view);
@@ -297,7 +299,18 @@ public class InvitationController {
                 .param("id", q.id()).query((rs, row) -> Map.of("id", rs.getString(1), "label", rs.getString(2))).list()).orElse(List.of()));
         model.addAttribute("transcript", transcript(view.sessionId()));
         model.addAttribute("progress", progress(view.sessionId()));
-        model.addAttribute("working", view.state().equals("ACTIVE") && question.isEmpty());
+        var working = view.state().equals("ACTIVE") && question.isEmpty();
+        model.addAttribute("working", working);
+        if (revise != null) {
+            var revisionTargetExists = db.sql("""
+                    select exists(select 1 from evidence
+                    where id=:evidence and session_id=:session and participant_id is not null and revises is null)
+                    """).param("evidence", revise).param("session", view.sessionId()).query(Boolean.class).single();
+            if (!view.state().equals("ACTIVE") || working || !revisionTargetExists) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+            }
+        }
+        model.addAttribute("revisionEvidenceId", revise);
 
         if (view.state().equals("ACTIVE")) return "interview-question";
         if (view.state().equals("PAUSED")) return "interview-paused";
@@ -338,19 +351,26 @@ public class InvitationController {
         var counts = db.sql("""
                 select count(*) filter(where i.required),
                        count(*) filter(where i.required and r.coverage not in ('UNADDRESSED','EXPLORING','PARTIAL')),
+                       count(*) filter(where i.required and r.coverage in ('EXPLORING','PARTIAL')),
                        (select count(*) from evidence e where e.session_id=:session and e.participant_id is not null)
                 from investigation_results r join investigation_items i on i.id=r.item_id
                 where r.session_id=:session
                 """).param("session", sessionId).query((rs, row) ->
-                        new long[] {rs.getLong(1), rs.getLong(2), rs.getLong(3)}).single();
+                        new long[] {rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)}).single();
         var total = counts[0];
-        var covered = counts[1];
-        var responses = counts[2];
-        var percent = total == 0 ? 0 : (int) Math.round(covered * 100.0 / total);
-        var summary = total == 0 ? "Conversation in progress"
-                : covered == total ? "All key areas have an outcome"
-                : covered + " of " + total + " key areas covered";
-        return new ConversationProgress(covered, total, responses, percent, summary);
+        var outcomes = counts[1];
+        var exploring = counts[2];
+        var responses = counts[3];
+        var percent = total == 0 ? 0 : (int) Math.round(outcomes * 100.0 / total);
+        String summary;
+        if (total == 0) summary = "Conversation in progress";
+        else if (outcomes == total) summary = "All key areas have an outcome";
+        else if (outcomes > 0 && exploring > 0) summary = outcomes + " of " + total + " key areas "
+                + (outcomes == 1 ? "has" : "have") + " an outcome · exploring " + exploring + " more";
+        else if (exploring > 0) summary = total == 1 ? "Exploring 1 key area"
+                : "Exploring " + exploring + " of " + total + " key areas";
+        else summary = total == 1 ? "1 key area to explore" : total + " key areas to explore";
+        return new ConversationProgress(outcomes, total, responses, percent, summary);
     }
 
     @GetMapping(value = {"/interview/events", "/interview/{sessionId}/events"}, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -370,7 +390,7 @@ public class InvitationController {
             response.setStatus(HttpStatus.NO_CONTENT.value());
             return null;
         }
-        var template = interview(token, model);
+        var template = interview(token, null, model);
         response.setContentType(MediaType.TEXT_HTML_VALUE);
         response.setHeader("Datastar-Selector", "#interview-shell");
         response.setHeader("Datastar-Mode", "outer");
@@ -982,7 +1002,7 @@ public class InvitationController {
             };
         }
     }
-    public record ConversationProgress(long covered, long total, long responses, int percent, String summary) {}
+    public record ConversationProgress(long outcomes, long total, long responses, int percent, String summary) {}
     private record Clarifiable(UUID id, UUID itemId, int sequence, String text, UUID clarifies) {}
     private record PriorEvidence(UUID questionId, UUID participantId) {}
     private record RevisionState(String state, int revision) {}

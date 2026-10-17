@@ -572,7 +572,7 @@ input:focus, select:focus, textarea:focus {
 .conversation-progress { width: min(100%, 700px); display: grid; grid-template-columns: minmax(0, 1fr) 138px; gap: 20px; align-items: center; margin: 0 auto; padding: 18px 0; border-bottom: 1px solid #e1ddd5; }
 .progress-copy { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
 .progress-copy strong { overflow: hidden; color: #3b485a; font-size: 0.78rem; text-overflow: ellipsis; white-space: nowrap; }
-.progress-copy span { color: #77736c; font-size: 0.72rem; white-space: nowrap; }
+.progress-copy span { color: #706c65; font-size: 0.72rem; white-space: nowrap; }
 .conversation-progress progress { width: 100%; height: 4px; border: 0; border-radius: 999px; overflow: hidden; background: #ddd8cf; }
 .conversation-progress progress::-webkit-progress-bar { background: #ddd8cf; }
 .conversation-progress progress::-webkit-progress-value { background: #687ca8; }
@@ -584,7 +584,7 @@ input:focus, select:focus, textarea:focus {
 .transcript-list { margin: 0; padding: 0; list-style: none; }
 .transcript-exchange { padding: 34px 0 4px; }
 .transcript-turn { max-width: 68ch; }
-.speaker-label, .response-meta { color: #76726b; font-size: 0.72rem; font-weight: 740; letter-spacing: 0.025em; }
+.speaker-label, .response-meta { color: #706c65; font-size: 0.72rem; font-weight: 740; letter-spacing: 0.025em; }
 .speaker-label { margin: 0 0 8px; }
 .transcript-turn h2, .interview-question { margin: 0; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 1.19rem; font-weight: 600; letter-spacing: 0; line-height: 1.58; text-wrap: pretty; }
 .transcript-response { width: min(90%, 610px); margin: 22px 0 0 auto; padding: 16px 18px; border: 1px solid #d8d3ca; border-radius: 12px; background: #fffefb; }
@@ -595,9 +595,10 @@ input:focus, select:focus, textarea:focus {
 .transcript-response .response-option { font-weight: 720; }
 .transcript-response .response-explanation { color: #44536a; }
 .transcript-response .revision-note { color: #667286; font-size: 0.78rem; }
-.correction-disclosure { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ebe6dd; }
-.correction-disclosure summary, .more-responses > summary, .owner-disclosure > summary { color: #4e5d73; font-size: 0.8rem; font-weight: 680; cursor: pointer; }
-.correction-form { display: grid; gap: 10px; margin-top: 14px; }
+.correction-link { min-height: 44px; display: inline-flex; align-items: center; margin-top: 8px; color: #4e5d73; font-size: 0.8rem; font-weight: 680; }
+.more-responses > summary, .owner-disclosure > summary { color: #4e5d73; font-size: 0.8rem; font-weight: 680; cursor: pointer; }
+.correction-form { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #ebe6dd; }
+.correction-form h3 { margin: 0; font-size: 1rem; }
 .correction-form textarea { min-height: 96px; background: #fff; }
 .correction-actions { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
 .form-status { color: #637086; font-size: 0.76rem; }
@@ -610,9 +611,9 @@ input:focus, select:focus, textarea:focus {
 .composer-label { margin: 2px 2px 7px; color: #455266; font-size: 0.8rem; }
 .answer-composer textarea { min-height: 142px; padding: 8px 7px; border: 0; border-radius: 0; background: transparent; font-size: 1.02rem; line-height: 1.58; box-shadow: none; }
 .answer-composer textarea:hover, .answer-composer textarea:focus { border: 0; box-shadow: none; }
-.answer-composer textarea::placeholder { color: #747b83; opacity: 1; }
+.answer-composer textarea::placeholder { color: #6d747c; opacity: 1; }
 .composer-footer { display: flex; justify-content: flex-end; gap: 12px; align-items: center; padding-top: 9px; border-top: 1px solid #e5e1d9; }
-.composer-hint { margin-right: auto; color: #77736c; font-size: 0.72rem; }
+.composer-hint { margin-right: auto; color: #706c65; font-size: 0.72rem; }
 .composer-send { min-width: 124px; }
 
 .choice-fieldset { margin: 0 0 13px; padding: 0 0 13px; border: 0; border-bottom: 1px solid #e5e1d9; }
@@ -748,6 +749,7 @@ input:focus, select:focus, textarea:focus {
   .participant-masthead { grid-template-columns: 1fr auto; gap: 10px; padding-bottom: 14px; }
   .participant-context { display: none; }
   .participant-account a { display: none; }
+  .participant-account button, .choice-option, .response-tools .text-button, .response-tools summary { min-height: 44px; }
   .conversation-progress { grid-template-columns: 1fr; gap: 9px; padding: 14px 0; }
   .progress-copy { justify-content: space-between; }
   .conversation-progress progress { height: 3px; }

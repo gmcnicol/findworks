@@ -859,6 +859,13 @@ class PilotShellIntegrationTest {
         var revision = jdbcTemplate.queryForObject(
                 "select revision from interview_sessions where id=?", Integer.class, participant.sessionId());
 
+        mockMvc.perform(get("/interview").queryParam("revise", evidenceId.toString())
+                        .session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-revision-form")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("data-answer-form"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("<aside"))));
+
         mockMvc.perform(post("/interview/revise").session(participant.session()).cookie(participant.cookie())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                         .param("evidenceId", evidenceId.toString())
@@ -888,9 +895,33 @@ class PilotShellIntegrationTest {
         mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
-                        "The conversation moved on before that correction was saved.")));
+                        "The conversation moved on before that correction was saved.")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-focus-key=\"revision-conflict\"")));
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from evidence where session_id=?", Integer.class, participant.sessionId())).isEqualTo(2);
+    }
+
+    @Test
+    void interview_progress_copy_follows_the_authoritative_investigation_result_state() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "progress-state@example.com");
+
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("1 key area to explore")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("0 of 1 key areas covered"))));
+
+        jdbcTemplate.update("update investigation_results set coverage='EXPLORING' where session_id=?", participant.sessionId());
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Exploring 1 key area")));
+
+        jdbcTemplate.update("update investigation_results set coverage='UNKNOWN' where session_id=?", participant.sessionId());
+        mockMvc.perform(get("/interview").session(participant.session()).cookie(participant.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("All key areas have an outcome")));
     }
 
     @Test

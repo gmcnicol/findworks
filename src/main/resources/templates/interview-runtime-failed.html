@@ -5,9 +5,9 @@
 <main class="interview-shell" id="interview-shell" th:fragment="interviewShell">
     <th:block th:replace="~{fragments/interview :: masthead}"></th:block>
     <th:block th:replace="~{fragments/interview :: progress}"></th:block>
-    <th:block th:replace="~{fragments/interview :: transcript}"></th:block>
-    <section class="conversation-state is-error" role="alert" aria-labelledby="runtime-failed-title">
-        <h1 id="runtime-failed-title">We couldn’t prepare the next question</h1>
+    <th:block th:replace="~{fragments/interview :: connection}"></th:block>
+    <section class="conversation-state is-error" aria-labelledby="runtime-failed-title">
+        <h1 id="runtime-failed-title" tabindex="-1" data-focus-target data-focus-key="runtime-failed">We couldn’t prepare the next question</h1>
         <p><strong>Your answer is safe in the transcript.</strong> You do not need to repeat it.</p>
         <p class="state-support">Retrying uses that same saved response and cannot create a second copy.</p>
         <div class="state-actions">
@@ -15,6 +15,7 @@
             <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button class="button secondary" type="submit">End the interview here</button></form>
         </div>
     </section>
+    <th:block th:replace="~{fragments/interview :: transcript}"></th:block>
 </main>
 </body>
 </html>

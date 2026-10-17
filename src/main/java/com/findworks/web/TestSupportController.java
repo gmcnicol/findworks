@@ -42,6 +42,7 @@ class TestSupportController {
             "What is the corrected approval rule in your own words?",
             "What should a new colleague remember about the day-end check?",
             "Is there anything important about mismatch decisions that we have missed?");
+    private static final String LONG_REVISION = "I need to correct that: Gareth does not approve every mismatch. He signs off only exceptional corrections or routine corrections above £500.";
     private static final java.util.List<String> LONG_ANSWERS = java.util.List.of(
             "Yesterday an imported card payment was £18.40 higher than the cashbook entry, so I opened the source ledger and checked the reference before changing anything.",
             "The variance marker appeared after import, but the amount alone was not enough; the missing supplier reference was what needed attention.",
@@ -51,7 +52,7 @@ class TestSupportController {
             "She checks the cashbook first because it is the team’s working record, then uses the source ledger to understand why it differs.",
             "A routine mismatch has one clear reference and an obvious transposition or duplicate. Anything with competing references or a policy exception is exceptional.",
             "Priya writes the proposed correction and the reason, then Gareth reviews the source material and records approve or return.",
-            "I need to correct that: Gareth does not approve every mismatch. He signs off only exceptional corrections or routine corrections above £500.",
+            "Gareth signs off the correction after Priya records the proposed amount and supporting reference.",
             "The entry keeps the original amount, corrected amount, reason, source reference, Priya’s name, Gareth’s decision when needed, and the decision time.",
             "The matched total appears in the day-end summary and the item changes from amber to settled, with the decision note still available.",
             "We leave the amount untouched, mark the reference as requested, and ask the finance analyst who supplied the batch.",
@@ -132,29 +133,60 @@ class TestSupportController {
             if (db.sql("select count(*) from evidence where session_id=:session").param("session", sessionId).query(Long.class).single() != 0) {
                 throw new IllegalStateException("Long-conversation fixture requires a new interview");
             }
+            var questionIds = new java.util.ArrayList<UUID>();
+            var evidenceIds = new java.util.ArrayList<UUID>();
+            questionIds.add((UUID) first.get("question"));
             db.sql("update questions set active=false where id=:question").param("question", first.get("question")).update();
+            var firstEvidence = Ids.id();
+            evidenceIds.add(firstEvidence);
             db.sql("insert into evidence(id,organization_id,session_id,question_id,participant_id,source_type,exact_text) values(:id,:organization,:session,:question,:participant,'ANSWER',:text)")
-                    .param("id", Ids.id()).param("organization", session.get("organization")).param("session", sessionId)
+                    .param("id", firstEvidence).param("organization", session.get("organization")).param("session", sessionId)
                     .param("question", first.get("question")).param("participant", session.get("participant"))
                     .param("text", LONG_ANSWERS.getFirst()).update();
             for (int index = 1; index < LONG_ANSWERS.size(); index++) {
                 var question = Ids.id();
+                var evidence = Ids.id();
+                questionIds.add(question);
+                evidenceIds.add(evidence);
                 db.sql("insert into questions(id,organization_id,session_id,item_id,sequence,text,active) values(:id,:organization,:session,:item,:sequence,:text,false)")
                         .param("id", question).param("organization", session.get("organization")).param("session", sessionId)
                         .param("item", first.get("item")).param("sequence", index + 1).param("text", LONG_QUESTIONS.get(index)).update();
                 db.sql("insert into evidence(id,organization_id,session_id,question_id,participant_id,source_type,exact_text) values(:id,:organization,:session,:question,:participant,'ANSWER',:text)")
-                        .param("id", Ids.id()).param("organization", session.get("organization")).param("session", sessionId)
+                        .param("id", evidence).param("organization", session.get("organization")).param("session", sessionId)
                         .param("question", question).param("participant", session.get("participant"))
                         .param("text", LONG_ANSWERS.get(index)).update();
             }
+            db.sql("insert into evidence(id,organization_id,session_id,question_id,participant_id,source_type,exact_text,revises) values(:id,:organization,:session,:question,:participant,'REVISION',:text,:revises)")
+                    .param("id", Ids.id()).param("organization", session.get("organization")).param("session", sessionId)
+                    .param("question", questionIds.get(8)).param("participant", session.get("participant"))
+                    .param("text", LONG_REVISION).param("revises", evidenceIds.get(8)).update();
             db.sql("insert into questions(id,organization_id,session_id,item_id,sequence,text,active) values(:id,:organization,:session,:item,:sequence,:text,true)")
                     .param("id", Ids.id()).param("organization", session.get("organization")).param("session", sessionId)
                     .param("item", first.get("item")).param("sequence", LONG_ANSWERS.size() + 1)
                     .param("text", LONG_QUESTIONS.getLast()).update();
+            db.sql("update investigation_results set coverage='EXPLORING' where session_id=:session")
+                    .param("session", sessionId).update();
             db.sql("update interview_sessions set revision=:revision where id=:session")
-                    .param("revision", LONG_ANSWERS.size()).param("session", sessionId).update();
+                    .param("revision", LONG_ANSWERS.size() + 1).param("session", sessionId).update();
             return Map.of("session_id", sessionId, "answered_turns", LONG_ANSWERS.size());
         });
+    }
+
+    @PostMapping("/test/interviews/{sessionId}/state")
+    @ResponseBody
+    Map<String, Object> interviewState(@PathVariable UUID sessionId, @RequestParam String state) {
+        if (!java.util.Set.of("PAUSED", "RUNTIME_FAILED", "AWAITING_CONFIRMATION", "COMPLETED").contains(state)) {
+            throw new IllegalArgumentException("Unsupported test Interview Session state");
+        }
+        var changed = db.sql("""
+                update interview_sessions set state=:state,
+                    completed_at=case when :state='COMPLETED' then now() else null end,
+                    extraction_state=case when :state='COMPLETED' then 'READY' else extraction_state end
+                where id=:session
+                """)
+                .param("state", state).param("session", sessionId).update();
+        if (changed != 1) throw new IllegalArgumentException("Unknown Interview Session");
+        return Map.of("session_id", sessionId, "state", state);
     }
 
     @PostMapping("/test/fixtures/non-owner")

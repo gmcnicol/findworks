@@ -66,23 +66,20 @@ const bindForms = () => {
   });
 };
 
-let currentQuestion = document.querySelector("[data-active-question]")?.dataset.questionId ?? null;
-const announceQuestion = () => {
-  const active = document.querySelector("[data-active-question]");
-  const nextId = active?.dataset.questionId ?? null;
-  if (!nextId || nextId === currentQuestion) return;
-  currentQuestion = nextId;
-  const heading = active.querySelector("h1");
-  const announcer = document.querySelector("[data-question-announcer]");
-  if (announcer) announcer.textContent = `New question: ${heading?.textContent ?? "Ready"}`;
-  heading?.focus({ preventScroll: false });
+let currentFocusKey = null;
+const focusCurrentSurface = () => {
+  const target = document.querySelector("#interview-shell [data-focus-target]");
+  const nextKey = target?.dataset.focusKey ?? null;
+  if (!target || !nextKey || nextKey === currentFocusKey) return;
+  currentFocusKey = nextKey;
+  requestAnimationFrame(() => requestAnimationFrame(() => target.focus({ preventScroll: false })));
 };
 
 const bindSurface = () => {
   restoreDrafts();
   bindForms();
   setConnectionState();
-  announceQuestion();
+  focusCurrentSurface();
 };
 
 document.addEventListener("input", (event) => {
