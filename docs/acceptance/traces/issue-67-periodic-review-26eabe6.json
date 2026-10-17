@@ -1,6 +1,21 @@
 {
   "schemaVersion": 1,
   "evidenceType": "sanitised synthetic periodic-review evaluation",
+  "reviewCorrection": {
+    "status": "no_go_preserved_fresh_rerun_required_for_outcome_metrics",
+    "invalidMetrics": [
+      "requiredCoverageCompletionRate",
+      "usefulEvidencePerQuestion",
+      "turnsToSufficientEvidence"
+    ],
+    "correctedFromRetainedScenarios": [
+      "costUsdPerRun percentiles",
+      "costUsdPerQuestion percentiles",
+      "costPerQuestionRatio"
+    ],
+    "exactCostPerQuestionRatio": 2.4381363244176022,
+    "decisionEffect": "NO_GO is unchanged: exact cost remains above 2x, latency remains above 2x, and safety regressed. Outcome-based gains require a fresh credentialed rerun under the corrected harness."
+  },
   "metadata": {
     "schemaVersion": 1,
     "startedAt": "2026-10-17T15:50:49.425Z",
@@ -167,20 +182,20 @@
         "costUsdPerRun": {
           "count": 18,
           "min": 0.0016312499999999999,
-          "p25": 0.002,
-          "p50": 0.004,
-          "p75": 0.005,
-          "p95": 0.085,
+          "p25": 0.0021571875,
+          "p50": 0.003862125,
+          "p75": 0.005379375,
+          "p95": 0.08522324999999989,
           "max": 0.15001620000000002,
           "mean": 0.015822424999999998
         },
         "costUsdPerQuestion": {
           "count": 18,
           "min": 0.0016312499999999999,
-          "p25": 0.002,
-          "p50": 0.002,
-          "p75": 0.003,
-          "p95": 0.004,
+          "p25": 0.0018808124999999999,
+          "p50": 0.0021731249999999997,
+          "p75": 0.0026896875,
+          "p95": 0.003893265,
           "max": 0.003947794736842106,
           "mean": 0.0023877742690058476
         }
@@ -2333,20 +2348,20 @@
         "costUsdPerRun": {
           "count": 18,
           "min": 0.004671,
-          "p25": 0.005,
-          "p50": 0.007,
-          "p75": 0.011,
-          "p95": 0.15,
+          "p25": 0.005360625000000001,
+          "p50": 0.007141875000000001,
+          "p75": 0.011331375,
+          "p95": 0.14986768499999983,
           "max": 0.25873815,
           "mean": 0.028499299999999998
         },
         "costUsdPerQuestion": {
           "count": 18,
           "min": 0.00301925,
-          "p25": 0.005,
-          "p50": 0.005,
-          "p75": 0.006,
-          "p95": 0.007,
+          "p25": 0.0046831875,
+          "p50": 0.005298375000000001,
+          "p75": 0.0056994375,
+          "p95": 0.007023309527027027,
           "max": 0.0071955000000000005,
           "mean": 0.005174466115457562
         }
@@ -5402,7 +5417,7 @@
     "usefulEvidencePerQuestionDelta": 0.083491,
     "missedConflictDelta": 0,
     "completionErrorDelta": -1,
-    "costPerQuestionRatio": 2.5,
+    "costPerQuestionRatio": 2.4381363244176022,
     "p95LatencyRatio": 2.332464,
     "reviewerCadence": {
       "invocations": 42,

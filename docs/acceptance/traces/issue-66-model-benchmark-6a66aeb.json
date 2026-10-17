@@ -1,5 +1,18 @@
 {
   "schemaVersion": 1,
+  "reviewCorrection": {
+    "status": "fresh_credentialed_rerun_required",
+    "invalidMetrics": [
+      "requiredCoverageCompletionRate",
+      "usefulEvidencePerQuestion",
+      "turnsToSufficientEvidence",
+      "costUsdPerQuestion percentiles",
+      "costPerQuestionRatio",
+      "costPerUsefulEvidenceRatio"
+    ],
+    "reason": "The retained run predated production Runtime Turn rejection, semantic outcome qualification, actual-turn model identity capture, and full-precision cost percentiles. Historical observations remain retained, but these metrics and ratios are not corrected by inventing a rerun.",
+    "decisionEffect": "No candidate can be promoted from this evidence. The retained safety and quality gate failures still support the conservative no-switch decision."
+  },
   "metadata": {
     "startedAt": "2026-10-17T14:08:48.499Z",
     "completedAt": "2026-10-17T15:00:49.727Z",
@@ -7749,8 +7762,9 @@
       "semanticLowerQuartileDelta": 0,
       "semanticMedianDelta": 0,
       "evidenceYieldMedianDelta": 0,
-      "costPerQuestionRatio": 1,
-      "costPerUsefulEvidenceRatio": 1,
+      "costPerQuestionRatio": null,
+      "costPerUsefulEvidenceRatio": null,
+      "costPrecisionStatus": "fresh_credentialed_rerun_required",
       "p95LatencyRatio": 1
     },
     {
@@ -7771,8 +7785,9 @@
       "semanticLowerQuartileDelta": 0.017,
       "semanticMedianDelta": 0.074,
       "evidenceYieldMedianDelta": 0,
-      "costPerQuestionRatio": 1.5,
-      "costPerUsefulEvidenceRatio": 1.5,
+      "costPerQuestionRatio": null,
+      "costPerUsefulEvidenceRatio": null,
+      "costPrecisionStatus": "fresh_credentialed_rerun_required",
       "p95LatencyRatio": 1.438752
     }
   ],

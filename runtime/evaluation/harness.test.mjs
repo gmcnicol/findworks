@@ -653,6 +653,97 @@ test("a scenario drives every answer through the Runtime Turn seam and records a
   assert.equal(run.semanticGatePassed, true);
 });
 
+test("accepted fabricated outcomes cannot improve useful Evidence, coverage, or sufficiency metrics", async () => {
+  const scenario = fixture({ assertions: { forbiddenClaims: ["automatic cancellation"] } });
+  scenario.turns[0].expected = {
+    action: "PROPOSE_COMPLETION",
+    outcomes: [{ resultId, coverage: "SUPPORTED", evidenceIds: [evidenceId], summaryIncludes: ["morning sort"] }],
+  };
+  const submission = terminalSubmission();
+  submission.outcomes[0].summary = "The morning sort causes automatic cancellation.";
+  submission.nextAction = { type: "PROPOSE_COMPLETION" };
+
+  const run = await runScenario({
+    fixture: scenario,
+    repeat: 1,
+    executeRuntime: async () => ({ submission, accepted: true, durationMs: 1, usage: null }),
+  });
+
+  assert.ok(run.turns[0].contractViolations.some(value => value.rule === "fabricated-fact"));
+  assert.deepEqual(run.metrics.requiredCoverage, { total: 1, terminal: 0, completionRate: 0 });
+  assert.deepEqual(run.metrics.usefulEvidence, {
+    questions: 1,
+    answersLinkedToOutcomes: 0,
+    perQuestion: 0,
+  });
+  assert.deepEqual(run.metrics.requiredCoverageProgress, [{ turn: 1, terminal: 0, total: 1, completionRate: 0 }]);
+});
+
+test("accepted wrong-result outcomes cannot improve useful Evidence or required coverage", async () => {
+  const scenario = fixture();
+  scenario.context.investigation_results.push({
+    result_id: otherResultId,
+    required: false,
+    coverage: "UNADDRESSED",
+    current_outcomes: [],
+  });
+  scenario.turns[0].expected.outcomes = [{
+    resultId,
+    coverage: "SUPPORTED",
+    evidenceIds: [evidenceId],
+    summaryIncludes: ["morning sort"],
+  }];
+  const submission = validSubmission();
+  submission.outcomes = [{
+    resultId: otherResultId,
+    coverage: "SUPPORTED",
+    category: "FACT",
+    evidenceIds: [evidenceId],
+    summary: "The morning sort was attached to the wrong Investigation Result.",
+  }];
+
+  const run = await runScenario({
+    fixture: scenario,
+    repeat: 1,
+    executeRuntime: async () => ({ submission, accepted: true, durationMs: 1, usage: null }),
+  });
+
+  assert.equal(run.metrics.requiredCoverage.completionRate, 0);
+  assert.equal(run.metrics.usefulEvidence.answersLinkedToOutcomes, 0);
+  assert.ok(run.turns[0].semanticQuality.checks.some(check =>
+    check.rule === "expected-outcome:SUPPORTED" && !check.passed));
+});
+
+test("rejected Runtime Turn proposals remain traceable and never change simulated authoritative state", async () => {
+  const scenario = fixture();
+  const accepted = validSubmission();
+  const rejected = terminalSubmission();
+  const run = await runScenario({
+    fixture: scenario,
+    repeat: 1,
+    executeRuntime: async suppliedContext => ({
+      submission: accepted,
+      accepted: true,
+      event: "question_ready",
+      rejectedSubmissions: [{ code: "invalid_outcome_scope", submission: rejected }],
+      authoritativeContext: {
+        ...structuredClone(suppliedContext),
+        expected_revision: suppliedContext.expected_revision + 1,
+      },
+      durationMs: 1,
+      usage: null,
+    }),
+  });
+
+  assert.deepEqual(run.turns[0].trace.submissionRejections, [{
+    code: "invalid_outcome_scope",
+    submission: rejected,
+  }]);
+  assert.ok(run.turns[0].contractViolations.some(value => value.rule === "runtime-rejected:invalid_outcome_scope"));
+  assert.equal(run.metrics.requiredCoverage.terminal, 0);
+  assert.equal(run.metrics.usefulEvidence.answersLinkedToOutcomes, 0);
+});
+
 test("a scenario records rejected reviewer proposals plus role-specific latency, cost, and cadence", async () => {
   const run = await runScenario({
     fixture: fixture(),
@@ -778,6 +869,13 @@ test("long runs measure continuity, compaction, coverage, evidence yield, phases
       expected: {
         action: index === 3 ? "PROPOSE_COMPLETION" : "ASK_QUESTION",
         resultId: index === 3 ? undefined : resultId,
+        outcomes: [{
+          resultId,
+          coverage: "SUPPORTED",
+          category: "FACT",
+          evidenceIds: [`40000000-0000-0000-0000-00000000000${index + 1}`],
+          summaryIncludes: [`grounded fact ${index + 1}`],
+        }],
       },
     })),
   });
@@ -814,7 +912,8 @@ test("long runs measure continuity, compaction, coverage, evidence yield, phases
   assert.equal(run.metrics.usefulEvidence.questions, 4);
   assert.equal(run.metrics.usefulEvidence.answersLinkedToOutcomes, 4);
   assert.equal(run.metrics.usefulEvidence.perQuestion, 1);
-  assert.deepEqual(run.metrics.latencyMs, { p50: 25, p95: 89.5 });
+  assert.equal(run.metrics.latencyMs.p50, 25);
+  assert.ok(Math.abs(run.metrics.latencyMs.p95 - 89.5) < 1e-12);
   assert.deepEqual(run.metrics.compaction, {
     enabled: true,
     recordsDropped: 2,
@@ -968,7 +1067,14 @@ test("repeat summaries compare deterministic and graded results with a baseline"
     durationMs: 220,
     distributions: {
       semanticPassRate: {
-        count: 2, min: 2 / 3, p25: 0.75, p50: 0.833, p75: 0.917, p95: 0.983, max: 1, mean: (1 + 2 / 3) / 2,
+        count: 2,
+        min: 2 / 3,
+        p25: 0.75,
+        p50: 2 / 3 + (1 - 2 / 3) * 0.5,
+        p75: 2 / 3 + (1 - 2 / 3) * 0.75,
+        p95: 2 / 3 + (1 - 2 / 3) * 0.95,
+        max: 1,
+        mean: (1 + 2 / 3) / 2,
       },
       requiredCoverageCompletionRate: emptyDistribution(),
       usefulEvidencePerQuestion: emptyDistribution(),

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { applyAcceptedRuntimeOutcomes } from "./runtime-turn-contract.mjs";
 
 const COVERAGES = new Set(["SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OWNERSHIP_GAP"]);
 const CATEGORIES = new Set(["FACT", "RULE", "DECISION", "TERM", "EXCEPTION", "ASSUMPTION"]);
@@ -164,6 +165,8 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
     summary: outcome.summary,
     evidenceIds: outcome.evidenceIds ?? [],
   }));
+  const semanticallySupportedOutcomes = (submission?.outcomes ?? []).filter(outcome =>
+    outcomeSemanticallySupported(outcome, expected, fixture.assertions ?? {}, resultIds, evidenceIds));
 
   return {
     contractViolations: violations,
@@ -173,6 +176,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
       checks: qualityChecks,
     },
     coverageChanges,
+    semanticallySupportedOutcomes,
     trace: {
       turn: turnNumber,
       runId: context.run_id,
@@ -188,6 +192,25 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
       repeatedQuestion,
     },
   };
+}
+
+function outcomeSemanticallySupported(outcome, expected, assertions, resultIds, evidenceIds) {
+  if (!resultIds.has(outcome?.resultId) || !Array.isArray(outcome?.evidenceIds)
+      || outcome.evidenceIds.length === 0 || outcome.evidenceIds.some(id => !evidenceIds.has(id))
+      || matchingTerms(outcome.summary, assertions.forbiddenClaims).length > 0) return false;
+  if ((expected.forbiddenOutcomes ?? []).some(unwanted => outcome.resultId === unwanted.resultId
+      && outcome.coverage === unwanted.coverage && (!unwanted.category || outcome.category === unwanted.category))) return false;
+  return (expected.outcomes ?? []).some(wanted => {
+    const actualCategory = outcome.coverage === "ASSUMPTION" ? "ASSUMPTION" : outcome.category ?? "FACT";
+    if (outcome.resultId !== wanted.resultId || outcome.coverage !== wanted.coverage
+        || (wanted.category && actualCategory !== wanted.category)) return false;
+    if (wanted.evidenceIds?.some(id => !outcome.evidenceIds.includes(id))) return false;
+    const summary = String(outcome.summary ?? "").toLowerCase();
+    if (wanted.summaryIncludes?.length && !wanted.summaryIncludes.some(term => summary.includes(term.toLowerCase()))) return false;
+    if (wanted.summaryIncludesAll?.some(term => !summary.includes(term.toLowerCase()))) return false;
+    if (wanted.summaryAnchorGroups?.some(group => !group.some(term => summary.includes(term.toLowerCase())))) return false;
+    return true;
+  });
 }
 
 function evaluateQuestion(action, { context, projectedCoverage, previousQuestions, expected, assertions, addViolation, grade }) {
@@ -424,6 +447,7 @@ function calculateCoverageChanges(context, outcomes) {
 export async function runScenario({ fixture, repeat, executeRuntime }) {
   validateFixture(fixture);
   let context = structuredClone(fixture.context);
+  let metricContext = structuredClone(fixture.context);
   const turns = [];
   const previousQuestions = [];
   const usages = [];
@@ -441,15 +465,18 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
     const sourceResultId = previousQuestionAction?.resultId
       ?? fixtureTurn.sourceResultId
       ?? fixtureTurn.answer.resultId;
-    context.questions_and_evidence.push({
+    const evidenceRecord = {
       question_id: fixtureTurn.answer.questionId ?? randomUUID(),
       sequence: context.questions_and_evidence.length + 1,
       question: sourceQuestion,
       active: false,
       evidence_id: fixtureTurn.answer.evidenceId,
+      result_id: sourceResultId,
       source_type: fixtureTurn.answer.sourceType,
       exact_text: fixtureTurn.answer.text,
-    });
+    };
+    context.questions_and_evidence.push(evidenceRecord);
+    metricContext.questions_and_evidence.push(structuredClone(evidenceRecord));
     acceptedEvidenceIds.add(fixtureTurn.answer.evidenceId);
     context.conversation_state = {
       ...context.conversation_state,
@@ -457,7 +484,9 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
       last_question: sourceQuestion,
       latest_interviewee_wording: fixtureTurn.answer.text,
     };
+    metricContext.conversation_state = structuredClone(context.conversation_state);
     const compactedEvidenceIds = compactQuestionEvidence(context, fixture.contextPolicy?.maxQuestionEvidenceRecords);
+    compactQuestionEvidence(metricContext, fixture.contextPolicy?.maxQuestionEvidenceRecords);
     recordsDropped += compactedEvidenceIds.length;
 
     const effectiveFixture = structuredClone(fixture);
@@ -505,6 +534,19 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
     evaluation.interviewerUsage = executed.interviewerUsage ?? executed.usage ?? null;
     evaluation.reviewerUsage = executed.reviewerUsage ?? null;
     evaluation.runtimeEvent = executed.event ?? null;
+    evaluation.trace.submissionRejections = (executed.rejectedSubmissions ?? []).map(rejection => ({
+      code: rejection.code,
+      submission: rejection.submission,
+    }));
+    for (const rejection of executed.rejectedSubmissions ?? []) {
+      evaluation.contractViolations.push({
+        turn: turnIndex + 1,
+        rule: `runtime-rejected:${rejection.code}`,
+        message: `Production Runtime Turn contract rejected a proposal with ${rejection.code}`,
+        sourceAnswer: fixtureTurn.answer.text,
+        offendingAction: rejection.submission?.nextAction ?? null,
+      });
+    }
     evaluation.trace.review = executed.review ?? null;
     if (executed.review?.accepted === false) {
       evaluation.contractViolations.push({
@@ -519,12 +561,14 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
     evaluation.trace.contextEvidenceRecords = context.questions_and_evidence.length;
     turns.push(evaluation);
 
-    const linkedCurrentAnswer = (executed.submission?.outcomes ?? [])
+    const linkedCurrentAnswer = evaluation.semanticallySupportedOutcomes
       .some(outcome => outcome.evidenceIds?.includes(fixtureTurn.answer.evidenceId));
     if (linkedCurrentAnswer) usefulAnswers += 1;
-    context = applySubmission(context, executed.submission ?? {});
-    context.expected_revision += 1;
-    const required = context.investigation_results.filter(result => result.required);
+    context = executed.authoritativeContext ?? applySubmission(context, executed.submission ?? {});
+    if (!executed.authoritativeContext) context.expected_revision += 1;
+    metricContext = applyAcceptedRuntimeOutcomes(metricContext, evaluation.semanticallySupportedOutcomes);
+    metricContext.expected_revision += 1;
+    const required = metricContext.investigation_results.filter(result => result.required);
     const terminal = required.filter(result => TERMINAL_COVERAGES.has(result.coverage)).length;
     coverageProgress.push({ turn: turnIndex + 1, terminal, total: required.length, completionRate: rate(terminal, required.length) });
     if (executed.submission?.nextAction?.type === "ASK_QUESTION") {
@@ -541,7 +585,7 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
   const semanticPassRate = semanticTotal === 0 ? 1 : semanticPassed / semanticTotal;
   const metrics = scenarioMetrics({
     fixture,
-    context,
+    context: metricContext,
     turns,
     acceptedEvidenceIds,
     coverageProgress,
@@ -659,13 +703,21 @@ function qualityDegradation(turns) {
 
 function aggregateUsage(usages) {
   if (usages.length === 0) return null;
-  return {
+  const result = {
     inputTokens: sumAvailable(usages, "inputTokens"),
     outputTokens: sumAvailable(usages, "outputTokens"),
     cacheWriteTokens: sumAvailable(usages, "cacheWriteTokens"),
     costUsd: sumAvailable(usages, "costUsd"),
     availableTurns: usages.length,
   };
+  const identities = usages.map(usage => usage.modelIdentity).filter(Boolean);
+  if (identities.length > 0) {
+    const unique = new Map(identities.map(identity => [JSON.stringify(identity), identity]));
+    result.modelIdentity = unique.size === 1 && identities.length === usages.length
+      ? structuredClone(identities[0])
+      : null;
+  }
+  return result;
 }
 
 function sumAvailable(values, field) {
@@ -911,7 +963,7 @@ function percentile(values, quantile) {
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
   if (lower === upper) return ordered[lower];
-  return Number((ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)).toFixed(3));
+  return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower);
 }
 
 function formatPercent(value) {

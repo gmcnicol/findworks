@@ -10,6 +10,7 @@ import {
   runScenario,
   summariseRuns,
 } from "./harness.mjs";
+import { createRuntimeTurnContract } from "./runtime-turn-contract.mjs";
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const defaultRoot = resolve(moduleDirectory, "../..");
@@ -21,6 +22,8 @@ export function parseOptions(argv, env = process.env, root = defaultRoot) {
     provider: env.FINDWORKS_MODEL_PROVIDER || "openai",
     model: env.FINDWORKS_MODEL || "gpt-5.4-mini",
     reasoningEffort: env.FINDWORKS_REASONING_EFFORT || "low",
+    resolvedModel: env.FINDWORKS_RESOLVED_MODEL,
+    providerReasoningEffort: env.FINDWORKS_PROVIDER_REASONING_EFFORT,
     repeats: positiveInteger(env.FINDWORKS_EVALUATION_REPEATS, 1),
     fixturesDirectory: join(root, "runtime/evaluation/fixtures/v1"),
     baselinePath: join(root, "runtime/evaluation/baselines/gpt-5.4-mini-low.json"),
@@ -42,6 +45,8 @@ export function parseOptions(argv, env = process.env, root = defaultRoot) {
       case "--provider": options.provider = value; break;
       case "--model": options.model = value; break;
       case "--reasoning": options.reasoningEffort = value; break;
+      case "--resolved-model": options.resolvedModel = value; break;
+      case "--provider-reasoning": options.providerReasoningEffort = value; break;
       case "--repeats": options.repeats = positiveInteger(value); break;
       case "--fixtures": options.fixturesDirectory = resolve(value); break;
       case "--baseline": options.baselinePath = resolve(value); options.baselineExplicit = true; break;
@@ -76,15 +81,7 @@ export async function runCli(argv = process.argv.slice(2), env = process.env) {
   const missing = options.scenarioIds.filter(id => !fixtures.some(fixture => fixture.id === id));
   if (missing.length > 0) throw new Error(`Unknown scenario(s): ${missing.join(", ")}`);
   let baseline = await readBaseline(options.baselinePath);
-  const evaluatedModel = `${options.provider}/${options.model}`;
-  const baselineMismatch = Boolean(
-    (baseline?.metadata?.model && baseline.metadata.model !== evaluatedModel)
-    || (baseline?.metadata?.reasoningEffort && baseline.metadata.reasoningEffort !== options.reasoningEffort),
-  );
-  if (baselineMismatch && options.baselineExplicit) {
-    throw new Error("Selected baseline model or reasoning effort does not match this evaluation run");
-  }
-  if (baselineMismatch) baseline = null;
+  const credential = selectedProviderCredential(options.provider, env);
   const runtime = await createDockerRuntimeExecutor(options, env);
   const runs = [];
   const startedAt = new Date().toISOString();
@@ -98,6 +95,35 @@ export async function runCli(argv = process.argv.slice(2), env = process.env) {
     await runtime.close();
   }
 
+  const modelIdentity = validateRunModelIdentity(runs, {
+    provider: options.provider,
+    requestedModel: options.model,
+    responseModel: options.resolvedModel,
+    reasoningEffort: options.reasoningEffort,
+    providerReasoningEffort: options.providerReasoningEffort,
+  });
+  const compatibilityMetadata = {
+    commit,
+    runtimeCommit: image.labels["org.opencontainers.image.revision"] ?? null,
+    provider: options.provider,
+    model: `${options.provider}/${options.model}`,
+    resolvedModel: modelIdentity.responseModel,
+    reasoningEffort: options.reasoningEffort,
+    providerReasoningEffort: modelIdentity.providerReasoningEffort,
+    credentialKind: credential.kind,
+    credentialEnvironment: credential.name,
+    runtimeVersion: options.runtimeVersion ?? image.labels["io.findworks.pi.version"] ?? null,
+    fixtureSchemaVersion: 1,
+    fixtureVersions: Object.fromEntries(fixtures.map(fixture => [fixture.id, fixture.fixtureVersion])),
+  };
+  if (baseline) {
+    try {
+      validateBaselineCompatibility(baseline, compatibilityMetadata);
+    } catch (error) {
+      if (options.baselineExplicit) throw error;
+      baseline = null;
+    }
+  }
   const summary = summariseRuns(runs);
   const comparison = compareWithBaseline(summary, baseline?.summary ?? baseline);
   const report = {
@@ -109,7 +135,11 @@ export async function runCli(argv = process.argv.slice(2), env = process.env) {
       workingTreeDirty: git(options.root, ["status", "--porcelain"]).trim() !== "",
       provider: options.provider,
       model: `${options.provider}/${options.model}`,
+      resolvedModel: modelIdentity.responseModel,
       reasoningEffort: options.reasoningEffort,
+      providerReasoningEffort: modelIdentity.providerReasoningEffort,
+      credentialKind: credential.kind,
+      credentialEnvironment: credential.name,
       runtimeVersion: options.runtimeVersion ?? image.labels["io.findworks.pi.version"] ?? null,
       runtimeImage: options.image,
       runtimeImageId: image.id,
@@ -173,14 +203,30 @@ export async function createDockerRuntimeExecutor(options, env, protocol = {}) {
       response.end(JSON.stringify({ code: "stale_revision" }));
       return;
     }
-    const event = role === "reviewer"
-      ? "review_proposed"
-      : submission.nextAction?.type === "PROPOSE_COMPLETION"
-        ? "completion_confirmation_ready"
-        : "question_ready";
+    if (role !== "reviewer") {
+      const result = pending.contract.submit(submission);
+      if (!result.accepted) {
+        pending.rejections.push({ code: result.code, submission });
+        response.writeHead(400, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ code: result.code }));
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ event: result.event }));
+      pending.resolve({
+        submission,
+        event: result.event,
+        accepted: true,
+        authoritativeContext: result.context,
+        rejectedSubmissions: pending.rejections,
+      });
+      pending = undefined;
+      return;
+    }
+    const event = "review_proposed";
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ event }));
-    pending?.resolve({ submission, event });
+    pending.resolve({ submission, event, accepted: true, rejectedSubmissions: [] });
     pending = undefined;
   });
   await new Promise((resolveListen, reject) => {
@@ -203,6 +249,8 @@ export async function createDockerRuntimeExecutor(options, env, protocol = {}) {
       let runtimeOutput = "";
       pending = {
         identity: requestIdentity(context),
+        contract: role === "reviewer" ? null : createRuntimeTurnContract(context),
+        rejections: [],
         resolve(value) { received = value; },
         reject(error) { clearTimeout(timeout); rejectExecution(error); },
       };
@@ -244,9 +292,8 @@ function spawnRuntime(options, env, context, port, { role, endpoint }) {
     "--security-opt", "no-new-privileges", "--pids-limit", "64", "--memory", "512m", "--cpus", "0.5",
     "--user", "10001:10001",
   ];
-  for (const name of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "FINDWORKS_MODEL_OAUTH_B64"]) {
-    dockerArgs.push("--env", name);
-  }
+  const credential = selectedProviderCredential(options.provider, env);
+  dockerArgs.push("--env", credential.name);
   dockerArgs.push(
     "--env", `FINDWORKS_MODEL_PROVIDER=${options.provider}`,
     "--env", `FINDWORKS_MODEL=${options.model}`,
@@ -274,6 +321,73 @@ function spawnRuntime(options, env, context, port, { role, endpoint }) {
   return child;
 }
 
+export function validateBaselineCompatibility(baseline, current) {
+  if (baseline?.schemaVersion !== 1 || !baseline.metadata || !baseline.summary) {
+    throw new Error("Baseline schema is not a supported evaluation result");
+  }
+  if (typeof baseline.metadata.commit !== "string" || baseline.metadata.runtimeCommit !== baseline.metadata.commit) {
+    throw new Error("Baseline commit and runtime image identity are missing or inconsistent");
+  }
+  if (typeof current.commit !== "string" || current.runtimeCommit !== current.commit) {
+    throw new Error("Current commit and runtime image identity are missing or inconsistent with the baseline contract");
+  }
+  const fields = [
+    "provider", "model", "resolvedModel", "reasoningEffort", "providerReasoningEffort",
+    "credentialKind", "credentialEnvironment", "runtimeVersion", "fixtureSchemaVersion",
+  ];
+  for (const field of fields) {
+    if (baseline.metadata[field] == null || baseline.metadata[field] !== current[field]) {
+      throw new Error(`Baseline ${field} is incompatible with this evaluation run`);
+    }
+  }
+  if (JSON.stringify(sortedObject(baseline.metadata.fixtureVersions))
+      !== JSON.stringify(sortedObject(current.fixtureVersions))) {
+    throw new Error("Baseline fixture IDs or versions are incompatible with this evaluation run");
+  }
+}
+
+export function validateRunModelIdentity(runs, expected) {
+  const identities = runs.flatMap(run => run.turns ?? [])
+    .map(turn => turn.usage?.modelIdentity).filter(Boolean);
+  const turnCount = runs.reduce((total, run) => total + (run.turns?.filter(turn => turn.usage).length ?? 0), 0);
+  if (identities.length !== turnCount || identities.length === 0) {
+    throw new Error("Actual Runtime Turn model identity was not captured for every provider call");
+  }
+  const unique = new Map(identities.map(identity => [JSON.stringify(identity), identity]));
+  if (unique.size !== 1) throw new Error("Actual Runtime Turns used more than one model or reasoning identity");
+  const actual = identities[0];
+  for (const field of ["provider", "requestedModel", "reasoningEffort"]) {
+    if (expected[field] && actual[field] !== expected[field]) {
+      throw new Error(`Actual Runtime Turn ${field} ${actual[field]} does not match preflight ${expected[field]}`);
+    }
+  }
+  if (expected.responseModel && actual.responseModel !== expected.responseModel) {
+    throw new Error(`Actual Runtime Turn responseModel ${actual.responseModel} does not match preflight ${expected.responseModel}`);
+  }
+  if (expected.providerReasoningEffort && actual.providerReasoningEffort !== expected.providerReasoningEffort) {
+    throw new Error(`Actual Runtime Turn provider reasoning ${actual.providerReasoningEffort} does not match preflight ${expected.providerReasoningEffort}`);
+  }
+  return structuredClone(actual);
+}
+
+export function selectedProviderCredential(provider, env) {
+  const credentialByProvider = {
+    openai: { name: "OPENAI_API_KEY", kind: "api-key" },
+    "openai-codex": { name: "FINDWORKS_MODEL_OAUTH_B64", kind: "oauth" },
+    anthropic: { name: "ANTHROPIC_API_KEY", kind: "api-key" },
+    google: { name: "GEMINI_API_KEY", kind: "api-key" },
+    gemini: { name: "GEMINI_API_KEY", kind: "api-key" },
+  };
+  const credential = credentialByProvider[provider];
+  if (!credential) throw new Error(`Unsupported provider credential mapping: ${provider}`);
+  if (provider === "openai" && env.FINDWORKS_MODEL_OAUTH_B64) {
+    if (env.OPENAI_API_KEY) throw new Error("Multiple credentials are configured for openai; select one explicit provider credential path");
+    throw new Error("OpenAI OAuth cannot substitute for the openai API-key provider; select openai-codex explicitly");
+  }
+  if (!env[credential.name]) throw new Error(`${credential.name} is required for provider ${provider}`);
+  return credential;
+}
+
 export function parseRuntimeMetrics(output) {
   for (const line of String(output).split("\n").reverse()) {
     if (!line.trim()) continue;
@@ -286,6 +400,21 @@ export function parseRuntimeMetrics(output) {
           if (typeof metrics[field] !== "number" || !Number.isFinite(metrics[field]) || metrics[field] < 0) return null;
           value[field] = metrics[field];
         }
+      }
+      if (metrics.modelIdentity !== undefined) {
+        const identity = metrics.modelIdentity;
+        if (!identity || typeof identity !== "object"
+            || ["provider", "requestedModel", "responseModel", "reasoningEffort"]
+              .some(field => typeof identity[field] !== "string" || identity[field] === "")
+            || (identity.providerReasoningEffort !== null
+              && typeof identity.providerReasoningEffort !== "string")) return null;
+        value.modelIdentity = {
+          provider: identity.provider,
+          requestedModel: identity.requestedModel,
+          responseModel: identity.responseModel,
+          reasoningEffort: identity.reasoningEffort,
+          providerReasoningEffort: identity.providerReasoningEffort ?? null,
+        };
       }
       return Object.keys(value).length > 0 ? value : null;
     } catch {
@@ -335,6 +464,11 @@ function aggregateRunMetric(runs, ...fields) {
   return fields.length === 1 ? result[fields[0]] : { ...result, available };
 }
 
+function sortedObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+}
+
 function positiveInteger(value, fallback) {
   if (value === undefined || value === "") {
     if (fallback !== undefined) return fallback;
@@ -356,6 +490,8 @@ function help() {
     `  --provider NAME        Model provider (default: openai)\n` +
     `  --model NAME           Model name (default: gpt-5.4-mini)\n` +
     `  --reasoning LEVEL      Reasoning effort (default: low)\n` +
+    `  --resolved-model ID    Require actual provider response model from preflight\n` +
+    `  --provider-reasoning LEVEL  Require actual provider reasoning control\n` +
     `  --repeats N            Repeat every scenario N times\n` +
     `  --scenario ID          Run one scenario; repeat to select several\n` +
     `  --fixtures DIRECTORY   Versioned fixture directory\n` +
