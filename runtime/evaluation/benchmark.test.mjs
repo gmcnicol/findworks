@@ -44,6 +44,7 @@ test("provider preflight verifies exact model access and reasoning support witho
     accessible: true,
     reasoningSupported: true,
     resolvedModel: "gpt-5.4-mini-2026-03-17",
+    exactModelVerified: true,
     httpStatus: 200,
     errorCode: null,
     errorType: null,
@@ -57,6 +58,7 @@ test("provider preflight verifies exact model access and reasoning support witho
     accessible: false,
     reasoningSupported: false,
     resolvedModel: null,
+    exactModelVerified: false,
     httpStatus: 403,
     errorCode: "model_not_found",
     errorType: "invalid_request_error",
@@ -64,7 +66,9 @@ test("provider preflight verifies exact model access and reasoning support witho
     credentialKind: "api-key",
   }]);
   assert.equal(JSON.stringify(result).includes("proj_secret"), false);
-  assert.equal(requests.filter(request => request.url.endsWith("/responses")).length, 2);
+  const responseRequests = requests.filter(request => request.url.endsWith("/responses"));
+  assert.equal(responseRequests.length, 3);
+  assert.equal(JSON.parse(responseRequests[1].init.body).model, "gpt-5.4-mini-2026-03-17");
 });
 
 test("benchmark CLI defaults to three repeat trials and rejects a single trial", () => {
@@ -100,18 +104,69 @@ test("benchmark runner probes then evaluates every accessible configuration with
     env: { OPENAI_API_KEY: "secret" },
     resolveCommit: () => "abc123",
     workingTreeDirty: false,
+    loadFixtureVersions: async () => ({ synthetic: "1.0.0" }),
     probeConfigurations: async configurations => configurations.map(configuration => probe(configuration.id, true)),
     executeEvaluation: async (configuration, options) => {
       calls.push({ configuration, options });
-      return evaluationReport({ semanticP25: 0.8, semanticP50: 0.9, evidenceP50: 0.8, costPerQuestion: 0.01 });
+      return evaluationReport({
+        semanticP25: 0.8,
+        semanticP50: 0.9,
+        evidenceP50: 0.8,
+        costPerQuestion: 0.01,
+        model: "resolved-model",
+        reasoningEffort: configuration.reasoningEffort,
+      });
     },
   });
 
   assert.equal(calls.length, 2);
   assert.ok(calls.every(call => call.options.repeats === 2 && call.options.fixturesDirectory === "/fixtures/v1"));
+  assert.ok(calls.every(call => call.options.runtimeModel === "resolved-model"));
+  assert.ok(report.configurations.every(configuration => configuration.status === "completed"));
   assert.equal(report.metadata.configurationVersion, "1.0.0");
+  assert.equal(report.metadata.fixturesDirectory, "/fixtures/v1");
+  assert.deepEqual(report.metadata.fixtureVersions, { synthetic: "1.0.0" });
   assert.deepEqual(JSON.parse(await readFile(join(outputDirectory, "benchmark.json"), "utf8")), report);
   assert.match(await readFile(join(outputDirectory, "summary.md"), "utf8"), /Adaptive Interview Model Benchmark/);
+});
+
+test("benchmark retains a failed configuration and continues the remaining exact-model evaluations", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "findworks-benchmark-failure-"));
+  const configurationsPath = join(directory, "configurations.json");
+  await writeFile(configurationsPath, JSON.stringify({
+    schemaVersion: 1,
+    configurationVersion: "1.0.0",
+    configurations: [
+      { id: "first", label: "First", provider: "openai", model: "gpt-5.4-mini", reasoningEffort: "low", required: true },
+      { id: "second", label: "Second", provider: "openai", model: "gpt-5.4-mini", reasoningEffort: "low", required: true },
+    ],
+  }));
+  const attempted = [];
+  const report = await runBenchmark({
+    image: "runtime:test",
+    repeats: 3,
+    outputDirectory: join(directory, "output"),
+    configurationsPath,
+    fixturesDirectory: "/fixtures/v1",
+    commit: "abc123",
+    root: "/repo",
+  }, {
+    env: { OPENAI_API_KEY: "secret" },
+    resolveCommit: () => "abc123",
+    workingTreeDirty: false,
+    loadFixtureVersions: async () => ({ synthetic: "1.0.0" }),
+    probeConfigurations: async configurations => configurations.map(configuration => probe(configuration.id, true)),
+    executeEvaluation: async configuration => {
+      attempted.push(configuration.id);
+      if (configuration.id === "first") throw new Error("provider details must not enter retained evidence");
+      return evaluationReport({ semanticP25: 1, semanticP50: 1, evidenceP50: 1, costPerQuestion: 0.01 });
+    },
+  });
+
+  assert.deepEqual(attempted, ["first", "second"]);
+  assert.equal(report.configurations.find(configuration => configuration.id === "first").status, "failed");
+  assert.equal(report.configurations.find(configuration => configuration.id === "second").status, "completed");
+  assert.equal(JSON.stringify(report).includes("provider details"), false);
 });
 
 test("benchmark report retains sanitised failures, distributions, trade-offs, criterion, and a conservative recommendation", () => {
@@ -211,7 +266,7 @@ function evaluationReport({
   semanticP50,
   evidenceP50,
   costPerQuestion,
-  model = "gpt-5.4-mini",
+  model = "resolved-model",
   resolvedModel = "resolved-model",
   reasoningEffort = "low",
 }) {
@@ -257,6 +312,7 @@ function probe(configurationId, accessible) {
     accessible,
     reasoningSupported: accessible,
     resolvedModel: accessible ? "resolved-model" : null,
+    exactModelVerified: accessible,
     httpStatus: accessible ? 200 : 403,
     errorCode: accessible ? null : "model_not_found",
     errorType: accessible ? null : "invalid_request_error",

@@ -35,7 +35,7 @@
       "unknown-outcome": "1.1.0",
       "vague-partial-answer": "1.1.0"
     },
-    "limitations": "Retains only the semantic pass rate and deterministic-failure floor supported by the archived report. The historical run recorded its resolved model through a minimal live probe, not actual-turn identity capture. Coverage, useful-Evidence, sufficiency, model-identity confirmation, and cost trade-offs require a fresh run under the corrected harness."
+    "limitations": "Retains only the semantic pass rate and deterministic-failure floor supported by the archived report. The historical run recorded its resolved model through a minimal live probe, not actual-turn identity capture. The fresh corrected gate at docs/acceptance/traces/issue-62-66-credentialed-gate-8579e0c.json was blocked because the credential could not request the exact provider-resolved mini snapshot or the required full model. Coverage, useful-Evidence, sufficiency, actual-turn model identity, and cost trade-offs therefore remain unavailable until both required exact configurations complete under the corrected harness."
   },
   "summary": {
     "semanticPassRate": 0.8789144050104384,

@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { selectedProviderCredential } from "./cli.mjs";
+import { loadFixtures } from "./harness.mjs";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
@@ -64,10 +65,12 @@ export async function runBenchmark(options, dependencies = {}) {
   const executeEvaluation = dependencies.executeEvaluation ?? executeModelEvaluation;
   const workingTreeDirty = dependencies.workingTreeDirty
     ?? (() => git(options.root, ["status", "--porcelain"]).trim() !== "");
+  const loadFixtureVersions = dependencies.loadFixtureVersions ?? fixtureVersions;
   const commit = resolvePinnedCommit(options.root, options.commit);
   const manifest = JSON.parse(await readFile(options.configurationsPath, "utf8"));
   validateConfigurationManifest(manifest);
   const configurations = manifest.configurations;
+  const portfolio = await loadFixtureVersions(options.fixturesDirectory);
   const startedAt = new Date().toISOString();
   const probes = await probeConfigurations(configurations);
   const probeById = new Map(probes.map(probe => [probe.configurationId, probe]));
@@ -75,8 +78,17 @@ export async function runBenchmark(options, dependencies = {}) {
   for (const configuration of configurations) {
     const probe = probeById.get(configuration.id);
     if (!probe?.accessible || !probe.reasoningSupported) continue;
-    const report = await executeEvaluation(configuration, { ...options, commit }, env, probe);
-    if (report) evaluationReports.set(configuration.id, report);
+    try {
+      const report = await executeEvaluation(configuration, {
+        ...options,
+        commit,
+        runtimeModel: probe.resolvedModel,
+      }, env, probe);
+      if (report) evaluationReports.set(configuration.id, report);
+    } catch {
+      // A failed configuration must not prevent the benchmark from recording
+      // other configurations or retain a raw provider/runtime error.
+    }
   }
   const report = buildBenchmarkReport({
     metadata: {
@@ -88,7 +100,8 @@ export async function runBenchmark(options, dependencies = {}) {
       repeats: options.repeats,
       configurationVersion: manifest.configurationVersion,
       configurationSchemaVersion: manifest.schemaVersion,
-      fixturesDirectory: options.fixturesDirectory,
+      fixturesDirectory: retainedPath(options.root, options.fixturesDirectory),
+      fixtureVersions: portfolio,
     },
     configurations,
     probes,
@@ -146,17 +159,35 @@ export async function probeOpenAiConfigurations(configurations, {
       }),
     });
     const body = await response.json();
+    const resolvedModel = response.ok && typeof body.model === "string" ? body.model : null;
+    let exactResponse = response;
+    let exactBody = body;
+    if (resolvedModel && resolvedModel !== configuration.model) {
+      exactResponse = await fetchImpl(`${OPENAI_API_BASE}/responses`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model: resolvedModel,
+          reasoning: { effort: configuration.reasoningEffort },
+          input: "Reply with OK.",
+          max_output_tokens: 32,
+        }),
+      });
+      exactBody = await exactResponse.json();
+    }
+    const exactModelVerified = Boolean(resolvedModel && exactResponse.ok && exactBody.model === resolvedModel);
     results.push({
       configurationId: configuration.id,
       requestedModel: configuration.model,
       reasoningEffort: configuration.reasoningEffort,
       listed: listedModels.has(configuration.model),
-      accessible: response.ok,
-      reasoningSupported: response.ok,
-      resolvedModel: response.ok ? body.model ?? null : null,
-      httpStatus: response.status,
-      errorCode: response.ok ? null : body.error?.code ?? "provider_error",
-      errorType: response.ok ? null : body.error?.type ?? null,
+      accessible: response.ok && exactModelVerified,
+      reasoningSupported: response.ok && exactModelVerified,
+      resolvedModel,
+      exactModelVerified,
+      httpStatus: exactResponse.status,
+      errorCode: exactModelVerified ? null : exactBody.error?.code ?? (response.ok ? "model_identity_mismatch" : "provider_error"),
+      errorType: exactModelVerified ? null : exactBody.error?.type ?? null,
       credentialEnvironment: credential.name,
       credentialKind: credential.kind,
     });
@@ -198,9 +229,10 @@ export function buildBenchmarkReport({ metadata, configurations, probes, evaluat
       individualFailures: evaluation ? extractIndividualFailures(evaluation.runs ?? []) : [],
     };
   });
-  const baselineFixtureVersions = results[0]?.fixtureVersions;
+  const baselineFixtureVersions = results[0]?.status === "completed" ? results[0].fixtureVersions : null;
   for (const result of results.slice(1)) {
-    if (result.status === "completed" && JSON.stringify(result.fixtureVersions) !== JSON.stringify(baselineFixtureVersions)) {
+    if (baselineFixtureVersions && result.status === "completed"
+        && JSON.stringify(result.fixtureVersions) !== JSON.stringify(baselineFixtureVersions)) {
       result.status = "invalid";
       blockers.push({ configurationId: result.id, reason: "Fixture versions differ from the baseline" });
     }
@@ -298,7 +330,7 @@ async function executeModelEvaluation(configuration, options, env, probe) {
     join(options.root, "runtime/adaptive-sequence.acceptance.mjs"),
     "--image", options.image,
     "--provider", configuration.provider,
-    "--model", configuration.model,
+    "--model", options.runtimeModel,
     "--reasoning", configuration.reasoningEffort,
     "--resolved-model", probe.resolvedModel,
     "--repeats", String(options.repeats),
@@ -315,6 +347,16 @@ async function executeModelEvaluation(configuration, options, env, probe) {
       : resolveExecution(code));
   });
   return JSON.parse(await readFile(join(outputDirectory, "result.json"), "utf8"));
+}
+
+async function fixtureVersions(directory) {
+  const fixtures = await loadFixtures(directory);
+  return Object.fromEntries(fixtures.map(fixture => [fixture.id, fixture.fixtureVersion]));
+}
+
+function retainedPath(root, path) {
+  const local = relative(root, path);
+  return local && !local.startsWith("..") ? local : path;
 }
 
 function validateConfigurationManifest(manifest) {
@@ -355,7 +397,7 @@ function evaluationMetadata(metadata) {
 
 function matchesPreflightIdentity(configuration, probe, metadata) {
   return metadata.provider === configuration.provider
-    && metadata.model === `${configuration.provider}/${configuration.model}`
+    && metadata.model === `${configuration.provider}/${probe.resolvedModel}`
     && metadata.resolvedModel === probe.resolvedModel
     && metadata.reasoningEffort === probe.reasoningEffort
     && metadata.reasoningEffort === configuration.reasoningEffort
