@@ -20,7 +20,7 @@
                 <input id="invitation-link" type="text" readonly th:value="${invitation.link()}" data-invitation-link>
                 <button class="button copy-button" type="button" data-copy-invitation><span data-copy-label>Copy link</span></button>
             </div>
-            <p class="subtle copy-status" role="status" aria-live="polite" data-copy-status><span data-copy-message>The link expires in seven days and works once.</span></p>
+            <p class="subtle copy-status" role="status" aria-live="polite" data-copy-status><span data-copy-message>The link remains valid for seven days (168 hours) and works once.</span></p>
         </div>
         <p class="notice">This link will not be shown again after you leave this page. Generate a new link if you lose it; the previous link will stop working.</p>
         <a class="button secondary" th:href="@{/app/missions/{id}/review(id=${invitation.missionId()})}">Done</a>

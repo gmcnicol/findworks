@@ -102,7 +102,8 @@ class EmailDeliveryService {
         try {
             String providerId = null;
             if (job.invitationId() != null) {
-                var days = db.sql("select greatest(1,ceil(extract(epoch from (expires_at-now()))/86400))::int from invitations where id=:id and state='PENDING' and revoked_at is null and expires_at>now()")
+                var days = db.sql("select least(:maximumDays,greatest(1,ceil(extract(epoch from (expires_at-now()))/86400)))::int from invitations where id=:id and state='PENDING' and revoked_at is null and expires_at>now()")
+                        .param("maximumDays", InvitationPolicy.VALIDITY_DAYS)
                         .param("id", job.invitationId()).query(Integer.class).optional();
                 if (days.isEmpty()) {
                     if (provider.equals("CLERK") && job.attempts() > 1) clerkInvitations.getObject().recoverAndRevoke(job.id(), job.recipient());
