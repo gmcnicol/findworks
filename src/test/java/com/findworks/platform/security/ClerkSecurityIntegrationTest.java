@@ -317,7 +317,7 @@ class ClerkSecurityIntegrationTest {
         var cookie = account("user_sme", "sme@example.com");
         db.update("update invitations set expires_at=now()-interval '1 day' where session_id=?", invitation.sessionId());
         mvc.perform(post("/invite/" + invitation.token()).cookie(cookie).with(csrf())).andExpect(status().isGone());
-        db.update("insert into access_grants(id,organization_id,session_id,token_hash,expires_at) values(?, '11111111-1111-1111-1111-111111111111',?,?,now()+interval '7 days')",
+        db.update("insert into access_grants(id,organization_id,session_id,token_hash,expires_at) values(?, '11111111-1111-1111-1111-111111111111',?,?,now()+interval '168 hours')",
                 UUID.randomUUID(), invitation.sessionId(), com.findworks.platform.Ids.sha("old-browser-token"));
         mvc.perform(get("/interview/" + invitation.sessionId()).cookie(new Cookie("findworks_interview", "old-browser-token")))
                 .andExpect(status().is3xxRedirection());
@@ -380,7 +380,7 @@ class ClerkSecurityIntegrationTest {
         db.update("insert into participants(id,organization_id,discovery_id,name,email) values(?,?,?,'Interviewee',?)", participant, organization, discovery, email);
         db.update("insert into interview_sessions(id,organization_id,discovery_id,mission_id,mission_version,participant_id) values(?,?,?,?,1,?)", session, organization, discovery, mission, participant);
         String token = com.findworks.platform.Ids.token();
-        db.update("insert into invitations values(?,?,?,?,?,'DELIVERED',now()+interval '7 days',now(),null,null)", UUID.randomUUID(), organization, session, email, com.findworks.platform.Ids.sha(token));
+        db.update("insert into invitations values(?,?,?,?,?,'DELIVERED',now()+interval '168 hours',now(),null,null)", UUID.randomUUID(), organization, session, email, com.findworks.platform.Ids.sha(token));
         return new InterviewInvitation(session, mission, discovery, token);
     }
 

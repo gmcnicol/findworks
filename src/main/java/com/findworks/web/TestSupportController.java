@@ -92,8 +92,10 @@ class TestSupportController {
                     .param("participant", participant).param("organization", ORGANIZATION).param("discovery", discovery).param("email", email).update();
             db.sql("insert into interview_sessions(id,organization_id,discovery_id,mission_id,mission_version,participant_id) values(:session,:organization,:discovery,:mission,1,:participant)")
                     .param("session", session).param("organization", ORGANIZATION).param("discovery", discovery).param("mission", mission).param("participant", participant).update();
-            db.sql("insert into invitations values(:invitation,:organization,:session,:email,:hash,'DELIVERED',now()+interval '7 days',now(),null,null)")
-                    .param("invitation", invitation).param("organization", ORGANIZATION).param("session", session).param("email", email).param("hash", Ids.sha(raw)).update();
+            db.sql("insert into invitations values(:invitation,:organization,:session,:email,:hash,'DELIVERED',now()+(:validitySeconds * interval '1 second'),now(),null,null)")
+                    .param("invitation", invitation).param("organization", ORGANIZATION).param("session", session)
+                    .param("email", email).param("hash", Ids.sha(raw))
+                    .param("validitySeconds", InvitationPolicy.VALIDITY_SECONDS).update();
             return Map.of("discovery_id", discovery, "mission_id", mission, "session_id", session,
                     "invitation_id", invitation, "invitation_url", baseUrl + "/invite/" + raw,
                     "review_url", baseUrl + "/app/missions/" + mission + "/review");

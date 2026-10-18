@@ -11,7 +11,7 @@
         <p>Your accepted responses and next question are waiting here.</p>
         <blockquote class="saved-question" th:if="${question != null}" th:text="${question}">Your next question</blockquote>
         <p class="state-support" th:if="${clerkEnabled}">Sign in with the same account on any device and find this interview in your saved work. You don’t need your invitation again.</p>
-        <p class="state-support" th:unless="${clerkEnabled}">Development browser access lasts seven days. If it expires or you change browsers, ask the Investigator to reissue access. Your responses remain saved.</p>
+        <p class="state-support" th:unless="${clerkEnabled}">Development browser access lasts seven days (168 hours). If it expires or you change browsers, ask the Investigator to reissue access. Your responses remain saved.</p>
         <div class="state-actions">
             <form method="post" th:action="@{${interviewBase + '/resume'}}"><button class="button" type="submit">Resume interview</button></form>
             <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button class="button secondary" type="submit">End here</button></form>
