@@ -2,83 +2,91 @@
 
 ## Outcome
 
-The corrected benchmark remains **blocked**. The configured OpenAI project listed every required GPT-5.4 alias and initially accepted the required model/reasoning probes, but its Responses API credit balance was exhausted before the final retained gate. No fixture trial ran, so issue #66 still has no compatible accepted-outcome comparison.
+Issue #66 now has one corrected three-repeat comparison across all 18 versioned fixtures. All three manifest configurations completed through the accepted Runtime Turn seam. The benchmark exited nonzero only because it retained genuine behavioural failures.
 
-Retain `openai/gpt-5.4-mini` / low only as a conservative no-change decision. This run does not validate its quality or cost and does not justify promotion, routing, or a production model change.
+**Recommendation: retain `openai/gpt-5.4-mini` / low.** Neither candidate meets the predeclared promotion criterion:
+
+- `gpt-5.4` / medium improves lower-quartile semantic quality by only `0.04585267164223772`, below the required `0.05`; costs `5.561920349154392×` as much per useful Evidence; has `3.4170624941943495×` p95 latency; and still has contract, semantic-gate, continuity, repeated-Question, and completion failures.
+- mini / medium improves lower-quartile semantic quality by only `0.008025094128051746`; costs `1.5794386858216647×` as much per useful Evidence; has `1.3320005079073873×` p95 latency; and still has contract, semantic-gate, continuity, repeated-Question, completion, and one missed-contradiction failure.
+
+This evidence does not justify production routing or a model switch.
 
 Machine-readable evidence:
 
-- [final corrected gate](./traces/issue-63-66-corrected-gate-18a2aaf.json)
-- [catalogue, identity, and credential-path observations](./traces/issue-63-66-model-access-18a2aaf.json)
+- [combined benchmark and individual failures](./traces/issue-63-66-model-benchmark-2082176.json)
+- [mini / low complete trace](./traces/issue-63-gpt-5.4-mini-low-2082176.json)
+- [GPT-5.4 / medium complete trace](./traces/issue-66-gpt-5.4-medium-2082176.json)
+- [mini / medium complete trace](./traces/issue-66-gpt-5.4-mini-medium-2082176.json)
 
-No credential, provider payload, project identity, Pi session, or production interview content is retained.
+The retained files contain synthetic fixture content and sanitised semantic/runtime records only. They contain no credential, provider payload, project identity, Pi session, or production interview content.
 
 ## Reproducibility
 
-- Evaluated clean commit: `18a2aafaeb3a50f2681999d3c5a11437cf28fb98`.
-- Runtime image: `findworks-runtime:issue-63-66-18a2aaf`.
-- Image ID: `sha256:b376b123dc6b302fb2e6b7f9e0de54c7a8e56e7e5dff60548a0e33b44905ff7c`.
-- Image source revision: `18a2aafaeb3a50f2681999d3c5a11437cf28fb98`.
+- Clean evaluated commit: `208217662a60318f4e65a646361e908f99a2a934`.
+- Runtime image: `findworks-runtime:issue-63-66-2082176`.
+- Image ID: `sha256:aec034e189b164ddf95e12b2da14a92c69d317d25d2579b1e595894b42957f36`.
+- Image source revision: `208217662a60318f4e65a646361e908f99a2a934`.
 - Pi runtime: `0.84.4`.
 - Manifest: `runtime/evaluation/benchmark-configurations.v1.json` version `1.0.0`.
-- Portfolio: all 18 fixture versions recorded in the final machine trace.
-- Requested trials: three repeats per accessible configuration.
-- Execution: one final corrected serial foreground benchmark process. Two earlier serial attempts stopped during preflight/first-turn identity validation and exposed defects in handling provider-listed stable aliases; each defect was reproduced with a failing test, fixed, committed, and rebuilt before the final corrected gate. No process was detached, duplicated, or run concurrently.
-- Credential: `OPENAI_API_KEY` sourced from `findworks-pilot-worker-1` into the command environment. The same API-key path was selected for provider preflight and Runtime Turns. It was neither printed nor persisted.
-- GPT-5.6 was inspected only as catalogue/configuration plumbing and was not added to the versioned benchmark.
+- Portfolio: all 18 fixture versions recorded in the machine trace.
+- Trials: three repeats per configuration, 54 runs each and 162 runs total.
+- Execution: exactly one serial foreground benchmark process, from `2026-10-18T10:57:58.436Z` to `2026-10-18T12:33:59.766Z`; no detached, duplicate, or concurrent process and no Runtime Turn execution error.
+- Credential: `OPENAI_API_KEY` sourced from `findworks-pilot-worker-1` only into command environments. Provider preflight and Runtime Turns used the same API-key path. It was neither printed nor persisted.
 
-## Provider and identity verification
+## Provider and per-turn identity verification
 
-The host Pi 1.3.0 catalogue used an `openai-codex` OAuth path and exposed the three configured GPT-5.6 variants, but no GPT-5.4 model. The benchmark therefore continued to use its explicit `openai` API-key path. Pi 0.84.4 in the runtime image exposed `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, and `gpt-5.4-pro`. The same API key's provider catalogue listed the required `gpt-5.4` and `gpt-5.4-mini` aliases.
+A minimal same-credential mini/low preflight returned HTTP 200, not `credit_balance_exhausted`. The benchmark then independently verified every configuration:
 
-Before credit exhaustion, minimal same-credential probes established:
+| Configuration | Listed request | Reasoning | Alias probe identity | Direct dated request | Observed successful turns |
+| --- | --- | --- | --- | --- | ---: |
+| mini / low | `gpt-5.4-mini` | low | `gpt-5.4-mini-2026-03-17` | HTTP 403 `model_not_found` | 258 |
+| GPT-5.4 / medium | `gpt-5.4` | medium | `gpt-5.4-2026-03-05` | HTTP 403 `model_not_found` | 258 |
+| mini / medium | `gpt-5.4-mini` | medium | `gpt-5.4-mini-2026-03-17` | HTTP 403 `model_not_found` | 256 |
 
-| Configuration | Provider-listed request identity | Reasoning | Responses API identity | Direct dated identity request |
-| --- | --- | --- | --- | --- |
-| `gpt-5.4-mini-low` | `gpt-5.4-mini` | low | `gpt-5.4-mini-2026-03-17` | HTTP 403 `model_not_found` |
-| `gpt-5.4-medium` | `gpt-5.4` | medium | `gpt-5.4-2026-03-05` | HTTP 403 `model_not_found` |
-| `gpt-5.4-mini-medium` | `gpt-5.4-mini` | medium | `gpt-5.4-mini-2026-03-17` | HTTP 403 `model_not_found` |
+Because the dated identities were not directly requestable, Pi received the provider-listed stable alias. Every successful turn reported exactly the expected provider, stable requested/response alias, and configured reasoning effort. Each configuration had one unique observed identity and no missing, mixed, changed, or substituted identity.
 
-Pi's first successful diagnostic turn for each configuration reported only the stable provider-listed alias as both requested and response identity. The harness now treats that as the strongest enforceable per-turn identity when the dated Responses API identity is not directly requestable. It requires the exact provider, stable alias, and reasoning effort on every successful turn; a missing, mixed, or substituted identity still invalidates the evaluation. The dated probe response remains retained separately and is not fabricated as Pi's observed turn identity.
+## Aggregate distributions
 
-At the final corrected gate, all three alias probes returned HTTP 429 `credit_balance_exhausted`. Therefore every configuration was blocked before fixture execution:
-
-| Configuration | Required | Final status | Scenario trials | Successful Runtime Turns |
-| --- | --- | --- | ---: | ---: |
-| `gpt-5.4-mini-low` | yes | blocked | 0 | 0 |
-| `gpt-5.4-medium` | yes | blocked | 0 | 0 |
-| `gpt-5.4-mini-medium` | no | blocked | 0 | 0 |
-
-## Accepted-outcome metrics and full-precision calculations
-
-There were no server-accepted Runtime Turn outcomes in the retained gate. The following are unavailable, not measured zero:
+Entries below are `min / p25 / p50 / p75 / p95 / max (mean)` across the 54 runs in each configuration. Full-precision values remain in the machine record.
 
 | Measure | Mini / low | GPT-5.4 / medium | Mini / medium |
 | --- | --- | --- | --- |
-| Semantic pass distribution | unavailable | unavailable | unavailable |
-| Required accepted-outcome coverage distribution | unavailable | unavailable | unavailable |
-| Useful accepted Evidence / Question distribution | unavailable | unavailable | unavailable |
-| Turns to sufficient accepted Evidence distribution | unavailable | unavailable | unavailable |
-| Contradictions missed / repetitions / early completions | unavailable | unavailable | unavailable |
-| Turn-latency distribution | unavailable | unavailable | unavailable |
-| Provider-reported tokens and cost | unavailable | unavailable | unavailable |
-| Cost / Question | unavailable | unavailable | unavailable |
-| Cost / useful Evidence | unavailable | unavailable | unavailable |
+| Semantic pass rate | .500 / .882 / 1 / 1 / 1 / 1 (.923) | .500 / .928 / 1 / 1 / 1 / 1 (.962) | .733 / .890 / 1 / 1 / 1 / 1 (.948) |
+| Required accepted-outcome coverage | 0 / .125 / 1 / 1 / 1 / 1 (.681) | 0 / 0 / 1 / 1 / 1 / 1 (.667) | 0 / .063 / 1 / 1 / 1 / 1 (.718) |
+| Useful accepted Evidence / Question | 0 / .013 / .500 / 1 / 1 / 1 (.496) | 0 / 0 / .500 / 1 / 1 / 1 (.534) | 0 / 0 / .500 / 1 / 1 / 1 (.532) |
+| Turns to sufficient Evidence | 1 / 1 / 2 / 2 / 2 / 2 (1.515; n=33) | 1 / 1 / 1.5 / 2 / 2.25 / 3 (1.556; n=36) | 1 / 1 / 2 / 2 / 2 / 3 (1.553; n=38) |
+| Turn latency | 4,166 / 4,938 / 5,235 / 5,578 / 6,279 / 7,965 ms (5,301) | 5,351 / 7,815 / 9,237 / 11,258 / 21,457 / 51,204 ms (10,659) | 4,540 / 5,563 / 6,251 / 6,987 / 8,364 / 15,674 ms (6,389) |
+| Cost / run | $.001530 / $.002170 / $.003699 / $.005430 / $.094762 / $.150735 ($.015031) | $.006923 / $.011823 / $.019634 / $.027088 / $.502138 / $.830168 ($.080420) | $.001913 / $.003837 / $.005594 / $.007851 / $.134451 / $.203210 ($.020783) |
+| Cost / Question | $.001530 / $.001806 / $.002062 / $.002475 / $.003673 / $.003768 ($.002272) | $.006923 / $.009185 / $.011469 / $.014448 / $.019252 / $.022358 ($.012194) | $.001913 / $.002752 / $.003257 / $.004228 / $.005009 / $.005600 ($.003423) |
 
-Consequently there are no percentile, delta, ratio, or cost/quality calculations to round or publish. The machine trace retains `null` summaries and blocked statuses rather than numeric zeroes or estimates. Minimal probes did not provide usage or cost data, and no cost is inferred for them.
+The benchmark's trade-off calculation uses median cost per Question divided by median useful Evidence per Question:
 
-## Promotion criterion and recommendation
+| Configuration | Cost / useful Evidence | Relative cost | p95 latency ratio | Lower-quartile semantic delta | Median Evidence-yield delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| mini / low | $0.00412425 | 1× | 1× | 0 | 0 |
+| GPT-5.4 / medium | $0.02293875 | 5.561920349× | 3.417062494× | +0.045852672 | 0 |
+| mini / medium | $0.006514 | 1.579438686× | 1.332000508× | +0.008025094 | 0 |
 
-A candidate promotes only with:
+## Failures and total cost
 
-1. zero deterministic, required-semantic, continuity, missed-contradiction, repeated-Question, and early-completion failures;
-2. at least a 0.05 lower-quartile semantic pass-rate gain;
-3. no more than a 0.02 median useful-Evidence-per-Question regression;
-4. no more than a 2.0 full-precision median cost-per-useful-Evidence ratio; and
-5. no more than a 2.0 full-precision p95-latency ratio.
+| Configuration | Runs / turns | Contract-failing runs | Required-semantic failures | Continuity failures | Missed contradictions | Repeated-Question turns | Early-completion rule | Other completion errors | Tokens in / out | Total cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| mini / low | 54 / 258 | 17 | 23 | 21 | 0 | 43 | 0 | 12 | 1,293,772 / 61,898 | $0.811686 |
+| GPT-5.4 / medium | 54 / 258 | 10 | 10 | 18 | 0 | 43 | 0 | 9 | 1,355,772 / 161,395 | $4.342707 |
+| mini / medium | 54 / 256 | 12 | 19 | 16 | 1 | 30 | 0 | 8 | 1,283,311 / 115,383 | $1.122283 |
 
-No candidate was eligible to evaluate. Retain mini/low without claiming validation. The promotion decision remains blocked until the same API-key path has sufficient Responses API credit for both required configurations to complete all 18 fixture versions three times through the accepted Runtime Turn seam.
+Total provider-reported fixture cost was `$6.27667575`. Minimal capability probes are not included because the Responses API records retained by this harness do not expose their billed cost.
 
-## Baseline
+`early-completion rule` counts only server-contract `premature-completion`. `Other completion errors` also includes fixture `expected-action` failures, such as proposing completion before the fixture's next required answer; those valid failures remain in the traces even though the contract considered the submitted outcomes terminal.
 
-`runtime/evaluation/baselines/gpt-5.4-mini-low.json` is unchanged. This gate has no compatible completed mini/low evaluation and therefore cannot replace the historical baseline. Its corrected accepted-outcome metrics, continuity findings, actual-turn identities, and cost distributions remain unestablished.
+Individual failures are too numerous to repeat here without obscuring the distributions. The combined trace retains every sanitised source answer, offending action, rule, fixture, repeat, and turn. The dominant long-context failures were repeated information needs, switching results without accepted provenance, incomplete expected outcomes, loss of interviewee vocabulary, incomplete traceability, and inconsistent compaction retention.
+
+## Promotion decision and baseline
+
+A candidate promotes only with zero deterministic, required-semantic, continuity, missed-contradiction, repeated-Question, and early-completion failures; at least a `0.05` lower-quartile semantic gain; no more than a `0.02` median Evidence-yield regression; no more than a `2.0` cost-per-useful-Evidence ratio; and no more than a `2.0` p95-latency ratio.
+
+Neither candidate qualifies. Retain mini/low as the explicit default and prioritise interview strategy/provenance/continuity improvements over spending more on the model. The compatible baseline at `runtime/evaluation/baselines/gpt-5.4-mini-low.json` now derives from this corrected accepted-outcome run and records its failures as the regression floor rather than presenting it as a passing quality claim.
+
+## Blockers
+
+There is no provider-access, credential, model-identity, runtime-execution, or evidence-integrity blocker. The remaining blockers are behavioural quality failures in all configurations; they block promotion, not retention or publication of the evidence.
