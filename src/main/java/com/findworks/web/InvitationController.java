@@ -1,7 +1,6 @@
 package com.findworks.web;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -145,15 +144,17 @@ public class InvitationController {
             var raw = Ids.token();
             var invitationId = Ids.id();
             if (manual) {
-                db.sql("insert into invitations values(:id,:organization,:session,:email,:hash,'DELIVERED',now()+interval '7 days',now(),null,null)")
+                db.sql("insert into invitations values(:id,:organization,:session,:email,:hash,'DELIVERED',now()+(:validitySeconds * interval '1 second'),now(),null,null)")
                         .param("id", invitationId).param("organization", approved.organizationId()).param("session", sessionId)
-                        .param("email", recipient).param("hash", Ids.sha(raw)).update();
+                        .param("email", recipient).param("hash", Ids.sha(raw))
+                        .param("validitySeconds", InvitationPolicy.VALIDITY_SECONDS).update();
                 audit(approved.organizationId(), "INVESTIGATOR", investigator.membershipId(),
                         "MANUAL_INVITATION_LINK_GENERATED", sessionId, "SUCCEEDED");
             } else {
-                db.sql("insert into invitations values(:id,:organization,:session,:email,:hash,'PENDING',now()+interval '7 days',null,null,null)")
+                db.sql("insert into invitations values(:id,:organization,:session,:email,:hash,'PENDING',now()+(:validitySeconds * interval '1 second'),null,null,null)")
                         .param("id", invitationId).param("organization", approved.organizationId()).param("session", sessionId)
-                        .param("email", recipient).param("hash", Ids.sha(raw)).update();
+                        .param("email", recipient).param("hash", Ids.sha(raw))
+                        .param("validitySeconds", InvitationPolicy.VALIDITY_SECONDS).update();
             }
             var link = baseUrl + "/invite/" + raw;
             if (!manual) emailDelivery.queue(invitationId, approved.organizationId(), recipient, link);
@@ -238,9 +239,10 @@ public class InvitationController {
                 .optional().map(invitation -> {
                     db.sql("update invitations set state='REDEEMED',redeemed_at=now() where id=:id")
                             .param("id", invitation.id()).update();
-                    db.sql("insert into access_grants(id,organization_id,session_id,token_hash,last_used_at,expires_at) values(:id,:organization,:session,:hash,now(),now()+interval '7 days')")
+                    db.sql("insert into access_grants(id,organization_id,session_id,token_hash,last_used_at,expires_at) values(:id,:organization,:session,:hash,now(),now()+(:validitySeconds * interval '1 second'))")
                             .param("id", Ids.id()).param("organization", invitation.organizationId())
-                            .param("session", invitation.sessionId()).param("hash", Ids.sha(rawGrant)).update();
+                            .param("session", invitation.sessionId()).param("hash", Ids.sha(rawGrant))
+                            .param("validitySeconds", InvitationPolicy.VALIDITY_SECONDS).update();
                     return invitation;
                 }));
         if (redeemed == null || redeemed.isEmpty()) {
@@ -248,7 +250,7 @@ public class InvitationController {
             return unavailableInvitation();
         }
         var cookie = ResponseCookie.from(INTERVIEW_COOKIE, rawGrant).httpOnly(true).secure(secureCookie)
-                .sameSite("Strict").path("/interview").maxAge(Duration.ofDays(7)).build();
+                .sameSite("Strict").path("/interview").maxAge(InvitationPolicy.VALIDITY).build();
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create("/interview"))
                 .header(HttpHeaders.SET_COOKIE, cookie.toString()).build();
     }
