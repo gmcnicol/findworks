@@ -5,6 +5,7 @@ import test from "node:test";
 const skill = readFileSync(new URL("./interview/SKILL.md", import.meta.url), "utf8");
 const runner = readFileSync(new URL("./runner.mjs", import.meta.url), "utf8");
 const extension = readFileSync(new URL("./extension.ts", import.meta.url), "utf8");
+const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
 
 test("interview skill adapts design-tree grilling without leading the interviewee", () => {
   assert.match(skill, /Work the Mission as a design tree/);
@@ -59,10 +60,12 @@ test("drilling stays on one thread and uses the answer to shape the follow-up", 
 
 test("coverage transitions close one thread durably before moving to the next", () => {
   assert.match(skill, /Do not emit terminal coverage for a useful partial claim/);
+  assert.match(skill, /distinct closure or synthesis answer/);
   assert.match(skill, /same turn that asks the first Question for the next thread/);
   assert.match(skill, /Do not ask another Question for a terminal result/);
   assert.match(skill, /Unaddressed optional results do not block Mission completion/);
   assert.match(runner, /Do not emit terminal coverage for partial support/);
+  assert.match(runner, /distinct accepted closure or synthesis answer/);
 });
 
 test("unresolved outcomes distinguish an unidentified owner from a known external owner", () => {
@@ -103,7 +106,15 @@ test("runner explicitly expands and activates bounded design-tree grilling", () 
   assert.match(runner, /dependency-aware design-tree grilling method/);
   assert.match(runner, /ask one respectful non-leading question at a time/);
   assert.match(runner, /Do not append a second request to an example question/);
+  assert.match(runner, /prepareInterviewContext/);
   assert.match(runner, /\/skill:findworks-interview/);
+});
+
+test("the runtime rejects continuity regressions locally before semantic commitment", () => {
+  assert.match(extension, /validateInterviewProposal/);
+  assert.match(extension, /FINDWORKS_INTERVIEW_CONTEXT/);
+  assert.match(extension, /Turn strategy rejected/);
+  assert.match(dockerfile, /interview-strategy\.mjs/);
 });
 
 test("question actions require the server-scoped result identity", () => {

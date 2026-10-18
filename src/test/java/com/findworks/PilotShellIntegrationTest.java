@@ -1815,6 +1815,8 @@ class PilotShellIntegrationTest {
                 .isEqualTo(firstResult.toString());
         org.assertj.core.api.Assertions.assertThat(context.at("/conversation_state/latest_interviewee_wording").asText())
                 .isEqualTo("We call it the day-end check, and Priya compares each mismatch with the cashbook.");
+        org.assertj.core.api.Assertions.assertThat(context.at("/questions_and_evidence/0/result_id").asText())
+                .isEqualTo(firstResult.toString());
         var token = "one-thread-turn-token";
         jdbcTemplate.update("insert into runtime_turn_credentials values(?,?,now()+interval '5 minutes',null)",
                 com.findworks.platform.Ids.sha(token), run.get("id"));

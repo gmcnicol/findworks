@@ -1,9 +1,14 @@
 import { spawn } from "node:child_process";
+import { writeFile } from "node:fs/promises";
 import { preparePiEnvironment } from "./auth.mjs";
+import { prepareInterviewContext } from "./interview-strategy.mjs";
 import { JsonlDecoder, RpcTurnMonitor } from "./rpc-state.mjs";
 
-const context = await readContext(process.stdin);
-const piEnv = preparePiEnvironment();
+const authoritativeContext = await readContext(process.stdin);
+const contextPath = "/tmp/interview-context.json";
+await writeFile(contextPath, JSON.stringify(authoritativeContext), { mode: 0o600 });
+const context = JSON.stringify(prepareInterviewContext(authoritativeContext));
+const piEnv = { ...preparePiEnvironment(), FINDWORKS_INTERVIEW_CONTEXT: contextPath };
 const monitor = new RpcTurnMonitor("submit_interview_turn", {
   reasoningEffort: process.env.FINDWORKS_REASONING_EFFORT || "low",
 });
@@ -22,7 +27,7 @@ const pi = spawn("pi", [
   "--offline",
   "--extension", "/runtime/extension.ts",
   "--skill", "/runtime/SKILL.md",
-  "--system-prompt", "Conduct one bounded FindWorks interview turn using the skill's dependency-aware design-tree grilling method. Continue conversation_state.current_thread_result_id until that thread is sufficiently understood or honestly unresolved; ask one respectful non-leading question at a time, with one information need. Do not append a second request to an example question. Treat Mission plans as private guidance: never recite lists or planning language. Start from Mission domain terms, then make the interviewee's own wording the default; lightly anchor useful follow-ups in their latest words. Do not repeat answered ground or invent possible answers inside a free-text question. Use FREE_TEXT unless the answer is genuinely finite or confirms a paraphrase with alternatives the interviewee already established; phrase any options in the interviewee's words. Treat submitted outcomes as a delta against current_outcomes; never restate an unchanged claim. Do not emit terminal coverage for partial support: keep outcomes empty while the current thread needs another Question, then close it with Evidence in the same turn that moves to the next required thread. Never reopen a terminal thread merely to repeat it, and do not let optional results delay completion after every required result is terminal. Every ASK_QUESTION must include the current thread's exact resultId. Submit one semantic turn. If the server returns a correctable rejection code, repair only that proposal and submit once more. Never expose internal terms or write prose outside tool calls.",
+  "--system-prompt", "Conduct one bounded FindWorks interview turn using the skill's dependency-aware design-tree grilling method. Treat conversation_state.continuity as authoritative working memory. Stay on current_thread_result_id until supported or honestly unresolved; ask one respectful non-leading question at a time, with one information need. Do not append a second request to an example question. Every accepted answer advances the conversation: never repeat or paraphrase an attempted_information_need, even when its answer was indirect; choose a different unresolved need or close honestly. Reuse at least one exact, natural domain phrase from latest_interviewee_wording in each same-thread Question. Never reveal Mission planning language, invent possible answers, or use a structured response unless it is genuinely finite and grounded. For an extended supported thread, first gather every exit condition, then require one distinct accepted closure or synthesis answer; transition or complete only after that answer. A terminal outcome must collectively link every Evidence identity in continuity.current_thread.evidence_ids, including corrections and the closure answer. Treat outcomes as a delta against current_outcomes; never restate an unchanged claim. Do not emit terminal coverage for partial support or while continuing that result. Move only to the next required open result, and complete only when every required result is terminal. Submit one semantic turn. If the local strategy or server rejects it, repair every reported code in one corrected submission. Never write prose outside tool calls.",
 ], { stdio: ["pipe", "pipe", "pipe"], env: piEnv });
 
 let outcome;
@@ -76,10 +81,10 @@ async function readContext(input) {
   const decoder = new JsonlDecoder();
   for await (const chunk of input) {
     const records = decoder.push(chunk);
-    if (records.length > 0) return JSON.stringify(records[0]);
+    if (records.length > 0) return records[0];
   }
   const records = decoder.end();
-  if (records.length > 0) return JSON.stringify(records[0]);
+  if (records.length > 0) return records[0];
   throw new Error("Missing runtime context");
 }
 
