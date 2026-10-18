@@ -119,7 +119,7 @@ test("checked-in baseline is retained credentialed evidence for the current fixt
     runtimeCommit: "current-commit",
     provider: "openai",
     model: "openai/gpt-5.4-mini",
-    resolvedModel: "gpt-5.4-mini-2026-03-17",
+    resolvedModel: "gpt-5.4-mini",
     reasoningEffort: "low",
     credentialKind: "api-key",
     credentialEnvironment: "OPENAI_API_KEY",
@@ -127,7 +127,7 @@ test("checked-in baseline is retained credentialed evidence for the current fixt
     fixtureSchemaVersion: 1,
     fixtureVersions: Object.fromEntries(fixtures.map(value => [value.id, value.fixtureVersion])),
   });
-  assert.match(baseline.metadata.source, /docs\/acceptance\/traces\/issue-67/);
+  assert.match(baseline.metadata.source, /docs\/acceptance\/traces\/issue-63-gpt-5\.4-mini-low-2082176/);
   assert.doesNotMatch(baseline.metadata.limitations, /replace/i);
 });
 
