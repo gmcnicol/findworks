@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   prepareInterviewContext,
-  prepareInterviewProposal,
   validateInterviewProposal,
 } from "./interview-strategy.mjs";
 
@@ -143,12 +142,18 @@ test("a semantic repeat is rejected before it reaches the commitment seam", () =
   assert.ok(violations.some(violation => violation.code === "semantically_repeated_question"));
 });
 
-test("terminal proposals inherit every accepted current-thread Evidence identity", () => {
-  const prepared = prepareInterviewProposal(context(), proposal({
-    type: "PROPOSE_COMPLETION",
-  }, [supportedOutcome(["e3"])]));
+test("terminal proposals with incomplete provenance are rejected without rewriting Evidence links", () => {
+  const supplied = context();
+  supplied.questions_and_evidence.at(-1).question = "What is the complete front-porch rule?";
+  supplied.questions_and_evidence.at(-1).exact_text = "That completes the front-porch rule.";
+  supplied.conversation_state.last_question = "What is the complete front-porch rule?";
+  supplied.conversation_state.latest_interviewee_wording = "That completes the front-porch rule.";
+  const submitted = proposal({ type: "PROPOSE_COMPLETION" }, [supportedOutcome(["e3"])]);
 
-  assert.deepEqual(prepared.outcomes[0].evidenceIds, ["e3", "e1", "e2"]);
+  const violations = validateInterviewProposal(supplied, submitted);
+
+  assert.ok(violations.some(violation => violation.code === "incomplete_thread_provenance"));
+  assert.deepEqual(submitted.outcomes[0].evidenceIds, ["e3"]);
 });
 
 test("advancing without a terminal outcome is rejected before the server seam", () => {
@@ -204,6 +209,18 @@ test("self-declared completion after an ordinary detail question still requires 
   }, [supportedOutcome()]));
 
   assert.ok(violations.some(violation => violation.code === "supported_thread_needs_closure"));
+});
+
+test("self-declared synthesis is recognised without fixture-specific domain nouns", () => {
+  const supplied = context();
+  supplied.questions_and_evidence.at(-1).exact_text = "The invoice is complete when the approver signs and the ledger reference is saved.";
+  supplied.conversation_state.latest_interviewee_wording = supplied.questions_and_evidence.at(-1).exact_text;
+  const violations = validateInterviewProposal(supplied, proposal(
+    { type: "PROPOSE_COMPLETION" },
+    [supportedOutcome()],
+  ));
+
+  assert.deepEqual(violations, []);
 });
 
 test("one rich answer still needs grounded closure before a supported transition", () => {

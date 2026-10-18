@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { normaliseQuestion, questionsSemanticallyRepeat } from "../interview-strategy.mjs";
 import { applyAcceptedRuntimeOutcomes } from "./runtime-turn-contract.mjs";
-
-export { normaliseQuestion } from "../interview-strategy.mjs";
 
 const COVERAGES = new Set(["SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OWNERSHIP_GAP"]);
 const CATEGORIES = new Set(["FACT", "RULE", "DECISION", "TERM", "EXCEPTION", "ASSUMPTION"]);
@@ -875,6 +872,21 @@ export function formatSummary(report) {
     lines.push("");
   }
   return `${lines.join("\n")}\n`;
+}
+
+export function normaliseQuestion(value) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function questionsSemanticallyRepeat(first, second) {
+  if (normaliseQuestion(first) === normaliseQuestion(second)) return true;
+  const firstWords = new Set(contentWords(first));
+  const secondWords = new Set(contentWords(second));
+  if (firstWords.size < 3 || secondWords.size < 3) return false;
+  const intersection = [...firstWords].filter(word => secondWords.has(word)).length;
+  const overlap = intersection / Math.min(firstWords.size, secondWords.size);
+  const union = new Set([...firstWords, ...secondWords]).size;
+  return overlap >= 0.72 || intersection / union >= 0.55;
 }
 
 function unsupportedSpecifics(value, context) {

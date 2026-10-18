@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import { Type } from "typebox";
-import { prepareInterviewProposal, validateInterviewProposal } from "./interview-strategy.mjs";
+import { validateInterviewProposal } from "./interview-strategy.mjs";
 import { submitTurn } from "./turn-client.mjs";
 
 const url = process.env.FINDWORKS_TURN_URL;
@@ -49,12 +49,11 @@ export default function (pi: ExtensionAPI) {
       ]),
     }),
     async execute(_toolCallId, params) {
-      const prepared = prepareInterviewProposal(context, params);
-      const violations = validateInterviewProposal(context, prepared);
+      const violations = validateInterviewProposal(context, params);
       if (violations.length > 0) {
         throw new Error(`Turn strategy rejected: ${violations.map(value => `${value.code}: ${value.detail}`).join("; ")}`);
       }
-      const body = await submitTurn({ url, token, params: prepared });
+      const body = await submitTurn({ url, token, params });
       return { content: [{ type: "text", text: body }], details: {}, terminate: true };
     },
   });

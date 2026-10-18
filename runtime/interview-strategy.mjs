@@ -1,4 +1,3 @@
-const OPEN_COVERAGES = new Set(["UNADDRESSED", "EXPLORING", "PARTIAL"]);
 const TERMINAL_COVERAGES = new Set(["SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OWNERSHIP_GAP"]);
 const QUESTION_STOP_WORDS = new Set([
   "a", "after", "an", "and", "are", "at", "be", "before", "besides", "by", "can", "could", "describe", "did", "do", "does", "earlier", "finally", "first", "for", "from", "get", "gets",
@@ -26,23 +25,6 @@ export function prepareInterviewContext(context) {
         : [];
     }),
   };
-  return prepared;
-}
-
-export function prepareInterviewProposal(context, proposal) {
-  const prepared = structuredClone(proposal);
-  const action = prepared?.nextAction;
-  const currentResultId = context.conversation_state?.current_thread_result_id ?? null;
-  const submittedCurrentOutcomes = (prepared?.outcomes ?? []).filter(outcome => outcome.resultId === currentResultId
-    && TERMINAL_COVERAGES.has(outcome.coverage));
-  const advancesThread = action?.type === "PROPOSE_COMPLETION"
-    || (action?.type === "ASK_QUESTION" && currentResultId && action.resultId !== currentResultId);
-  if (submittedCurrentOutcomes.length > 0 && advancesThread) {
-    const represented = new Set(submittedCurrentOutcomes.flatMap(outcome => outcome.evidenceIds ?? []));
-    const missing = threadMemoryForResult(context, currentResultId)
-      .map(record => record.evidence_id).filter(Boolean).filter(id => !represented.has(id));
-    submittedCurrentOutcomes[0].evidenceIds = [...(submittedCurrentOutcomes[0].evidenceIds ?? []), ...missing];
-  }
   return prepared;
 }
 
@@ -180,7 +162,7 @@ function hasExplicitClosure(context, currentRecords) {
     ?? currentRecords.findLast(record => record.question)?.question ?? "");
   const askedForClosure = /\b(?:complete|full|anything else|nothing else|whole rule|entire rule|any correction)\b/i.test(lastQuestion);
   const answerClosed = /\b(?:complete[sd]?|done|closes?|nothing else|no other)\b/i.test(latestAnswer);
-  const answerExplicitlySynthesises = /\b(?:that (?:completes|is the complete)|(?:rule|check|round|puzzle|pass|handoff) (?:is )?(?:complete|done)|round closes)\b/i.test(latestAnswer);
+  const answerExplicitlySynthesises = /\b(?:that (?:completes|is the complete)|is (?:complete|done) when|closes with)\b/i.test(latestAnswer);
   return answerExplicitlySynthesises || (askedForClosure && answerClosed);
 }
 
