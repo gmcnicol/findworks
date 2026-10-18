@@ -82,7 +82,7 @@ export async function runBenchmark(options, dependencies = {}) {
       const report = await executeEvaluation(configuration, {
         ...options,
         commit,
-        runtimeModel: probe.resolvedModel,
+        runtimeModel: probe.runtimeModel,
       }, env, probe);
       if (report) evaluationReports.set(configuration.id, report);
     } catch {
@@ -159,9 +159,10 @@ export async function probeOpenAiConfigurations(configurations, {
       }),
     });
     const body = await response.json();
+    const listed = listedModels.has(configuration.model);
     const resolvedModel = response.ok && typeof body.model === "string" ? body.model : null;
-    let exactResponse = response;
-    let exactBody = body;
+    let exactResponse = null;
+    let exactBody = null;
     if (resolvedModel && resolvedModel !== configuration.model) {
       exactResponse = await fetchImpl(`${OPENAI_API_BASE}/responses`, {
         method: "POST",
@@ -175,19 +176,35 @@ export async function probeOpenAiConfigurations(configurations, {
       });
       exactBody = await exactResponse.json();
     }
-    const exactModelVerified = Boolean(resolvedModel && exactResponse.ok && exactBody.model === resolvedModel);
+    const exactModelVerified = Boolean(resolvedModel && (resolvedModel === configuration.model
+      || (exactResponse?.ok && exactBody?.model === resolvedModel)));
+    const stableAliasVerified = Boolean(response.ok && listed && resolvedModel
+      && !listedModels.has(resolvedModel) && exactResponse && !exactResponse.ok
+      && exactBody?.error?.code === "model_not_found");
+    const accessible = exactModelVerified || stableAliasVerified;
+    const runtimeModel = exactModelVerified && resolvedModel !== configuration.model
+      ? resolvedModel
+      : accessible ? configuration.model : null;
+    const identityMode = exactModelVerified && resolvedModel !== configuration.model
+      ? "dated-snapshot"
+      : accessible ? "stable-provider-alias" : "unavailable";
+    const failureBody = response.ok ? exactBody : body;
     results.push({
       configurationId: configuration.id,
       requestedModel: configuration.model,
-      reasoningEffort: configuration.reasoningEffort,
-      listed: listedModels.has(configuration.model),
-      accessible: response.ok && exactModelVerified,
-      reasoningSupported: response.ok && exactModelVerified,
+      runtimeModel,
       resolvedModel,
+      identityMode,
+      reasoningEffort: configuration.reasoningEffort,
+      listed,
+      accessible,
+      reasoningSupported: accessible,
       exactModelVerified,
-      httpStatus: exactResponse.status,
-      errorCode: exactModelVerified ? null : exactBody.error?.code ?? (response.ok ? "model_identity_mismatch" : "provider_error"),
-      errorType: exactModelVerified ? null : exactBody.error?.type ?? null,
+      httpStatus: response.status,
+      exactModelHttpStatus: exactResponse?.status ?? null,
+      errorCode: accessible ? null : failureBody?.error?.code ?? (response.ok ? "model_identity_mismatch" : "provider_error"),
+      errorType: accessible ? null : failureBody?.error?.type ?? null,
+      exactModelErrorCode: exactResponse && !exactResponse.ok ? exactBody?.error?.code ?? "provider_error" : null,
       credentialEnvironment: credential.name,
       credentialKind: credential.kind,
     });
@@ -397,7 +414,7 @@ function evaluationMetadata(metadata) {
 
 function matchesPreflightIdentity(configuration, probe, metadata) {
   return metadata.provider === configuration.provider
-    && metadata.model === `${configuration.provider}/${probe.resolvedModel}`
+    && metadata.model === `${configuration.provider}/${probe.runtimeModel}`
     && metadata.resolvedModel === probe.resolvedModel
     && metadata.reasoningEffort === probe.reasoningEffort
     && metadata.reasoningEffort === configuration.reasoningEffort

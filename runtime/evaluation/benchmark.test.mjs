@@ -39,29 +39,37 @@ test("provider preflight verifies exact model access and reasoning support witho
   assert.deepEqual(result, [{
     configurationId: "baseline",
     requestedModel: "gpt-5.4-mini",
+    runtimeModel: "gpt-5.4-mini-2026-03-17",
+    resolvedModel: "gpt-5.4-mini-2026-03-17",
+    identityMode: "dated-snapshot",
     reasoningEffort: "low",
     listed: true,
     accessible: true,
     reasoningSupported: true,
-    resolvedModel: "gpt-5.4-mini-2026-03-17",
     exactModelVerified: true,
     httpStatus: 200,
+    exactModelHttpStatus: 200,
     errorCode: null,
     errorType: null,
+    exactModelErrorCode: null,
     credentialEnvironment: "OPENAI_API_KEY",
     credentialKind: "api-key",
   }, {
     configurationId: "candidate",
     requestedModel: "gpt-5.4",
+    runtimeModel: null,
+    resolvedModel: null,
+    identityMode: "unavailable",
     reasoningEffort: "medium",
     listed: false,
     accessible: false,
     reasoningSupported: false,
-    resolvedModel: null,
     exactModelVerified: false,
     httpStatus: 403,
+    exactModelHttpStatus: null,
     errorCode: "model_not_found",
     errorType: "invalid_request_error",
+    exactModelErrorCode: null,
     credentialEnvironment: "OPENAI_API_KEY",
     credentialKind: "api-key",
   }]);
@@ -69,6 +77,34 @@ test("provider preflight verifies exact model access and reasoning support witho
   const responseRequests = requests.filter(request => request.url.endsWith("/responses"));
   assert.equal(responseRequests.length, 3);
   assert.equal(JSON.parse(responseRequests[1].init.body).model, "gpt-5.4-mini-2026-03-17");
+});
+
+test("provider preflight accepts a listed stable alias while pinning its actual response identity", async () => {
+  const fetchImpl = async (url, init = {}) => {
+    if (url.endsWith("/models")) {
+      return response(200, { data: [{ id: "gpt-5.4-mini" }] });
+    }
+    const request = JSON.parse(init.body);
+    if (request.model === "gpt-5.4-mini") {
+      return response(200, { model: "gpt-5.4-mini-2026-03-17" });
+    }
+    return response(403, {
+      error: { code: "model_not_found", type: "invalid_request_error" },
+    });
+  };
+
+  const [result] = await probeOpenAiConfigurations([
+    { id: "baseline", model: "gpt-5.4-mini", reasoningEffort: "low" },
+  ], { apiKey: "sk-secret", fetchImpl });
+
+  assert.equal(result.accessible, true);
+  assert.equal(result.reasoningSupported, true);
+  assert.equal(result.runtimeModel, "gpt-5.4-mini");
+  assert.equal(result.resolvedModel, "gpt-5.4-mini-2026-03-17");
+  assert.equal(result.identityMode, "stable-provider-alias");
+  assert.equal(result.exactModelVerified, false);
+  assert.equal(result.httpStatus, 200);
+  assert.equal(result.exactModelHttpStatus, 403);
 });
 
 test("benchmark CLI defaults to three repeat trials and rejects a single trial", () => {
@@ -307,6 +343,7 @@ function probe(configurationId, accessible) {
   return {
     configurationId,
     requestedModel: configurationId === "gpt-medium" ? "gpt-5.4" : "gpt-5.4-mini",
+    runtimeModel: accessible ? "resolved-model" : null,
     reasoningEffort: configurationId.endsWith("medium") ? "medium" : "low",
     listed: accessible,
     accessible,
