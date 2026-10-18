@@ -188,12 +188,16 @@ export async function probeOpenAiConfigurations(configurations, {
     const identityMode = exactModelVerified && resolvedModel !== configuration.model
       ? "dated-snapshot"
       : accessible ? "stable-provider-alias" : "unavailable";
+    const runtimeResponseModel = identityMode === "stable-provider-alias"
+      ? configuration.model
+      : accessible ? resolvedModel : null;
     const failureBody = response.ok ? exactBody : body;
     results.push({
       configurationId: configuration.id,
       requestedModel: configuration.model,
       runtimeModel,
       resolvedModel,
+      runtimeResponseModel,
       identityMode,
       reasoningEffort: configuration.reasoningEffort,
       listed,
@@ -349,7 +353,7 @@ async function executeModelEvaluation(configuration, options, env, probe) {
     "--provider", configuration.provider,
     "--model", options.runtimeModel,
     "--reasoning", configuration.reasoningEffort,
-    "--resolved-model", probe.resolvedModel,
+    "--resolved-model", probe.runtimeResponseModel,
     "--repeats", String(options.repeats),
     "--fixtures", options.fixturesDirectory,
     "--commit", options.commit,
@@ -415,7 +419,7 @@ function evaluationMetadata(metadata) {
 function matchesPreflightIdentity(configuration, probe, metadata) {
   return metadata.provider === configuration.provider
     && metadata.model === `${configuration.provider}/${probe.runtimeModel}`
-    && metadata.resolvedModel === probe.resolvedModel
+    && metadata.resolvedModel === probe.runtimeResponseModel
     && metadata.reasoningEffort === probe.reasoningEffort
     && metadata.reasoningEffort === configuration.reasoningEffort
     && metadata.credentialKind === probe.credentialKind

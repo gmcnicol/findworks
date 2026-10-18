@@ -41,6 +41,7 @@ test("provider preflight verifies exact model access and reasoning support witho
     requestedModel: "gpt-5.4-mini",
     runtimeModel: "gpt-5.4-mini-2026-03-17",
     resolvedModel: "gpt-5.4-mini-2026-03-17",
+    runtimeResponseModel: "gpt-5.4-mini-2026-03-17",
     identityMode: "dated-snapshot",
     reasoningEffort: "low",
     listed: true,
@@ -59,6 +60,7 @@ test("provider preflight verifies exact model access and reasoning support witho
     requestedModel: "gpt-5.4",
     runtimeModel: null,
     resolvedModel: null,
+    runtimeResponseModel: null,
     identityMode: "unavailable",
     reasoningEffort: "medium",
     listed: false,
@@ -101,6 +103,7 @@ test("provider preflight accepts a listed stable alias while pinning its actual 
   assert.equal(result.reasoningSupported, true);
   assert.equal(result.runtimeModel, "gpt-5.4-mini");
   assert.equal(result.resolvedModel, "gpt-5.4-mini-2026-03-17");
+  assert.equal(result.runtimeResponseModel, "gpt-5.4-mini");
   assert.equal(result.identityMode, "stable-provider-alias");
   assert.equal(result.exactModelVerified, false);
   assert.equal(result.httpStatus, 200);
@@ -344,6 +347,7 @@ function probe(configurationId, accessible) {
     configurationId,
     requestedModel: configurationId === "gpt-medium" ? "gpt-5.4" : "gpt-5.4-mini",
     runtimeModel: accessible ? "resolved-model" : null,
+    runtimeResponseModel: accessible ? "resolved-model" : null,
     reasoningEffort: configurationId.endsWith("medium") ? "medium" : "low",
     listed: accessible,
     accessible,
