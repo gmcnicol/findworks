@@ -1,10 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readFileSync } from "node:fs";
 import { Type } from "typebox";
+import { prepareInterviewProposal, validateInterviewProposal } from "./interview-strategy.mjs";
 import { submitTurn } from "./turn-client.mjs";
 
 const url = process.env.FINDWORKS_TURN_URL;
 const token = process.env.FINDWORKS_TURN_TOKEN;
-if (!url || !token) throw new Error("Missing turn capability");
+const contextPath = process.env.FINDWORKS_INTERVIEW_CONTEXT;
+if (!url || !token || !contextPath) throw new Error("Missing turn capability or Interview context");
+const context = JSON.parse(readFileSync(contextPath, "utf8"));
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -45,7 +49,12 @@ export default function (pi: ExtensionAPI) {
       ]),
     }),
     async execute(_toolCallId, params) {
-      const body = await submitTurn({ url, token, params });
+      const prepared = prepareInterviewProposal(context, params);
+      const violations = validateInterviewProposal(context, prepared);
+      if (violations.length > 0) {
+        throw new Error(`Turn strategy rejected: ${violations.map(value => `${value.code}: ${value.detail}`).join("; ")}`);
+      }
+      const body = await submitTurn({ url, token, params: prepared });
       return { content: [{ type: "text", text: body }], details: {}, terminate: true };
     },
   });

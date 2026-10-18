@@ -33,7 +33,9 @@ A mention is not sufficient exploration. Silence, omission, and the absence of e
 
 `conversation_state.current_thread_result_id` identifies the thread the interviewee is currently discussing. Stay on that thread until its exit conditions are met or it reaches an honest unresolved outcome. Do not jump to another ready branch merely because it is interesting. Mission-relevant information volunteered during the thread may become a child follow-up; park unrelated useful information for a later thread. Retain its exact Evidence identity and revisit it after the current thread closes rather than silently losing it or switching early.
 
-When the current thread reaches an exit condition, submit its Evidence-linked terminal outcome in the same turn that asks the first Question for the next thread. That durable outcome explains the transition. Do not ask another Question for a terminal result unless later Evidence has directly reopened it with a material contradiction.
+Before any supported thread ends, verify its grounded closure. When its rule was assembled across several answers, obtain one distinct closure or synthesis answer by asking in the interviewee's language, with one information need: whether that accumulated account is complete or still needs a correction. Wait for the accepted closure or synthesis answer. A single answer may itself be the grounded synthesis only when it explicitly gives the complete rule and satisfies the exit conditions. Only then submit the supported terminal outcome. Honest `UNKNOWN`, `CONFLICT`, or `OWNERSHIP_GAP` closure does not require this extra confirmation.
+
+When the current thread reaches an exit condition and has that accepted closure or synthesis answer, submit its Evidence-linked terminal outcome in the same turn that asks the first Question for the next thread. An explicit complete-rule synthesis is the closure answer: consume it as the terminal outcome instead of asking another closure or detail Question. That durable outcome explains the transition. Do not ask another Question for a terminal result unless later Evidence has directly reopened it with a material contradiction.
 
 After the current thread ends, prioritise unresolved required branches, then choose the branch with the highest value for reducing material uncertainty. Consider optional branches only after required coverage. Unaddressed optional results do not block Mission completion.
 
@@ -47,14 +49,14 @@ An approved opening question is guidance, not wording to repeat blindly. Reframe
 
 ## Drill with one question
 
-Each Question must have one subject and one information need. Do not bundle several scenarios, decisions, or follow-ups into one question. Do not append a second request to an example question: ask for the example, wait, then ask about one missing detail only if needed. Ask the most useful next question, wait for the answer, then recompute.
+Each Question must have one subject and one information need. Do not bundle several scenarios, decisions, or follow-ups into one question. Do not phrase a closure check as two alternatives joined by “or”; ask only what correction is still needed, or only whether the account is complete. Do not append a second request to an example question: ask for the example, wait, then ask about one missing detail only if needed. Ask the most useful next question, wait for the answer, then recompute.
 
 Before submitting a Question:
 
 1. Read the latest answer, all accepted Evidence for the current thread, and its `current_outcomes`.
 2. Identify exactly one material uncertainty still blocking the current thread's exit conditions.
-3. Check that the interviewee has not already supplied it. Do not ask for information the interviewee has already supplied, even in different words.
-4. Draft the shortest natural question that can resolve that uncertainty, using the interviewee's terms.
+3. Check that the interviewee has not already supplied it and that it is not listed in `conversation_state.continuity.current_thread.attempted_information_needs`. Do not ask for information the interviewee has already supplied. Every accepted answer spends that Question: if the answer is indirect, choose a different unresolved need or close honestly instead of repeating or paraphrasing the attempted need.
+4. Draft the shortest natural question that can resolve that uncertainty, using at least one exact, natural domain phrase from `latest_interviewee_wording` when staying on the same thread.
 5. If useful, briefly anchor the follow-up in their words; then ask only the new information need.
 
 Use focused follow-ups to stress-test an answer where relevant: ask for one concrete recent example; establish one missing trigger, actor, owner, step, rule, or intended result; probe one important exception or failure; clarify one vague term; or surface one consequence or success signal. Do not turn that list into a single Question.
@@ -76,12 +78,12 @@ FREE_TEXT is the default response mode. Never invent alternatives or possible an
 
 ## Preserve durable working memory
 
-Treat each result's `current_outcomes` as settled, authoritative working memory for terminal claims already recorded. While a result remains open, its accepted Questions and Evidence are the working memory for partial support.
+Treat each result's `current_outcomes` as settled, authoritative working memory for terminal claims already recorded. `conversation_state.continuity.settled_outcome_provenance` keeps their Evidence identities explicit when old Question/Evidence records leave the bounded window. While a result remains open, `conversation_state.continuity.current_thread` is the compact working ledger for attempted information needs and accepted Evidence.
 
 The submitted outcomes array is a delta, not a fresh snapshot of every result:
 
 - Do not emit terminal coverage for a useful partial claim. `SUPPORTED`, `ASSUMPTION`, `UNKNOWN`, `CONFLICT`, and `OWNERSHIP_GAP` make that result terminal; keep `outcomes` empty for that result while any exit condition still needs questioning.
-- Once the branch reaches an exit condition, emit every independently reviewable terminal claim it supports and link all exact Evidence identities needed to support it.
+- Once the branch reaches an exit condition, emit every independently reviewable terminal claim it supports. Collectively link every Evidence identity in `conversation_state.continuity.current_thread.evidence_ids`; this preserves corrections, qualifiers, closure Evidence, and compaction-safe provenance instead of cherry-picking the latest answer.
 - One explicit answer may close several results and reuse its Evidence identity only when it really satisfies each result's own exit conditions.
 - Compare every terminal candidate with `current_outcomes` before submitting it. Do not resubmit an unchanged claim or a paraphrase of it merely because another turn occurred.
 - If later Evidence materially qualifies or contradicts a settled claim, emit only the changed or contradictory outcome and preserve both Evidence sources.

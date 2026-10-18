@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { normaliseQuestion, questionsSemanticallyRepeat } from "../interview-strategy.mjs";
 import { applyAcceptedRuntimeOutcomes } from "./runtime-turn-contract.mjs";
+
+export { normaliseQuestion } from "../interview-strategy.mjs";
 
 const COVERAGES = new Set(["SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OWNERSHIP_GAP"]);
 const CATEGORIES = new Set(["FACT", "RULE", "DECISION", "TERM", "EXCEPTION", "ASSUMPTION"]);
@@ -84,6 +87,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
   const qualityChecks = [];
   const resultIds = new Set(context.investigation_results.map(result => result.result_id));
   const evidenceIds = new Set([
+    ...(context.conversation_state?.compacted_thread_memory ?? []).map(record => record.evidence_id).filter(Boolean),
     ...context.questions_and_evidence.map(record => record.evidence_id).filter(Boolean),
     ...context.investigation_results.flatMap(result => (result.current_outcomes ?? []).flatMap(outcome => outcome.evidence_ids ?? [])),
   ]);
@@ -614,6 +618,15 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
 function compactQuestionEvidence(context, maximumRecords) {
   if (!maximumRecords || context.questions_and_evidence.length <= maximumRecords) return [];
   const removed = context.questions_and_evidence.splice(0, context.questions_and_evidence.length - maximumRecords);
+  context.conversation_state ??= {};
+  context.conversation_state.compacted_thread_memory = [
+    ...(context.conversation_state.compacted_thread_memory ?? []),
+    ...removed.filter(record => record.evidence_id).map(record => ({
+      result_id: record.result_id,
+      question: record.question,
+      evidence_id: record.evidence_id,
+    })),
+  ];
   return removed.map(record => record.evidence_id).filter(Boolean);
 }
 
@@ -862,21 +875,6 @@ export function formatSummary(report) {
     lines.push("");
   }
   return `${lines.join("\n")}\n`;
-}
-
-export function normaliseQuestion(value) {
-  return String(value ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
-}
-
-function questionsSemanticallyRepeat(first, second) {
-  if (normaliseQuestion(first) === normaliseQuestion(second)) return true;
-  const firstWords = new Set(contentWords(first));
-  const secondWords = new Set(contentWords(second));
-  if (firstWords.size < 3 || secondWords.size < 3) return false;
-  const intersection = [...firstWords].filter(word => secondWords.has(word)).length;
-  const overlap = intersection / Math.min(firstWords.size, secondWords.size);
-  const union = new Set([...firstWords, ...secondWords]).size;
-  return overlap >= 0.72 || intersection / union >= 0.55;
 }
 
 function unsupportedSpecifics(value, context) {
