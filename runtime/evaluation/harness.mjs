@@ -87,6 +87,7 @@ export function evaluateSubmission({ fixture, turnIndex, context, submission, pr
   const qualityChecks = [];
   const resultIds = new Set(context.investigation_results.map(result => result.result_id));
   const evidenceIds = new Set([
+    ...(context.conversation_state?.compacted_thread_memory ?? []).map(record => record.evidence_id).filter(Boolean),
     ...context.questions_and_evidence.map(record => record.evidence_id).filter(Boolean),
     ...context.investigation_results.flatMap(result => (result.current_outcomes ?? []).flatMap(outcome => outcome.evidence_ids ?? [])),
   ]);
@@ -617,6 +618,15 @@ export async function runScenario({ fixture, repeat, executeRuntime }) {
 function compactQuestionEvidence(context, maximumRecords) {
   if (!maximumRecords || context.questions_and_evidence.length <= maximumRecords) return [];
   const removed = context.questions_and_evidence.splice(0, context.questions_and_evidence.length - maximumRecords);
+  context.conversation_state ??= {};
+  context.conversation_state.compacted_thread_memory = [
+    ...(context.conversation_state.compacted_thread_memory ?? []),
+    ...removed.filter(record => record.evidence_id).map(record => ({
+      result_id: record.result_id,
+      question: record.question,
+      evidence_id: record.evidence_id,
+    })),
+  ];
   return removed.map(record => record.evidence_id).filter(Boolean);
 }
 

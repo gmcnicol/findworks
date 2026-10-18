@@ -10,7 +10,7 @@ export function prepareInterviewContext(context) {
   const prepared = structuredClone(context);
   prepared.conversation_state ??= {};
   const currentResultId = prepared.conversation_state.current_thread_result_id ?? null;
-  const currentRecords = recordsForResult(prepared, currentResultId);
+  const currentRecords = threadMemoryForResult(prepared, currentResultId);
   prepared.conversation_state.continuity = {
     current_thread: currentResultId ? {
       result_id: currentResultId,
@@ -29,6 +29,23 @@ export function prepareInterviewContext(context) {
   return prepared;
 }
 
+export function prepareInterviewProposal(context, proposal) {
+  const prepared = structuredClone(proposal);
+  const action = prepared?.nextAction;
+  const currentResultId = context.conversation_state?.current_thread_result_id ?? null;
+  const submittedCurrentOutcomes = (prepared?.outcomes ?? []).filter(outcome => outcome.resultId === currentResultId
+    && TERMINAL_COVERAGES.has(outcome.coverage));
+  const advancesThread = action?.type === "PROPOSE_COMPLETION"
+    || (action?.type === "ASK_QUESTION" && currentResultId && action.resultId !== currentResultId);
+  if (submittedCurrentOutcomes.length > 0 && advancesThread) {
+    const represented = new Set(submittedCurrentOutcomes.flatMap(outcome => outcome.evidenceIds ?? []));
+    const missing = threadMemoryForResult(context, currentResultId)
+      .map(record => record.evidence_id).filter(Boolean).filter(id => !represented.has(id));
+    submittedCurrentOutcomes[0].evidenceIds = [...(submittedCurrentOutcomes[0].evidenceIds ?? []), ...missing];
+  }
+  return prepared;
+}
+
 export function validateInterviewProposal(context, proposal) {
   if (!proposal || typeof proposal !== "object") return [{ code: "invalid_turn", detail: "Turn proposal must be an object" }];
   const action = proposal.nextAction;
@@ -37,7 +54,7 @@ export function validateInterviewProposal(context, proposal) {
   const violations = [];
   const currentResultId = context.conversation_state?.current_thread_result_id ?? null;
   const currentResult = context.investigation_results?.find(result => result.result_id === currentResultId);
-  const currentRecords = recordsForResult(context, currentResultId);
+  const currentRecords = threadMemoryForResult(context, currentResultId);
   const submittedCurrentOutcomes = (proposal.outcomes ?? []).filter(outcome => outcome.resultId === currentResultId);
   const closesCurrentThread = submittedCurrentOutcomes.some(outcome => TERMINAL_COVERAGES.has(outcome.coverage));
   const advancesThread = action.type === "PROPOSE_COMPLETION"
@@ -64,11 +81,21 @@ export function validateInterviewProposal(context, proposal) {
   }
 
   if (action.type === "ASK_QUESTION") {
-    const previousQuestions = (context.questions_and_evidence ?? []).map(record => record.question).filter(Boolean);
+    const previousQuestions = [
+      ...(context.conversation_state?.compacted_thread_memory ?? []).map(record => record.question),
+      ...(context.questions_and_evidence ?? []).map(record => record.question),
+    ].filter(Boolean);
     if (previousQuestions.some(question => questionsSemanticallyRepeat(question, action.text))) {
       violations.push({
         code: "semantically_repeated_question",
         detail: "The proposed Question repeats an information need already attempted in this Session",
+      });
+    }
+    const bundled = /\b(?:and|or)\s+(?:what|who|when|where|why|how|does|do|is|are|should|would|can)\b/i.test(action.text);
+    if (bundled) {
+      violations.push({
+        code: "multiple_information_needs",
+        detail: "The proposed Question contains a second interrogative frame",
       });
     }
     if ((!currentResultId || action.resultId === currentResultId)
@@ -112,12 +139,14 @@ export function stemWord(word) {
   return word;
 }
 
-function recordsForResult(context, resultId) {
+function threadMemoryForResult(context, resultId) {
   if (!resultId) return [];
+  const compacted = (context.conversation_state?.compacted_thread_memory ?? [])
+    .filter(record => record.result_id === resultId);
   const records = (context.questions_and_evidence ?? []).filter(record => record.evidence_id);
   const explicitlyScoped = records.filter(record => record.result_id === resultId);
-  if (explicitlyScoped.length > 0 || records.some(record => record.result_id)) return explicitlyScoped;
-  return records;
+  if (explicitlyScoped.length > 0 || records.some(record => record.result_id)) return [...compacted, ...explicitlyScoped];
+  return [...compacted, ...records];
 }
 
 function hasExplicitClosure(context, currentRecords) {
@@ -127,7 +156,8 @@ function hasExplicitClosure(context, currentRecords) {
     ?? currentRecords.findLast(record => record.question)?.question ?? "");
   const askedForClosure = /\b(?:complete|full|anything else|nothing else|whole rule|entire rule|any correction)\b/i.test(lastQuestion);
   const answerClosed = /\b(?:complete[sd]?|done|closes?|nothing else|no other)\b/i.test(latestAnswer);
-  return askedForClosure && answerClosed;
+  const answerExplicitlySynthesises = /\b(?:that (?:completes|is the complete)|(?:rule|check|round|puzzle|pass|handoff) (?:is )?(?:complete|done)|round closes)\b/i.test(latestAnswer);
+  return answerExplicitlySynthesises || (askedForClosure && answerClosed);
 }
 
 function usesLatestIntervieweeWording(latestAnswer, question) {

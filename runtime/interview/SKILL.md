@@ -49,7 +49,7 @@ An approved opening question is guidance, not wording to repeat blindly. Reframe
 
 ## Drill with one question
 
-Each Question must have one subject and one information need. Do not bundle several scenarios, decisions, or follow-ups into one question. Do not append a second request to an example question: ask for the example, wait, then ask about one missing detail only if needed. Ask the most useful next question, wait for the answer, then recompute.
+Each Question must have one subject and one information need. Do not bundle several scenarios, decisions, or follow-ups into one question. Do not phrase a closure check as two alternatives joined by “or”; ask only what correction is still needed, or only whether the account is complete. Do not append a second request to an example question: ask for the example, wait, then ask about one missing detail only if needed. Ask the most useful next question, wait for the answer, then recompute.
 
 Before submitting a Question:
 

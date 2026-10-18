@@ -880,10 +880,12 @@ test("long runs measure continuity, compaction, coverage, evidence yield, phases
     })),
   });
   let turn = 0;
+  let lastSuppliedContext;
   const run = await runScenario({
     fixture: scenario,
     repeat: 1,
     executeRuntime: async suppliedContext => {
+      lastSuppliedContext = suppliedContext;
       const index = turn++;
       const currentEvidenceId = scenario.turns[index].answer.evidenceId;
       return {
@@ -924,6 +926,15 @@ test("long runs measure continuity, compaction, coverage, evidence yield, phases
   assert.equal(run.metrics.qualityByPhase.length, 3);
   assert.equal(run.continuityGatePassed, true);
   assert.ok(run.turns.some(value => value.trace.compactedEvidenceIds.length > 0));
+  assert.deepEqual(lastSuppliedContext.conversation_state.compacted_thread_memory, [{
+    result_id: resultId,
+    question: "Question 1?",
+    evidence_id: "40000000-0000-0000-0000-000000000001",
+  }, {
+    result_id: resultId,
+    question: "What is new fact 2?",
+    evidence_id: "40000000-0000-0000-0000-000000000002",
+  }]);
 });
 
 test("an unaddressed optional result does not fail continuity after required completion", async () => {

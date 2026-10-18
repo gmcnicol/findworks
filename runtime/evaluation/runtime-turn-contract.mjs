@@ -48,7 +48,10 @@ function validate(context, turn) {
   const outcomes = turn.outcomes == null ? [] : turn.outcomes;
   if (!Array.isArray(outcomes)) return "invalid_outcome";
   const resultIds = new Set(context.investigation_results.map(result => result.result_id));
-  const evidenceRecords = context.questions_and_evidence ?? [];
+  const evidenceRecords = [
+    ...(context.conversation_state?.compacted_thread_memory ?? []),
+    ...(context.questions_and_evidence ?? []),
+  ];
   const evidenceIds = new Set([
     ...evidenceRecords.map(record => record.evidence_id).filter(Boolean),
     ...context.investigation_results.flatMap(result => (result.current_outcomes ?? [])

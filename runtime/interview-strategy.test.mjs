@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   prepareInterviewContext,
+  prepareInterviewProposal,
   validateInterviewProposal,
 } from "./interview-strategy.mjs";
 
@@ -84,6 +85,11 @@ function supportedOutcome(evidenceIds = ["e1", "e2", "e3"]) {
 
 test("continuity state makes attempted needs and durable provenance explicit", () => {
   const supplied = context();
+  supplied.conversation_state.compacted_thread_memory = [{
+    result_id: currentResultId,
+    question: "What starts the front-porch clock?",
+    evidence_id: "compacted-current-evidence",
+  }];
   supplied.investigation_results[1].coverage = "SUPPORTED";
   supplied.investigation_results[1].current_outcomes = [{
     coverage: "SUPPORTED",
@@ -94,8 +100,9 @@ test("continuity state makes attempted needs and durable provenance explicit", (
 
   const prepared = prepareInterviewContext(supplied);
 
-  assert.deepEqual(prepared.conversation_state.continuity.current_thread.evidence_ids, ["e1", "e2", "e3"]);
+  assert.deepEqual(prepared.conversation_state.continuity.current_thread.evidence_ids, ["compacted-current-evidence", "e1", "e2", "e3"]);
   assert.deepEqual(prepared.conversation_state.continuity.current_thread.attempted_information_needs, [
+    "What starts the front-porch clock?",
     "What makes a claim card urgent?",
     "Who owns a red ribbon decision?",
     "What is saved after the porch keeper decides?",
@@ -107,6 +114,24 @@ test("continuity state makes attempted needs and durable provenance explicit", (
   assert.equal(supplied.conversation_state.continuity, undefined);
 });
 
+test("a compacted attempted need is still rejected as a semantic repeat", () => {
+  const supplied = context();
+  supplied.questions_and_evidence = supplied.questions_and_evidence.slice(-1);
+  supplied.conversation_state.compacted_thread_memory = [{
+    result_id: currentResultId,
+    question: "What makes a claim card urgent?",
+    evidence_id: "compacted-current-evidence",
+  }];
+  const violations = validateInterviewProposal(supplied, proposal({
+    type: "ASK_QUESTION",
+    resultId: currentResultId,
+    text: "What makes the claim card become urgent?",
+    responseMode: "FREE_TEXT",
+  }));
+
+  assert.ok(violations.some(violation => violation.code === "semantically_repeated_question"));
+});
+
 test("a semantic repeat is rejected before it reaches the commitment seam", () => {
   const violations = validateInterviewProposal(context(), proposal({
     type: "ASK_QUESTION",
@@ -116,6 +141,14 @@ test("a semantic repeat is rejected before it reaches the commitment seam", () =
   }));
 
   assert.ok(violations.some(violation => violation.code === "semantically_repeated_question"));
+});
+
+test("terminal proposals inherit every accepted current-thread Evidence identity", () => {
+  const prepared = prepareInterviewProposal(context(), proposal({
+    type: "PROPOSE_COMPLETION",
+  }, [supportedOutcome(["e3"])]));
+
+  assert.deepEqual(prepared.outcomes[0].evidenceIds, ["e3", "e1", "e2"]);
 });
 
 test("an extended supported thread needs a distinct closure answer before transition or completion", () => {
@@ -181,6 +214,17 @@ test("explicit closure with complete provenance may advance to one new informati
   }, [supportedOutcome()]));
 
   assert.deepEqual(violations, []);
+});
+
+test("a question with more than one interrogative frame is rejected locally", () => {
+  const violations = validateInterviewProposal(context(), proposal({
+    type: "ASK_QUESTION",
+    resultId: currentResultId,
+    text: "For the saved lane and porch-clock timestamp, who records it and who checks it?",
+    responseMode: "FREE_TEXT",
+  }));
+
+  assert.ok(violations.some(violation => violation.code === "multiple_information_needs"));
 });
 
 test("a new question must stay grounded in exact wording from the latest accepted answer", () => {
