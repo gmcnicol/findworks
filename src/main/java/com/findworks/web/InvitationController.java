@@ -1,7 +1,6 @@
 package com.findworks.web;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -251,7 +250,7 @@ public class InvitationController {
             return unavailableInvitation();
         }
         var cookie = ResponseCookie.from(INTERVIEW_COOKIE, rawGrant).httpOnly(true).secure(secureCookie)
-                .sameSite("Strict").path("/interview").maxAge(Duration.ofDays(7)).build();
+                .sameSite("Strict").path("/interview").maxAge(InvitationPolicy.VALIDITY).build();
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create("/interview"))
                 .header(HttpHeaders.SET_COOKIE, cookie.toString()).build();
     }
