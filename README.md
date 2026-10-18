@@ -13,7 +13,8 @@ This working tree implements the local M0 journey from issues 47 through 61:
 - Spring Boot 4.1 WebMVC
 - PostgreSQL + Flyway
 - OAuth-protected Streamable HTTP MCP for Codex and Pi
-- Mission review, external Interviews, Evidence-backed Findings, retrieval, recovery, and deletion
+- Mission review, external Interviews, Evidence-backed Findings, retrieval, and recovery
+- FindWorks v1 preserves product content; retention-driven and requested deletion are disabled
 - Isolated Pi runtime containers and production web/worker topology
 - Integration, Playwright, fault-injection, and container-isolation checks
 

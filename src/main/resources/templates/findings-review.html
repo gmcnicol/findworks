@@ -6,7 +6,6 @@
     <title>Review findings · FindWorks</title>
     <link rel="stylesheet" th:href="@{/assets/app.css}">
     <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.3/bundles/datastar.js"></script>
-    <script type="module" th:src="@{/assets/hold-to-confirm.js}"></script>
 </head>
 <body class="app-body">
 <div class="app-frame">
@@ -120,14 +119,6 @@
             </section>
         </section>
 
-        <section class="danger-zone">
-            <h2>Delete this Interview Session</h2>
-            <p>This immediately revokes access and schedules its Evidence and findings for deletion.</p>
-            <form method="post" th:action="@{'/app/interviews/' + ${findingsSession.id()} + '/delete'}">
-                <button class="button danger hold-confirm" type="submit" data-hold-confirm data-hold-label="Hold to delete Interview Session"><span data-hold-label-text>Hold to delete Interview Session</span></button>
-                <span class="sr-only" role="status" aria-live="polite" data-hold-status></span>
-            </form>
-        </section>
     </main>
 </div>
 </body>

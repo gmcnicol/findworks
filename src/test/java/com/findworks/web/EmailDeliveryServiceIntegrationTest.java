@@ -98,6 +98,20 @@ class EmailDeliveryServiceIntegrationTest {
     }
 
     @Test
+    void legacy_retention_warning_rows_remain_inert() {
+        var id = UUID.randomUUID();
+        db.update("""
+                insert into email_outbox(id,organization_id,kind,recipient,encrypted_link,state,lease_until)
+                values(?,'11111111-1111-1111-1111-111111111111','RETENTION_WARNING','investigator@example.com',?,'RUNNING',now()-interval '1 minute')
+                """, id, new byte[] { 1 });
+
+        assertThat(email.deliverNext()).isFalse();
+        assertThat(db.queryForObject("select state from email_outbox where id=?", String.class, id)).isEqualTo("RUNNING");
+        assertThat(db.queryForObject("select attempts from email_outbox where id=?", Integer.class, id)).isZero();
+        assertThat(db.queryForObject("select error_code from email_outbox where id=?", String.class, id)).isNull();
+    }
+
+    @Test
     void clerk_delivery_is_encrypted_and_never_consumed_by_the_legacy_worker() {
         var invitation = invitation();
         var client = mock(ClerkInvitationClient.class);

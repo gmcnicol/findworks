@@ -343,19 +343,18 @@ class ClerkSecurityIntegrationTest {
     }
 
     @Test
-    void deletion_and_termination_revoke_account_access_immediately() throws Exception {
+    void termination_revokes_account_access_immediately_without_deleting_evidence() throws Exception {
         var cookie = account("user_sme", "sme@example.com");
-        var deleted = invitation("sme@example.com");
-        var terminated = invitation("sme@example.com");
-        var discoveryDeleted = invitation("sme@example.com");
-        claim(deleted, cookie); claim(terminated, cookie); claim(discoveryDeleted, cookie);
-        db.update("update interview_sessions set deleted_at=now() where id=?", deleted.sessionId());
-        db.update("update interview_sessions set state='TERMINATED' where id=?", terminated.sessionId());
-        db.update("update discoveries set state='DELETING' where id=?", discoveryDeleted.discoveryId());
-        for (var invitation : java.util.List.of(deleted, terminated, discoveryDeleted)) {
-            mvc.perform(get("/interview/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isForbidden());
-            assertThat(db.queryForObject("select count(*) from interview_account_access where session_id=? and revoked_at is null", Integer.class, invitation.sessionId())).isZero();
-        }
+        var invitation = invitation("sme@example.com");
+        claim(invitation, cookie);
+        db.update("insert into evidence(id,organization_id,session_id,source_type,exact_text) values(?,'11111111-1111-1111-1111-111111111111',?,'ANSWER','Retained Evidence')",
+                UUID.randomUUID(), invitation.sessionId());
+
+        db.update("update interview_sessions set state='TERMINATED' where id=?", invitation.sessionId());
+
+        mvc.perform(get("/interview/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isForbidden());
+        assertThat(db.queryForObject("select count(*) from interview_account_access where session_id=? and revoked_at is null", Integer.class, invitation.sessionId())).isZero();
+        assertThat(db.queryForObject("select count(*) from evidence where session_id=?", Integer.class, invitation.sessionId())).isEqualTo(1);
     }
 
     private Cookie account(String subject, String email) throws Exception {

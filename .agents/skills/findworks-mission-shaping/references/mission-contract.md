@@ -22,7 +22,7 @@ Organisation, owner, lifecycle, version, recipient, and approval are server-owne
 - one or more `investigation_items`;
 - explicit arrays for `shared_context`, `boundaries`, `prohibited_topics`, and `terminology`, including when empty;
 - one or more `opening_questions` and `completion_criteria`;
-- `data_use_summary`, including reviewed-context export and the fact that later deletion cannot recall downstream copies.
+- `data_use_summary`, including reviewed-context export into the Investigator's project systems.
 
 Each Investigation Item contains `knowledge_gap`, `why_it_matters`, `priority`, `required`, `relevant_context`, and one or more `sufficient_evidence` descriptions. `terminology` entries contain `term` and `meaning`.
 

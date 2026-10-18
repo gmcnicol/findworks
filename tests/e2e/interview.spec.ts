@@ -10,7 +10,8 @@ const begin = async (page, data) => {
   await page.goto(data.invitation_url);
   await page.getByRole('button', { name: 'Continue to invitation' }).click();
   await expect(page.getByRole('heading', { name: 'Before you begin' })).toBeVisible();
-  await expect(page.getByText('90 days after findings review')).toBeVisible();
+  await expect(page.getByText('Retention', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/days after findings review/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Begin interview' }).click();
   await expect(page.getByRole('heading', { name: 'Walk me through the last mismatch you resolved.' })).toBeVisible();
 };
@@ -20,22 +21,6 @@ const signIn = async (page) => {
   await page.getByLabel('Email').fill('gareth@example.com');
   await page.getByLabel('Password').fill('findworks');
   await page.getByRole('button', { name: 'Continue' }).click();
-};
-
-const holdToConfirmDeletion = async (page, name: string) => {
-  const button = page.locator(`[data-hold-label="${name}"]`);
-  const form = button.locator('..');
-
-  await button.click();
-  await expect(button).toBeVisible();
-  await expect(form.getByRole('status')).toHaveText('Deletion cancelled.');
-
-  await button.focus();
-  await page.keyboard.down('Space');
-  await expect(button).toHaveAccessibleName('Keep holding…');
-  await expect(form.getByRole('status')).toHaveText('Keep holding to confirm deletion.');
-  await page.waitForTimeout(2_100);
-  await page.keyboard.up('Space');
 };
 
 test('investigator reviews, renames, approves, and supersedes an exact Mission version', async ({ browser, page, request }) => {
@@ -333,9 +318,8 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await expect(review.getByText('Decision · REJECTED')).toBeVisible();
   await expect(review.getByText('Ask the reconciliation owner.')).toBeVisible();
   await expect(review.getByText('Package Version 1')).toBeVisible();
-  await holdToConfirmDeletion(review, 'Hold to delete Interview Session');
-  const deleted = await review.goto(`/app/findings/${unknownData.session_id}`);
-  expect(deleted?.status()).toBe(404);
+  await expect(review.getByRole('button', { name: /delete interview session/i })).toHaveCount(0);
+  await expect(review.getByText(/schedules its Evidence and findings for deletion/i)).toHaveCount(0);
   await review.close();
 });
 
@@ -433,48 +417,27 @@ test('lost browser, reissue, revocation, and termination invalidate stale partic
   await revokedPage.close();
 });
 
-test('retention warning and Discovery deletion deny access immediately', async ({ page, request }) => {
-  const data = await fixture(request, 'retention@example.com');
-  await request.post(`/test/discoveries/${data.discovery_id}/retention-warning`);
-  await signIn(page);
-  await page.goto(`/app/discoveries/${data.discovery_id}`);
-  await expect(page.getByText('Scheduled deletion is within 14 days')).toBeVisible();
-  await holdToConfirmDeletion(page, 'Hold to delete Discovery');
-  await expect(page.getByRole('heading', { name: 'Your Discoveries' })).toBeVisible();
-  const participant = await browserPageFromInvitation(page.context().browser(), data.invitation_url);
-  await expect(participant.getByText('Ask Gareth to reissue access')).toBeVisible();
-  await participant.close();
-});
-
-test('Interview Session deletion removes findings and participant access immediately', async ({ browser, page, request }) => {
-  const data = await fixture(request, 'session-deletion@example.com');
+test('v1 UI omits retention and deletion controls while keeping Session termination', async ({ browser, page, request }) => {
+  const data = await fixture(request, 'preserved-content@example.com');
   const participant = await browser.newPage();
   await begin(participant, data);
   await participant.getByLabel('Your answer in your own words').fill('The analyst checks unmatched entries against the source ledger.');
   await participant.getByRole('button', { name: 'Submit answer' }).click();
   await expect(participant.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
   await request.post(`/test/runtime/run-once?sessionId=${data.session_id}`);
-  await expect(participant.getByLabel('Yes')).toBeEnabled();
-  await participant.getByLabel('Yes').check();
-  await participant.getByRole('button', { name: 'Submit response' }).click();
-  await expect(participant.getByRole('heading', { name: 'Preparing your next question' })).toBeVisible();
-  await request.post(`/test/runtime/run-once?sessionId=${data.session_id}`);
-  await expect(participant.getByRole('button', { name: 'Confirm and finish' })).toBeEnabled();
-  await participant.getByRole('button', { name: 'Confirm and finish' }).click();
-  await request.post('/test/extraction/run-once');
 
   await signIn(page);
+  await page.goto(`/app/discoveries/${data.discovery_id}`);
+  await expect(page.getByText(/scheduled deletion|extend retention|purged within/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /delete discovery/i })).toHaveCount(0);
+
   await page.goto(`/app/findings/${data.session_id}`);
-  await holdToConfirmDeletion(page, 'Hold to delete Interview Session');
-  await expect(page.getByRole('heading', { name: 'Your Discoveries' })).toBeVisible();
-  expect((await page.goto(`/app/findings/${data.session_id}`))?.status()).toBe(404);
-  await participant.reload();
-  await expect(participant.getByRole('heading', { name: 'Access is no longer available' })).toBeVisible();
+  await expect(page.getByText(/schedules its Evidence and findings for deletion/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /delete interview session/i })).toHaveCount(0);
+
+  await page.goto(`/app/interviews/${data.session_id}`);
+  await expect(page.getByRole('heading', { name: 'Terminate this interview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hold to terminate interview' })).toBeVisible();
+  await expect(page.getByText('Existing Evidence is preserved.')).toBeVisible();
   await participant.close();
 });
-
-const browserPageFromInvitation = async (browser, url: string) => {
-  const page = await browser.newPage();
-  await page.goto(url);
-  return page;
-};
