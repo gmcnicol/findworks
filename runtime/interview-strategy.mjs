@@ -60,6 +60,30 @@ export function validateInterviewProposal(context, proposal) {
   const advancesThread = action.type === "PROPOSE_COMPLETION"
     || (action.type === "ASK_QUESTION" && currentResultId && action.resultId !== currentResultId);
 
+  const currentThreadTerminal = TERMINAL_COVERAGES.has(currentResult?.coverage);
+  const explicitlyClosed = hasExplicitClosure(context, currentRecords);
+
+  if (advancesThread && currentResultId && !currentThreadTerminal && !closesCurrentThread) {
+    violations.push({
+      code: "transition_without_terminal_outcome",
+      detail: "Advancing from the active thread requires its Evidence-linked terminal outcome in the same turn",
+    });
+  }
+
+  if (explicitlyClosed && !currentThreadTerminal && !closesCurrentThread) {
+    violations.push({
+      code: "explicit_closure_requires_terminal_outcome",
+      detail: "The accepted synthesis closed the active thread; submit its terminal outcome instead of asking another Question",
+    });
+  }
+
+  if (closesCurrentThread && action.type === "ASK_QUESTION" && action.resultId === currentResultId) {
+    violations.push({
+      code: "terminal_thread_continued",
+      detail: "A Question cannot continue the active thread in the same turn that makes it terminal",
+    });
+  }
+
   if (closesCurrentThread && advancesThread) {
     const represented = new Set([
       ...(currentResult?.current_outcomes ?? []).flatMap(outcome => outcome.evidence_ids ?? []),
@@ -72,10 +96,10 @@ export function validateInterviewProposal(context, proposal) {
     });
 
     const supported = submittedCurrentOutcomes.some(outcome => outcome.coverage === "SUPPORTED");
-    if (supported && currentRecords.length >= 3 && !hasExplicitClosure(context, currentRecords)) {
+    if (supported && !explicitlyClosed) {
       violations.push({
         code: "supported_thread_needs_closure",
-        detail: "An extended supported thread needs a distinct accepted closure or synthesis answer before transition or completion",
+        detail: "A supported thread needs an accepted closure or synthesis answer before transition or completion",
       });
     }
   }

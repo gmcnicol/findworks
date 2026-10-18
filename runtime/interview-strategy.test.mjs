@@ -151,7 +151,32 @@ test("terminal proposals inherit every accepted current-thread Evidence identity
   assert.deepEqual(prepared.outcomes[0].evidenceIds, ["e3", "e1", "e2"]);
 });
 
-test("an extended supported thread needs a distinct closure answer before transition or completion", () => {
+test("advancing without a terminal outcome is rejected before the server seam", () => {
+  const violations = validateInterviewProposal(context(), proposal({
+    type: "ASK_QUESTION",
+    resultId: nextResultId,
+    text: "What starts the rescue desk?",
+    responseMode: "FREE_TEXT",
+  }));
+
+  assert.ok(violations.some(violation => violation.code === "transition_without_terminal_outcome"));
+});
+
+test("an explicit synthesis answer must be consumed as terminal rather than questioned again", () => {
+  const supplied = context();
+  supplied.conversation_state.latest_interviewee_wording = "That is the complete front-porch rule.";
+  supplied.questions_and_evidence.at(-1).exact_text = supplied.conversation_state.latest_interviewee_wording;
+  const violations = validateInterviewProposal(supplied, proposal({
+    type: "ASK_QUESTION",
+    resultId: currentResultId,
+    text: "What else belongs in the complete front-porch rule?",
+    responseMode: "FREE_TEXT",
+  }));
+
+  assert.ok(violations.some(violation => violation.code === "explicit_closure_requires_terminal_outcome"));
+});
+
+test("a supported thread needs a distinct closure answer before transition or completion", () => {
   const transition = validateInterviewProposal(context(), proposal({
     type: "ASK_QUESTION",
     resultId: nextResultId,
@@ -177,6 +202,19 @@ test("self-declared completion after an ordinary detail question still requires 
     text: "At the rescue desk, who takes ownership next?",
     responseMode: "FREE_TEXT",
   }, [supportedOutcome()]));
+
+  assert.ok(violations.some(violation => violation.code === "supported_thread_needs_closure"));
+});
+
+test("one rich answer still needs grounded closure before a supported transition", () => {
+  const supplied = context();
+  supplied.questions_and_evidence = supplied.questions_and_evidence.slice(-1);
+  const violations = validateInterviewProposal(supplied, proposal({
+    type: "ASK_QUESTION",
+    resultId: nextResultId,
+    text: "What starts the rescue desk?",
+    responseMode: "FREE_TEXT",
+  }, [supportedOutcome(["e3"])]));
 
   assert.ok(violations.some(violation => violation.code === "supported_thread_needs_closure"));
 });
