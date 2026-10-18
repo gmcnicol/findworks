@@ -32,6 +32,14 @@ The product must stay broader than a requirements questionnaire. The underlying 
 - **Structure is FindWorks' job.** The interviewee must not classify Knowledge Items, manage Investigation Items, inspect provenance metadata, or understand agent/runtime concepts. FindWorks derives structure from a natural conversation and exposes technical detail only to the Investigator where needed for review.
 - **Expose uncertainty.** Unknowns, assumptions, disagreements, and unresolved ownership are first-class outputs.
 
+## FindWorks v1 data lifecycle decision
+
+**Deletion is entirely disabled for FindWorks v1.** FindWorks does not automatically select a 90-day or 180-day retention deadline, warn about approaching deletion, accept Discovery or Interview Session deletion requests, extend retention, run retention on demand, or physically purge product content. Investigator and operator deletion routes fail closed without changing state. Workers do not schedule retention or purge work, and startup does not reapply denial from the deletion ledger.
+
+Access revocation, invitation revocation or reissue, and Interview Session termination remain active. They remove permission to continue without deleting the Discovery, Interview Session, Evidence, findings, or ordinary audit history.
+
+This decision supersedes the earlier M0 retention and deletion design recorded below. Migrations V1, V3, and V10 historically introduced retention settings, deletion markers, a deletion ledger, retention warnings, cascading foreign keys, and access-revocation triggers. FindWorks keeps that forward-only schema and any pre-existing rows unchanged but inert: this change adds no migration, restores no records, reapplies no pending denial, and purges no existing data. A future deletion capability requires a new explicit product decision and implementation.
+
 ## Important domain concepts
 
 ### Discovery
@@ -42,7 +50,7 @@ A longer-lived investigation that can span multiple people, missions, sessions, 
 
 An adaptive conversation between an Investigator and their chosen agent harness, grounded in the Investigator's project context, used to create or revise an Interview Mission. A dedicated FindWorks companion skill conducts project-aware grilling, applies the Mission completeness rules, captures minimal source references, and submits the structured draft through the FindWorks MCP boundary rather than cloning the shaping transcript. The MCP contract remains normative for other harness integrations. A submitted proposal becomes authoritative only when the Investigator approves its exact version in FindWorks.
 
-M0 exposes two draft-only MCP submission commands: one atomically creates a Discovery with its first Interview Mission, and one adds a distinct Interview Mission to a Discovery already owned by the authenticated Investigator. New Discovery submissions require a human-confirmed title and longer-lived Discovery objective. Organisation, ownership, identifiers, lifecycle, version, approval, recipient selection, invitation, findings review, and deletion remain server- or web-controlled rather than harness-supplied.
+M0 exposes two draft-only MCP submission commands: one atomically creates a Discovery with its first Interview Mission, and one adds a distinct Interview Mission to a Discovery already owned by the authenticated Investigator. New Discovery submissions require a human-confirmed title and longer-lived Discovery objective. Organisation, ownership, identifiers, lifecycle, version, approval, recipient selection, invitation, and findings review remain server- or web-controlled rather than harness-supplied. Deletion is unavailable in v1.
 
 A submission is a complete structured Mission snapshot, not a patch or document. Each semantic field and list entry identifies either an Investigator statement or an explicitly confirmed agent proposal. Optional repository-file and issue locators contain no source content, are never dereferenced, and are Mission-shaping provenance rather than Interview Evidence. Submissions contain only an intended interviewee role and relevance; the actual person and email are selected later in FindWorks.
 
@@ -110,7 +118,7 @@ The Investigator-facing collection of Investigation Results produced for one Int
 
 Published Discovery context preserves its Interview Mission, Interview Session, Findings Package, and Investigation Item boundaries rather than presenting a flattened current truth. It contains only accepted or corrected Knowledge Items and explicitly acknowledged Unknowns, Conflicts, and Ownership Gaps. Required unresolved results must be acknowledged before package acceptance; optional unreviewed material and rejected claims remain unpublished.
 
-An authorised Investigator harness may retrieve this reviewed context with bounded exact Evidence excerpts and source attribution, but never full answers or transcripts, unreviewed claims, private shaping context, participant contact details, or agent-runtime data. Retrieval is an explicit export into Investigator-controlled project systems: the Interview Mission data-use summary discloses that use, and later FindWorks deletion cannot recall downstream copies.
+An authorised Investigator harness may retrieve this reviewed context with bounded exact Evidence excerpts and source attribution, but never full answers or transcripts, unreviewed claims, private shaping context, participant contact details, or agent-runtime data. Retrieval is an explicit export into Investigator-controlled project systems, and the Interview Mission data-use summary discloses that use.
 
 ## Agent/runtime direction already discussed
 
@@ -127,7 +135,7 @@ The intended boundary is:
 
 Current primary-source research shows that Pi supports TypeScript SDK embedding and stdin/stdout JSONL RPC, but no hosted service or daemon. A real Pi prototype validated one supervised RPC child per active Interview Session as the M0 runtime boundary, conditional on FindWorks remaining authoritative and the deployment providing hard process isolation. The semantic command, event, synchronisation, and recovery contract is settled below.
 
-Pi process isolation is fault isolation, not a security sandbox. Any M0 integration must disable built-in filesystem and shell tools and ambient resources, explicitly load only the approved interview skill and trusted semantic-tool extension, translate raw Pi events behind the FindWorks adapter, and make application mutations authorised and idempotent. Pi session files are sensitive secondary checkpoints within Interview Session retention and deletion boundaries, never authoritative FindWorks state. A dedicated OS identity, sandbox, or container must prevent Pi and its trusted extension from reaching another Interview Session's files, processes, application credentials, or provider credentials.
+Pi process isolation is fault isolation, not a security sandbox. Any M0 integration must disable built-in filesystem and shell tools and ambient resources, explicitly load only the approved interview skill and trusted semantic-tool extension, translate raw Pi events behind the FindWorks adapter, and make application mutations authorised and idempotent. Pi session files are sensitive secondary checkpoints within the Interview Session access boundary, never authoritative FindWorks state. A dedicated OS identity, sandbox, or container must prevent Pi and its trusted extension from reaching another Interview Session's files, processes, application credentials, or provider credentials.
 
 For a live M0 interview turn, Pi receives one atomic `submit_interview_turn` capability. It may submit Evidence-linked outcome proposals plus exactly one next action: ask another question or propose completion. FindWorks alone accepts answers as Evidence, changes Interview Session lifecycle, sends invitations, and approves completion. Pi children stop after each settled turn and reopen from their secondary checkpoint for the next accepted input.
 
@@ -166,7 +174,7 @@ M0 exposes tools-only, stateless Streamable HTTP MCP from that monolith. The MCP
 
 ## SaaS kernel
 
-There is an existing separate Apache-2.0-licensed SaaS kernel project. Current research shows that it is a semantic workflow kernel rather than a reusable identity or SaaS platform layer: it provides tenant-scoped database and authorisation patterns, durable Intent/Event evidence, and telemetry, but not identity, membership, invitations, email, product-wide audit, retention, or deletion.
+There is an existing separate Apache-2.0-licensed SaaS kernel project. Current research shows that it is a semantic workflow kernel rather than a reusable identity or SaaS platform layer: it provides tenant-scoped database and authorisation patterns, durable Intent/Event evidence, and telemetry, but not identity, membership, invitations, email, or product-wide audit.
 
 FindWorks M0 remains standalone with no shared-kernel runtime or library dependency. It may reuse proven ideas such as transaction-local tenant context, forced row-level security, least-privilege database roles, fail-closed authorisation, content-free telemetry, and forward-only migrations, but not the kernel's abstractions, schema, or semantic workflow model.
 
@@ -227,17 +235,15 @@ The Investigator uses an authenticated account with verified email and membershi
 
 Clerk supplies the standard sign-in/signup UI for both Investigators and interviewees. Ordinary sign-in uses email verification codes, without passwords. Emailed interview invitations use Clerk's native application-invitation flow: a new recipient creates an account on acceptance; a returning recipient uses their existing account. The native email link can authenticate that account. These are capabilities of one account, not mutually exclusive account types. FindWorks retains its own User, organisation membership, Discovery ownership, Discovery Participants, and record-level authorisation. On first access, a Clerk subject may bind to one existing active pilot User through Clerk's server-verified primary email; signup never creates or grants organisation membership. Research operations recheck local membership; interview operations check the account's explicit Session assignment. MCP continues to use its separate OAuth credential. Local seeded password sign-in and account-free browser grants are development/test modes, not production fallbacks.
 
-Interviewees authenticate through Clerk's standard screens and then explicitly claim their FindWorks invitation. For emailed delivery, FindWorks queues a native Clerk invitation with existing-account support and a redirect back to the exact FindWorks invitation. A manual FindWorks link uses ordinary email-code sign-in/signup. Clerk only delivers/authenticates; it does not own the Mission, Participant, Session grant, expiry/reissue policy, or saved work. FindWorks freshly retrieves the verified primary email from Clerk's backend and requires it to match the invited recipient, for both email and manual delivery. An unclaimed invitation expires after seven days (an elapsed 168 hours). A claimed interview remains in the account's saved work, independently of the invitation and browser, until access is revoked or retention/deletion applies. A second account cannot take it over by claiming the same email address. Expired or revoked invitations require Investigator reissue; ordinary sign-out, cookie expiry, or changing devices does not. Reissuing a started Interview Session cannot change its interviewee or approved Mission version; changing those would misattribute retained Evidence.
+Interviewees authenticate through Clerk's standard screens and then explicitly claim their FindWorks invitation. For emailed delivery, FindWorks queues a native Clerk invitation with existing-account support and a redirect back to the exact FindWorks invitation. A manual FindWorks link uses ordinary email-code sign-in/signup. Clerk only delivers/authenticates; it does not own the Mission, Participant, Session grant, expiry/reissue policy, or saved work. FindWorks freshly retrieves the verified primary email from Clerk's backend and requires it to match the invited recipient, for both email and manual delivery. An unclaimed invitation expires after seven days (an elapsed 168 hours). A claimed interview remains in the account's saved work independently of the invitation and browser. Access revocation removes it from that account without deleting retained content. A second account cannot take it over by claiming the same email address. Expired or revoked invitations require Investigator reissue; ordinary sign-out, cookie expiry, or changing devices does not. Reissuing a started Interview Session cannot change its interviewee or approved Mission version; changing those would misattribute retained Evidence.
 
 The interviewee may access only the mission introduction, active question, their own previous answers, clarification flow, and completion acknowledgement. They cannot access private Investigator context, findings, other Discoveries or participants, or internal metadata.
 
-Before explicitly starting, the interviewee sees the Investigator identity, purpose, data-use summary, retention period, and contact route. M0 does not add a dense legal workflow.
+Before explicitly starting, the interviewee sees the Investigator identity, purpose, data-use summary, and contact route. M0 does not add a dense legal workflow.
 
-At pilot setup, the organisation selects one data-retention period, defaulting to 90 days after the Investigator accepts or rejects the findings package. A Discovery that never reaches review is deleted after 180 days without activity unless support extends it. The interviewee sees the applicable retention rule before starting. FindWorks warns the Investigator 14 days before deletion; manual support may extend it in M0.
+The earlier M0 design selected a 90-day post-review retention period, deleted never-reviewed Discoveries after 180 days, warned 14 days before deletion, allowed support extensions, and offered Discovery and Interview Session deletion with a seven-day purge and 30-day backup ageing promise. That design drove the historical schema and migrations, but it is superseded for v1 by the data lifecycle decision above and is not an active product promise.
 
-The Investigator may delete an entire Discovery at any time. It becomes inaccessible immediately, content and derived data are purged within seven days, and encrypted backups age out within 30 days. An interviewee may request deletion through the displayed contact route; the Investigator may delete that Interview Session, its Evidence, and derived Knowledge Items while retaining the Discovery and reopening affected Investigation Items.
-
-Audit records actor, time, organisation, resource, and outcome for authentication, Interview Mission approval, invitation and Interview Session lifecycles, findings extraction and review, access denial, retention changes, and deletion. Audit never contains answer text, Evidence content, invitation tokens, or model payloads. Minimal content-free audit tombstones remain for 12 months after content deletion, then delete automatically.
+Audit records actor, time, organisation, resource, and outcome for authentication, Interview Mission approval, invitation and Interview Session lifecycles, findings extraction and review, and access denial. Audit never contains answer text, Evidence content, invitation tokens, or model payloads. Ordinary audit remains active and is not treated as content deletion.
 
 M0 accepts text answers only. The Evidence model may support attachment references later, but M0 has no file-upload feature.
 
@@ -279,7 +285,7 @@ If the interviewee stops before required coverage, the Interview Session ends ea
 
 The agent pursues emergent information only when it helps resolve approved Investigation Items and remains within Interview Mission boundaries. Other useful information becomes a suggested follow-up rather than silently expanding the Mission.
 
-If an interviewee volunteers out-of-scope content, FindWorks retains the submitted answer as Evidence but does not follow or extract it unless relevant to the Mission. The existing deletion route remains available.
+If an interviewee volunteers out-of-scope content, FindWorks retains the submitted answer as Evidence but does not follow or extract it unless relevant to the Mission.
 
 An Interview Session becomes complete when the interviewee confirms finish, independently of later findings extraction. FindWorks then extracts final candidate findings from retained Evidence and tracks that processing separately as pending, ready, or failed. Extraction failure retries without changing Session state, reopening the interview, or asking the interviewee to repeat answers.
 
@@ -287,7 +293,7 @@ The Investigator may revoke access and terminate an active Interview Session. Ex
 
 M0 ends with investigator review of findings and their provenance inside FindWorks. Exports, generated specifications, and downstream delivery-tool integrations are outside this effort.
 
-The first pilot may handle ordinary confidential business information. Its specification must settle access control, retention, deletion, and audit behaviour, but must not claim support for regulated or highly sensitive data.
+The first pilot may handle ordinary confidential business information. Its specification must settle access control, data handling, and audit behaviour, but must not claim support for regulated or highly sensitive data.
 
 Only investigator and interviewee require product UI in M0. Organisation setup and support intervention may use documented manual operations.
 

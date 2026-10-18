@@ -934,7 +934,7 @@ public class InvitationController {
         } else if (token == null || token.isBlank()) return Optional.empty();
         var query = db.sql("""
                 select s.id,s.organization_id,s.mission_id,s.mission_version,s.state,s.revision,
-                       u.display_name,o.name,mv.objective,mv.data_use,o.retention_days,o.contact_email
+                       u.display_name,o.name,mv.objective,mv.data_use,o.contact_email
                 from interview_sessions s
                 """ + (clerkProperties.enabled()
                     ? " join interview_account_access a on a.session_id=s.id and a.organization_id=s.organization_id "
@@ -954,7 +954,7 @@ public class InvitationController {
         var result = query.query((rs, row) -> new ParticipantView(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class),
                         rs.getInt(4), rs.getString(5), rs.getInt(6), rs.getString(7), rs.getString(8),
-                        rs.getString(9), rs.getString(10), rs.getInt(11), rs.getString(12)))
+                        rs.getString(9), rs.getString(10), rs.getString(11)))
                 .optional();
         if (result.isPresent() && !clerkProperties.enabled()) {
             db.sql("update access_grants set last_used_at=now() where token_hash=:hash")
@@ -1020,5 +1020,5 @@ public class InvitationController {
     private record OwnedSession(UUID organizationId, UUID missionId) {}
     public record ParticipantView(UUID sessionId, UUID organizationId, UUID missionId, int missionVersion,
                                   String state, int revision, String investigator, String organization, String objective,
-                                  String dataUse, int retentionDays, String contactEmail) {}
+                                  String dataUse, String contactEmail) {}
 }

@@ -38,6 +38,7 @@ FindWorks is not a fixed questionnaire or “AI Typeform.” Its Interview Missi
 - FindWorks uses a conventional relational model in a modular monolith. Pi is an isolated runtime boundary, not the authoritative product store.
 - Stable semantic application models must hide raw Pi/model event formats from the web experience.
 - M0 supports one pilot organisation, one Investigator, one Interviewee per Mission journey, and text answers only.
+- FindWorks v1 does not delete product content: automatic retention, warnings, deletion requests, extensions, and purge are disabled. Access revocation, invitation revocation/reissue, and Interview Session termination remain available without deleting retained work.
 
 ## Evidence on Hand
 

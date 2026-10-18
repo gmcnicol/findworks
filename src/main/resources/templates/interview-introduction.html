@@ -9,7 +9,6 @@
         <h1>Before you begin</h1>
         <p><strong th:text="${view.investigator()}">Investigator</strong> from <strong th:text="${view.organization()}">Organisation</strong> invited you to help with:</p>
         <h2 th:text="${view.objective()}">Mission purpose</h2>
-        <dl class="review-fields"><div><dt>Retention</dt><dd th:text="${view.retentionDays()} + ' days after findings review'">90 days</dd></div></dl>
         <h3>How your answers will be used</h3>
         <p th:text="${view.dataUse()}">Data use</p>
         <p class="subtle">Questions adapt to your answers. You can pause, say you do not know, name another owner, or leave.</p>

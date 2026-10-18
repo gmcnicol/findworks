@@ -296,7 +296,7 @@ public class FindingsController {
             db.sql("insert into publications values(:id,:organization,:discovery,:package,:version,now(),null)")
                     .param("id", Ids.id()).param("organization", session.organizationId()).param("discovery", session.discoveryId())
                     .param("package", packageId).param("version", version).update();
-            db.sql("update discoveries d set retention_due_at=now()+(o.retention_days||' days')::interval,last_activity_at=now() from organizations o where d.id=:discovery and o.id=d.organization_id")
+            db.sql("update discoveries set last_activity_at=now() where id=:discovery")
                     .param("discovery", session.discoveryId()).update();
         });
         return mutationResult(sessionId, datastarRequest, authentication, model, response);
@@ -319,7 +319,7 @@ public class FindingsController {
             var packageId = packageDecision.id();
             db.sql("update package_versions set state='REJECTED',notes=:notes where package_id=:package and version=:version")
                     .param("notes", followUp).param("package", packageId).param("version", version).update();
-            db.sql("update discoveries d set retention_due_at=now()+(o.retention_days||' days')::interval,last_activity_at=now() from organizations o where d.id=:discovery and o.id=d.organization_id")
+            db.sql("update discoveries set last_activity_at=now() where id=:discovery")
                     .param("discovery", session.discoveryId()).update();
         });
         return mutationResult(sessionId, datastarRequest, authentication, model, response);

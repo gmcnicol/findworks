@@ -27,4 +27,4 @@ Opening question: Walk me through the last mismatch you resolved.
 Completion criterion: The approval rule, at least one exception, and any ownership gap have explicit outcomes.
 
 
-Data use: Gareth will review findings before export into the project harness. Later deletion from FindWorks cannot recall downstream copies.
+Data use: Gareth will review findings before export into the project harness.

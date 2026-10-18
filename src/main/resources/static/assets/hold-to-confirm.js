@@ -22,7 +22,7 @@ for (const button of document.querySelectorAll('[data-hold-confirm]')) {
     activeInput = null;
     button.classList.remove('is-holding');
     label.textContent = originalLabel;
-    status.textContent = 'Deletion cancelled.';
+    status.textContent = 'Action cancelled.';
   };
 
   const completeHold = () => {
@@ -33,8 +33,8 @@ for (const button of document.querySelectorAll('[data-hold-confirm]')) {
     activeInput = null;
     submitting = true;
     button.classList.remove('is-holding');
-    label.textContent = 'Deleting…';
-    status.textContent = 'Deleting…';
+    label.textContent = 'Completing…';
+    status.textContent = 'Completing…';
     button.disabled = true;
     form.requestSubmit(button);
   };
@@ -45,7 +45,7 @@ for (const button of document.querySelectorAll('[data-hold-confirm]')) {
     activeInput = input;
     button.classList.add('is-holding');
     label.textContent = 'Keep holding…';
-    status.textContent = 'Keep holding to confirm deletion.';
+    status.textContent = 'Keep holding to confirm.';
     timer = window.setTimeout(completeHold, HOLD_DURATION_MS);
   };
 
