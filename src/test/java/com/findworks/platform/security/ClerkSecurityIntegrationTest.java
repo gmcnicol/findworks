@@ -345,6 +345,18 @@ class ClerkSecurityIntegrationTest {
     }
 
     @Test
+    void findings_review_initializes_the_csrf_session_before_rendering_can_commit_the_response() throws Exception {
+        var invitation = invitation("interviewee@example.com");
+
+        var result = mvc.perform(get("/app/findings/" + invitation.sessionId())
+                        .cookie(account("user_gareth", "gareth@example.com")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(result.getRequest().getSession(false)).isNotNull();
+    }
+
+    @Test
     void investigator_revocation_removes_account_access_without_losing_accepted_evidence() throws Exception {
         var invitation = invitation("sme@example.com");
         var cookie = account("user_sme", "sme@example.com");

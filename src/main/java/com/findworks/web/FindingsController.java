@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.ui.Model;
@@ -45,7 +46,12 @@ public class FindingsController {
     }
 
     @GetMapping("/app/findings/{sessionId}")
-    String findings(@PathVariable UUID sessionId, Authentication authentication, Model model) {
+    String findings(@PathVariable UUID sessionId, Authentication authentication, Model model, CsrfToken csrfToken) {
+        csrfToken.getToken();
+        return findingsModel(sessionId, authentication, model);
+    }
+
+    private String findingsModel(UUID sessionId, Authentication authentication, Model model) {
         model.addAttribute("investigator", currentInvestigator.require(authentication));
         var session = ownedSession(sessionId, authentication);
         model.addAttribute("findingsSession", session);
@@ -338,7 +344,7 @@ public class FindingsController {
     private String mutationResult(UUID sessionId, boolean datastarRequest, Authentication authentication,
                                   Model model, HttpServletResponse response) {
         if (!datastarRequest) return "redirect:/app/findings/" + sessionId;
-        findings(sessionId, authentication, model);
+        findingsModel(sessionId, authentication, model);
         response.setContentType(MediaType.TEXT_HTML_VALUE);
         response.setHeader("Datastar-Selector", "#findings-package");
         response.setHeader("Datastar-Mode", "outer");
