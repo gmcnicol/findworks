@@ -43,7 +43,7 @@ public class MissionResumeProjector {
             case "PAUSED" -> action("Interview paused", "waiting", "View interview status", sessionHref, false, true);
             case "RUNTIME_FAILED" -> action("Interview needs recovery", "attention", "Review recovery", sessionHref, true, true);
             case "TERMINATED" -> action("Interview terminated", "complete", "View interview status", sessionHref, false, false);
-            case "COMPLETED", "ENDED_EARLY" -> findings(snapshot);
+            case "COMPLETED" -> findings(snapshot);
             default -> action("Interview needs attention", "attention", "View interview status", sessionHref, true, false);
         };
     }

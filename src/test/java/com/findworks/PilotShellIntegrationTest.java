@@ -1286,6 +1286,30 @@ class PilotShellIntegrationTest {
     }
 
     @Test
+    void finishing_an_interview_completes_it_and_extracts_saved_findings_for_review() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var missionId = submitMission(access, UUID.randomUUID()).path("mission_id").asText();
+        approveMission(access, missionId, 1);
+        var participant = beginInterview(access, missionId, "finished-findings@example.com");
+
+        mockMvc.perform(post("/interview/complete").session(participant.session()).cookie(participant.cookie())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().is3xxRedirection());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForMap(
+                        "select state,extraction_state from interview_sessions where id=?", participant.sessionId()))
+                .containsEntry("state", "COMPLETED")
+                .containsEntry("extraction_state", "PENDING");
+
+        mockMvc.perform(post("/test/extraction/run-once"))
+                .andExpect(status().isOk()).andExpect(content().json("{\"event\":\"findings_ready\"}"));
+        mockMvc.perform(get("/app/findings/{sessionId}", participant.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Ready for review")));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from findings_packages where session_id=?", Integer.class, participant.sessionId())).isEqualTo(1);
+    }
+
+    @Test
     void completed_interview_extracts_reviewable_evidence_backed_findings_and_publishes_exact_package() throws Exception {
         var access = authorizeHarness("findworks:read findworks:write");
         var submitted = submitMission(access, UUID.randomUUID());

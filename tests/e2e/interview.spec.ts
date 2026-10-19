@@ -195,7 +195,7 @@ test('answer, adaptive structured follow-up, completion, and findings review', a
   await expect(page.getByText('Package Version 1')).toBeVisible();
 });
 
-test('uncertainty, ownership, clarification, pause, and early ending stay honest', async ({ browser, request }) => {
+test('uncertainty, ownership, clarification, pause, and finishing stay honest', async ({ browser, request }) => {
   const unknownData = await fixture(request, 'unknown@example.com');
   const unknown = await browser.newPage();
   await begin(unknown, unknownData);
@@ -305,8 +305,9 @@ test('uncertainty, ownership, clarification, pause, and early ending stay honest
   await expect(pause.getByRole('heading', { name: 'Your place is saved' })).toBeFocused();
   await pause.getByRole('button', { name: 'Resume interview' }).click();
   await expect(pause.getByRole('heading', { name: 'Walk me through the last mismatch you resolved.' })).toBeVisible();
-  await pause.getByRole('button', { name: 'End here' }).click();
+  await pause.getByRole('button', { name: 'Finish interview' }).click();
   await expect(pause.getByRole('heading', { name: 'Thank you' })).toBeVisible();
+  await request.post('/test/extraction/run-once');
   await pause.close();
 
   const review = await browser.newPage();

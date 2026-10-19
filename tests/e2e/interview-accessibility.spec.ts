@@ -87,7 +87,7 @@ test('accessibility tree exposes one announced surface from initial Question thr
   await expectControl(page, 'button', 'Please clarify', { disabled: undefined });
   await expectControl(page, 'button', 'Pause and leave', { disabled: undefined });
   await expectControl(page, 'button', 'This feels uncomfortable', { disabled: undefined });
-  await expectControl(page, 'button', 'End here', { disabled: undefined });
+  await expectControl(page, 'button', 'Finish interview', { disabled: undefined });
   await expectControl(page, 'DisclosureTriangle', 'Someone else owns this', { expanded: false });
 
   await page.getByLabel('Your answer in your own words').fill('The finance analyst checks the imported amount against the source ledger.');
@@ -158,8 +158,8 @@ test('keyboard-only traversal reaches long-session correction, editor, and appen
 
 test('keyboard-only traversal reaches lifecycle actions after a long transcript', async ({ page, request }) => {
   const lifecycleStates = [
-    { state: 'PAUSED', heading: 'Your place is saved', actions: ['Resume interview', 'End here'] },
-    { state: 'RUNTIME_FAILED', heading: 'We couldn’t prepare the next question', actions: ['Try again', 'End the interview here'] },
+    { state: 'PAUSED', heading: 'Your place is saved', actions: ['Resume interview', 'Finish interview'] },
+    { state: 'RUNTIME_FAILED', heading: 'We couldn’t prepare the next question', actions: ['Try again', 'Finish interview'] },
     { state: 'AWAITING_CONFIRMATION', heading: 'Ready to finish?', actions: ['Confirm and finish'] },
     { state: 'UNAVAILABLE', heading: 'This interview can’t continue right now', actions: ['privacy@findworks.test'] },
   ] as const;
@@ -199,7 +199,7 @@ test('accessibility tree keeps lifecycle states singular and revision mode expos
       heading: 'Your place is saved',
       controls: [
         { role: 'button', name: 'Resume interview' },
-        { role: 'button', name: 'End here' },
+        { role: 'button', name: 'Finish interview' },
       ],
     },
     {
@@ -207,7 +207,7 @@ test('accessibility tree keeps lifecycle states singular and revision mode expos
       heading: 'We couldn’t prepare the next question',
       controls: [
         { role: 'button', name: 'Try again' },
-        { role: 'button', name: 'End the interview here' },
+        { role: 'button', name: 'Finish interview' },
       ],
     },
     {

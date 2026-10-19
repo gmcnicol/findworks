@@ -64,7 +64,7 @@ public class InterviewAdminController {
         model.addAttribute("interview", session);
         model.addAttribute("canReissue", OPEN_STATES.contains(session.state()));
         model.addAttribute("canTerminate", OPEN_STATES.contains(session.state()) && !session.state().equals("NOT_STARTED"));
-        model.addAttribute("findingsAvailable", Set.of("COMPLETED", "ENDED_EARLY").contains(session.state()));
+        model.addAttribute("findingsAvailable", session.state().equals("COMPLETED"));
         model.addAttribute("explanation", explanation(session));
         return "interview-admin";
     }
@@ -78,7 +78,7 @@ public class InterviewAdminController {
             case "PAUSED" -> "The interviewee’s place is saved. They can return to /interview in their authorised browser.";
             case "RUNTIME_FAILED" -> "Accepted answers are safe. The interviewee can retry the failed turn without repeating an answer.";
             case "TERMINATED" -> "Access is revoked. Existing Evidence remains attached to this Discovery.";
-            case "COMPLETED", "ENDED_EARLY" -> "The interview has ended. Continue with the saved findings and follow-up.";
+            case "COMPLETED" -> "The interview is complete. Continue with the saved findings and follow-up.";
             default -> "The interviewee can return in their authorised browser and continue from the current question.";
         };
     }

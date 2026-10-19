@@ -14,7 +14,7 @@
         <p class="state-support" th:unless="${clerkEnabled}">Development browser access lasts seven days (168 hours). If it expires or you change browsers, ask the Investigator to reissue access. Your responses remain saved.</p>
         <div class="state-actions">
             <form method="post" th:action="@{${interviewBase + '/resume'}}"><button class="button" type="submit">Resume interview</button></form>
-            <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button class="button secondary" type="submit">End here</button></form>
+            <form method="post" th:action="@{${interviewBase + '/complete'}}"><button class="button secondary" type="submit">Finish interview</button></form>
         </div>
     </section>
     <th:block th:replace="~{fragments/interview :: transcript}"></th:block>

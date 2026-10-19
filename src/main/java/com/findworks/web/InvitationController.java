@@ -112,7 +112,7 @@ public class InvitationController {
                             rs.getString(3), rs.getInt(4), rs.getString(5), rs.getString(6))).optional();
             UUID sessionId;
             if (existing.isPresent()) {
-                if (java.util.Set.of("COMPLETED", "ENDED_EARLY", "TERMINATED").contains(existing.get().state())) {
+                if (java.util.Set.of("COMPLETED", "TERMINATED").contains(existing.get().state())) {
                     throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "This Interview Session has ended");
                 }
                 var previous = existing.get();
@@ -325,7 +325,7 @@ public class InvitationController {
             return "interview-confirmation";
         }
         if (view.state().equals("RUNTIME_FAILED")) return "interview-runtime-failed";
-        if (view.state().equals("COMPLETED") || view.state().equals("ENDED_EARLY")) return "interview-complete";
+        if (view.state().equals("COMPLETED")) return "interview-complete";
         return "interview-unavailable";
     }
 
@@ -675,10 +675,10 @@ public class InvitationController {
         return "redirect:/interview";
     }
 
-    @PostMapping({"/interview/end-early", "/interview/{sessionId}/end-early"})
-    String endEarly(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
+    @PostMapping({"/interview/complete", "/interview/{sessionId}/complete"})
+    String complete(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
-        db.sql("update interview_sessions set state='ENDED_EARLY',completed_at=now(),revision=revision+1 where id=:session and state in ('ACTIVE','PAUSED','RUNTIME_FAILED')")
+        db.sql("update interview_sessions set state='COMPLETED',completed_at=now(),revision=revision+1 where id=:session and state in ('ACTIVE','PAUSED','RUNTIME_FAILED')")
                 .param("session", view.sessionId()).update();
         return "redirect:/interview";
     }
