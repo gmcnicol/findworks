@@ -14,16 +14,18 @@
         <nav class="breadcrumbs" aria-label="Breadcrumb"><a th:href="@{/app/findings}">Findings</a><span aria-hidden="true">/</span><span>Review</span></nav>
 
         <header class="page-header">
-            <p class="eyebrow" th:text="${findingsSession.state() == 'COMPLETED' ? 'Findings package' : 'Interview record'}">Findings package</p>
-            <h1 th:text="${findingsSession.state() == 'COMPLETED' ? 'Review findings' : 'Review saved interview'}">Review findings</h1>
+            <p class="eyebrow" th:text="${showTranscript ? 'Interview record' : 'Findings package'}">Findings package</p>
+            <h1 th:text="${showTranscript ? 'Interview transcript' : 'Review findings'}">Review findings</h1>
             <div class="page-header-status">
                 <span class="status-label" th:classappend="' status-' + ${findingsStatus.tone()}" th:text="${findingsStatus.label()}">Status</span>
                 <form th:if="${findingsSession.extractionState() == 'FAILED'}" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/retry'}"><button class="button compact">Retry extraction</button></form>
+                <a class="button secondary compact" th:if="${package != null and showTranscript}" th:href="@{'/app/findings/' + ${findingsSession.id()}}">Review findings</a>
+                <a class="button secondary compact" th:if="${package != null and !showTranscript}" th:href="@{'/app/findings/' + ${findingsSession.id()}(view='transcript')}">View full transcript</a>
             </div>
         </header>
 
-        <section class="review-section" aria-labelledby="transcript-heading">
-            <h2 id="transcript-heading">Interview transcript</h2>
+        <section class="review-section" aria-labelledby="transcript-heading" th:if="${showTranscript}">
+            <h2 id="transcript-heading">Accepted questions and answers</h2>
             <p>The accepted questions and answers remain available here independently of Findings extraction.</p>
             <p class="subtle" th:if="${#lists.isEmpty(transcript)}">No interview questions were recorded.</p>
             <ol class="transcript-list" th:unless="${#lists.isEmpty(transcript)}">
@@ -38,7 +40,7 @@
             </ol>
         </section>
 
-        <section class="findings-package" id="findings-package" th:fragment="findingsPackage" th:if="${package != null}" aria-label="Findings package">
+        <section class="findings-package" id="findings-package" th:fragment="findingsPackage" th:if="${package != null and !showTranscript}" aria-label="Findings package">
             <div class="package-summary">
                 <p><strong th:text="'Package Version ' + ${package.version()}">Package Version 1</strong></p>
                 <p th:text="'Decision · ' + ${package.state()}">Decision · READY</p>
@@ -74,8 +76,7 @@
                             <div><dt>Answer evidence</dt><dd><blockquote th:text="${source.quote()}">Source quotation</blockquote></dd></div>
                         </dl>
                         <details>
-                            <summary>Open full answer and provenance</summary>
-                            <p th:text="${source.answer()}">Full answer</p>
+                            <summary>Open provenance</summary>
                             <p class="subtle"><span th:text="${source.participant()}">Participant</span> · <time th:text="${source.evidenceAt()}">Time</time> · characters <span th:text="${source.startOffset()}">0</span>–<span th:text="${source.endOffset()}">0</span></p>
                         </details>
                     </div>

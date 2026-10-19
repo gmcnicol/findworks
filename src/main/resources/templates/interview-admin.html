@@ -39,7 +39,7 @@
         <section class="task-section" th:if="${interview.answerCount() > 0}">
             <h2>Saved interview transcript</h2>
             <p>Accepted questions and answers remain available throughout the Session lifecycle.</p>
-            <a class="button secondary" th:href="${'/app/findings/' + interview.id() + '#transcript-heading'}">Review saved transcript</a>
+            <a class="button secondary" th:href="${'/app/findings/' + interview.id() + '?view=transcript#transcript-heading'}">Review saved transcript</a>
         </section>
 
         <section class="task-section" th:if="${findingsAvailable}">

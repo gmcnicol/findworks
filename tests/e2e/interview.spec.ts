@@ -159,18 +159,22 @@ test('answer, adaptive structured follow-up, completion, and findings review', a
 
   await signIn(page);
   await page.goto(`/app/findings/${data.session_id}`);
-  await expect(page.getByRole('heading', { name: 'Review findings' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Interview transcript', level: 1 })).toBeVisible();
   await expect(page.getByText('Extraction pending')).toBeVisible();
   await request.post('/test/extraction/run-once');
   await page.reload();
+  await expect(page.getByRole('heading', { name: 'Review findings' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Interview transcript', level: 1 })).toHaveCount(0);
+  await expect(page.getByText('What does the finance analyst check in the source ledger?', { exact: true })).toHaveCount(1);
   const finding = page.locator('.finding').filter({ has: page.getByRole('button', { name: 'Accept', exact: true }) });
   const sourceContext = finding.locator('.source-context');
   await expect(sourceContext.getByText('Question asked')).toBeVisible();
   await expect(sourceContext.getByText('What does the finance analyst check in the source ledger?')).toBeVisible();
   await expect(sourceContext.getByText('Answer evidence')).toBeVisible();
   await expect(sourceContext.getByText('Only unmatched entries need approval.', { exact: false })).toBeVisible();
-  await finding.getByText('Open full answer and provenance').click();
-  await expect(finding.locator('details p').first()).toContainText('Only unmatched entries need approval.');
+  await finding.getByText('Open provenance').click();
+  await expect(finding.locator('details p').first()).toContainText('characters');
+  await expect(page.getByRole('link', { name: 'View full transcript' })).toBeVisible();
 
   const acceptFinding = page.getByRole('button', { name: 'Accept', exact: true });
   const reviewPosition = await acceptFinding.evaluate((button) => {

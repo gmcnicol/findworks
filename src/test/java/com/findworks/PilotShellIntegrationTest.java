@@ -1353,10 +1353,21 @@ class PilotShellIntegrationTest {
         var review = mockMvc.perform(get("/app/findings/{sessionId}", participant.sessionId()).session(access.session()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("A mismatch needs Gareth&#39;s approval")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Open full answer and provenance")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Open provenance")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Question asked")))
                 .andReturn().getResponse().getContentAsString();
-        org.assertj.core.api.Assertions.assertThat(review).doesNotContain("findings@example.com");
+        org.assertj.core.api.Assertions.assertThat(review)
+                .doesNotContain("<h2 id=\"transcript-heading\">", "findings@example.com")
+                .contains("View full transcript");
+        var transcript = mockMvc.perform(get("/app/findings/{sessionId}", participant.sessionId())
+                        .session(access.session()).param("view", "transcript"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Interview transcript")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("A mismatch needs Gareth&#39;s approval")))
+                .andReturn().getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(transcript)
+                .doesNotContain("finding-actions", "Accept exact package")
+                .contains("Review findings");
 
         var knowledgeId = jdbcTemplate.queryForObject("select id from knowledge_items where package_id=(select id from findings_packages where session_id=?)", UUID.class, participant.sessionId());
         var packageIdForLinks = jdbcTemplate.queryForObject("select id from findings_packages where session_id=?", UUID.class, participant.sessionId());
@@ -1546,10 +1557,10 @@ class PilotShellIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Review saved transcript")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
-                        "/app/findings/" + first.sessionId() + "#transcript-heading")));
+                        "/app/findings/" + first.sessionId() + "?view=transcript#transcript-heading")));
         mockMvc.perform(get("/app/findings/{sessionId}", first.sessionId()).session(access.session()))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Review saved interview")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Interview transcript")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "Interview in progress · transcript saved")));
 

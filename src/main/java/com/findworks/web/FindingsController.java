@@ -46,12 +46,13 @@ public class FindingsController {
     }
 
     @GetMapping("/app/findings/{sessionId}")
-    String findings(@PathVariable UUID sessionId, Authentication authentication, Model model, CsrfToken csrfToken) {
+    String findings(@PathVariable UUID sessionId, Authentication authentication, Model model,
+                    @RequestParam(name = "view", defaultValue = "findings") String view, CsrfToken csrfToken) {
         csrfToken.getToken();
-        return findingsModel(sessionId, authentication, model);
+        return findingsModel(sessionId, authentication, model, "transcript".equals(view));
     }
 
-    private String findingsModel(UUID sessionId, Authentication authentication, Model model) {
+    private String findingsModel(UUID sessionId, Authentication authentication, Model model, boolean transcriptOnly) {
         model.addAttribute("investigator", currentInvestigator.require(authentication));
         var session = ownedSession(sessionId, authentication);
         model.addAttribute("findingsSession", session);
@@ -64,10 +65,13 @@ public class FindingsController {
         model.addAttribute("package", findingsPackage);
         model.addAttribute("findingsStatus", findingsStatuses.project(session.state(), session.extractionState(),
                 findingsPackage == null ? null : findingsPackage.state()));
-        var reviewReadiness = findingsPackage == null ? new ReviewReadiness(0, 0) : reviewReadiness(sessionId);
+        boolean showTranscript = findingsPackage == null || transcriptOnly;
+        model.addAttribute("showTranscript", showTranscript);
+        model.addAttribute("transcript", showTranscript ? transcript(sessionId) : List.of());
+        if (showTranscript) return "findings-review";
+        var reviewReadiness = reviewReadiness(sessionId);
         model.addAttribute("requiredOutcomesNeedingReview", reviewReadiness.needingReview());
         model.addAttribute("openRequiredOutcomes", reviewReadiness.open());
-        model.addAttribute("transcript", transcript(sessionId));
         var groups = new LinkedHashMap<UUID, ResultGroup>();
         db.sql("""
                 select r.id,i.position,i.gap,i.required,r.coverage
@@ -344,7 +348,7 @@ public class FindingsController {
     private String mutationResult(UUID sessionId, boolean datastarRequest, Authentication authentication,
                                   Model model, HttpServletResponse response) {
         if (!datastarRequest) return "redirect:/app/findings/" + sessionId;
-        findingsModel(sessionId, authentication, model);
+        findingsModel(sessionId, authentication, model, false);
         response.setContentType(MediaType.TEXT_HTML_VALUE);
         response.setHeader("Datastar-Selector", "#findings-package");
         response.setHeader("Datastar-Mode", "outer");
