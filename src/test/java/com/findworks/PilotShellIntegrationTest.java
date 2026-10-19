@@ -1353,7 +1353,7 @@ class PilotShellIntegrationTest {
         var review = mockMvc.perform(get("/app/findings/{sessionId}", participant.sessionId()).session(access.session()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("A mismatch needs Gareth&#39;s approval")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Open source context")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Open full answer and provenance")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Question asked")))
                 .andReturn().getResponse().getContentAsString();
         org.assertj.core.api.Assertions.assertThat(review).doesNotContain("findings@example.com");
