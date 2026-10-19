@@ -1,5 +1,6 @@
 package com.findworks.web;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,13 +32,16 @@ public class FindingsController {
     private final CurrentInvestigatorService currentInvestigator;
     private final TransactionTemplate transactions;
     private final boolean testSupport;
+    private final FindingsStatusProjector findingsStatuses;
 
     public FindingsController(JdbcClient db, CurrentInvestigatorService currentInvestigator, TransactionTemplate transactions,
-                              @Value("${findworks.test-support:false}") boolean testSupport) {
+                              @Value("${findworks.test-support:false}") boolean testSupport,
+                              FindingsStatusProjector findingsStatuses) {
         this.db = db;
         this.currentInvestigator = currentInvestigator;
         this.transactions = transactions;
         this.testSupport = testSupport;
+        this.findingsStatuses = findingsStatuses;
     }
 
     @GetMapping("/app/findings/{sessionId}")
@@ -52,9 +56,12 @@ public class FindingsController {
                 """).param("session", sessionId).query((rs, row) -> new PackageView(rs.getObject(1, UUID.class), rs.getInt(2),
                 (Integer) rs.getObject(3), rs.getString(4), rs.getString(5))).optional().orElse(null);
         model.addAttribute("package", findingsPackage);
+        model.addAttribute("findingsStatus", findingsStatuses.project(session.state(), session.extractionState(),
+                findingsPackage == null ? null : findingsPackage.state()));
         var reviewReadiness = findingsPackage == null ? new ReviewReadiness(0, 0) : reviewReadiness(sessionId);
         model.addAttribute("requiredOutcomesNeedingReview", reviewReadiness.needingReview());
         model.addAttribute("openRequiredOutcomes", reviewReadiness.open());
+        model.addAttribute("transcript", transcript(sessionId));
         var groups = new LinkedHashMap<UUID, ResultGroup>();
         db.sql("""
                 select r.id,i.position,i.gap,i.required,r.coverage
@@ -67,42 +74,45 @@ public class FindingsController {
                         rs.getObject(1, UUID.class), rs.getInt(2), rs.getString(3), rs.getBoolean(4), rs.getString(5),
                         new ArrayList<>(), new ArrayList<>())).list().forEach(group -> groups.put(group.id(), group));
         var knowledgeRows = db.sql("""
-                select k.result_id,k.id,v.claim,v.category,v.review_state,e.id,e.exact_text,ke.quotation,
+                select k.result_id,k.id,v.claim,v.category,v.review_state,e.id,e.exact_text,q.text,ke.quotation,
                        e.created_at,p.name,ke.start_offset,ke.end_offset
                 from knowledge_items k join findings_packages fp on fp.id=k.package_id and fp.current_version=k.package_version
                 join knowledge_versions v on v.knowledge_id=k.id and v.version=k.current_version
                 left join knowledge_evidence ke on ke.knowledge_id=k.id and ke.knowledge_version=v.version
                 left join evidence e on e.id=ke.evidence_id
+                left join questions q on q.id=e.question_id
                 left join participants p on p.id=e.participant_id
                 where fp.session_id=:session order by k.id,e.created_at,e.id
                 """).param("session", sessionId).query((rs, row) -> new KnowledgeRow(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getString(3), rs.getString(4), rs.getString(5),
-                        rs.getObject(6, UUID.class), rs.getString(7), rs.getString(8), rs.getObject(9),
-                        rs.getString(10), (Integer) rs.getObject(11), (Integer) rs.getObject(12))).list();
+                        rs.getObject(6, UUID.class), rs.getString(7), rs.getString(8), rs.getString(9), rs.getObject(10),
+                        rs.getString(11), (Integer) rs.getObject(12), (Integer) rs.getObject(13))).list();
         var knowledge = new LinkedHashMap<UUID, KnowledgeView>();
         for (var row : knowledgeRows) {
             var item = knowledge.computeIfAbsent(row.id(), id -> new KnowledgeView(
                     id, row.resultId(), row.claim(), row.category(), row.reviewState(), new ArrayList<>()));
-            if (row.evidenceId() != null) item.sources().add(new KnowledgeSource(row.evidenceId(), row.answer(), row.quote(),
-                    row.evidenceAt(), row.participant(), row.startOffset(), row.endOffset()));
+            if (row.evidenceId() != null) item.sources().add(new KnowledgeSource(row.evidenceId(), row.question(), row.answer(),
+                    row.quote(), row.evidenceAt(), row.participant(), row.startOffset(), row.endOffset()));
         }
         knowledge.values().forEach(item -> {
             var group = groups.get(item.resultId());
             if (group != null) group.knowledge().add(item);
         });
         var unresolved = db.sql("""
-                select u.result_id,u.id,u.kind,u.summary,u.reason,u.owner,u.acknowledged,e.id,e.exact_text,e.created_at,p.name,
+                select u.result_id,u.id,u.kind,u.summary,u.reason,u.owner,u.acknowledged,e.id,e.exact_text,q.text,e.created_at,p.name,
                        (select count(*) from conflict_members cm where cm.conflict_id=u.id)
                 from unresolved u join investigation_results r on r.id=u.result_id
                 join findings_packages fp on fp.session_id=r.session_id
                 join package_results pr on pr.package_id=fp.id and pr.package_version=fp.current_version and pr.result_id=r.id
                 left join lateral(select evidence_id from unresolved_evidence where unresolved_id=u.id order by evidence_id limit 1) ue on true
                 left join evidence e on e.id=coalesce(ue.evidence_id,u.evidence_id)
+                left join questions q on q.id=e.question_id
                 left join participants p on p.id=e.participant_id
                 where r.session_id=:session order by u.id
                 """).param("session", sessionId).query((rs, row) -> new UnresolvedView(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6),
-                        rs.getBoolean(7), rs.getObject(8, UUID.class), rs.getString(9), rs.getObject(10), rs.getString(11), rs.getInt(12))).list();
+                        rs.getBoolean(7), rs.getObject(8, UUID.class), rs.getString(9), rs.getString(10), rs.getObject(11),
+                        rs.getString(12), rs.getInt(13))).list();
         unresolved.forEach(item -> {
             var group = groups.get(item.resultId());
             if (group != null) group.unresolved().add(item);
@@ -335,6 +345,25 @@ public class FindingsController {
         return "findings-review :: findingsPackage";
     }
 
+    private List<TranscriptQuestion> transcript(UUID sessionId) {
+        var questions = new LinkedHashMap<UUID, TranscriptQuestion>();
+        db.sql("""
+                select q.id,q.sequence,q.text,e.id,e.exact_text,e.created_at,e.revises
+                from questions q
+                left join evidence e on e.question_id=q.id and e.participant_id is not null
+                where q.session_id=:session
+                order by q.sequence,e.created_at,e.id
+                """).param("session", sessionId).query((rs, row) -> new TranscriptRow(
+                rs.getObject(1, UUID.class), rs.getInt(2), rs.getString(3), rs.getObject(4, UUID.class),
+                rs.getString(5), rs.getObject(6, OffsetDateTime.class), rs.getObject(7, UUID.class))).list().forEach(row -> {
+            var question = questions.computeIfAbsent(row.questionId(), id -> new TranscriptQuestion(
+                    row.sequence(), row.question(), new ArrayList<>()));
+            if (row.evidenceId() != null) question.answers().add(new TranscriptAnswer(
+                    row.evidenceId(), row.answer(), row.answeredAt(), row.revises() != null));
+        });
+        return questions.values().stream().toList();
+    }
+
     private ReviewReadiness reviewReadiness(UUID sessionId) {
         return db.sql("""
                 with required_results as (
@@ -373,16 +402,17 @@ public class FindingsController {
     private OwnedSession ownedSession(UUID sessionId, Authentication authentication) {
         var investigator = currentInvestigator.require(authentication);
         return db.sql("""
-                select s.id,s.organization_id,s.discovery_id,s.extraction_state
+                select s.id,s.organization_id,s.discovery_id,s.state,s.extraction_state
                 from interview_sessions s join discoveries d on d.id=s.discovery_id and d.organization_id=s.organization_id
-                where s.id=:session and s.deleted_at is null and d.owner_membership_id=:member and d.organization_id=:organization and d.state='ACTIVE'
+                where s.id=:session and s.deleted_at is null and d.deleted_at is null
+                  and d.owner_membership_id=:member and d.organization_id=:organization
                 """).param("session", sessionId).param("member", investigator.membershipId()).param("organization", investigator.organizationId())
                 .query((rs, row) -> new OwnedSession(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
-                        rs.getObject(3, UUID.class), rs.getString(4))).optional()
+                        rs.getObject(3, UUID.class), rs.getString(4), rs.getString(5))).optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
-    record OwnedSession(UUID id, UUID organizationId, UUID discoveryId, String extractionState) {}
+    record OwnedSession(UUID id, UUID organizationId, UUID discoveryId, String state, String extractionState) {}
     record PackageView(UUID id, int version, Integer acceptedVersion, String state, String notes) {}
     record ResultGroup(UUID id, int position, String gap, boolean required, String coverage,
                        List<KnowledgeView> knowledge, List<UnresolvedView> unresolved) {
@@ -405,16 +435,21 @@ public class FindingsController {
         }
     }
     record KnowledgeView(UUID id, UUID resultId, String claim, String category, String reviewState, List<KnowledgeSource> sources) {}
-    record KnowledgeSource(UUID evidenceId, String answer, String quote, Object evidenceAt, String participant,
+    record KnowledgeSource(UUID evidenceId, String question, String answer, String quote, Object evidenceAt, String participant,
                            Integer startOffset, Integer endOffset) {}
     record UnresolvedView(UUID resultId, UUID id, String kind, String summary, String reason, String owner, boolean acknowledged,
-                          UUID evidenceId, String answer, Object evidenceAt, String participant, int conflictMemberCount) {}
+                          UUID evidenceId, String answer, String question, Object evidenceAt, String participant,
+                          int conflictMemberCount) {}
     private record Extractable(UUID id, UUID organizationId) {}
     private record KnowledgeProposal(UUID id, UUID resultId, String category, String summary) {}
     private record SourceEvidence(UUID id, String text) {}
     private record KnowledgeRow(UUID resultId, UUID id, String claim, String category, String reviewState, UUID evidenceId, String answer,
-                                String quote, Object evidenceAt, String participant, Integer startOffset, Integer endOffset) {}
+                                String question, String quote, Object evidenceAt, String participant, Integer startOffset, Integer endOffset) {}
     private record CurrentKnowledge(int version, String category, String claim) {}
     private record PackageDecision(UUID id, String state) {}
+    record TranscriptQuestion(int sequence, String question, List<TranscriptAnswer> answers) {}
+    record TranscriptAnswer(UUID evidenceId, String answer, OffsetDateTime answeredAt, boolean correction) {}
+    private record TranscriptRow(UUID questionId, int sequence, String question, UUID evidenceId, String answer,
+                                 OffsetDateTime answeredAt, UUID revises) {}
     private record ReviewReadiness(long needingReview, long open) {}
 }

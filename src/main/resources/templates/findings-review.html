@@ -14,13 +14,29 @@
         <nav class="breadcrumbs" aria-label="Breadcrumb"><a th:href="@{/app/findings}">Findings</a><span aria-hidden="true">/</span><span>Review</span></nav>
 
         <header class="page-header">
-            <p class="eyebrow">Findings package</p>
-            <h1>Review findings</h1>
+            <p class="eyebrow" th:text="${findingsSession.state() == 'COMPLETED' ? 'Findings package' : 'Interview record'}">Findings package</p>
+            <h1 th:text="${findingsSession.state() == 'COMPLETED' ? 'Review findings' : 'Review saved interview'}">Review findings</h1>
             <div class="page-header-status">
-                <span class="status-label" th:classappend="${findingsSession.extractionState() == 'FAILED' ? ' status-attention' : findingsSession.extractionState() == 'PENDING' ? ' status-waiting' : ' status-active'}" th:text="${findingsSession.extractionState() == 'PENDING' ? 'Extraction pending' : findingsSession.extractionState() == 'FAILED' ? 'Extraction failed · Retry is safe' : 'Ready for review'}">Status</span>
+                <span class="status-label" th:classappend="' status-' + ${findingsStatus.tone()}" th:text="${findingsStatus.label()}">Status</span>
                 <form th:if="${findingsSession.extractionState() == 'FAILED'}" method="post" th:action="@{'/app/findings/' + ${findingsSession.id()} + '/retry'}"><button class="button compact">Retry extraction</button></form>
             </div>
         </header>
+
+        <section class="review-section" aria-labelledby="transcript-heading">
+            <h2 id="transcript-heading">Interview transcript</h2>
+            <p>The accepted questions and answers remain available here independently of Findings extraction.</p>
+            <p class="subtle" th:if="${#lists.isEmpty(transcript)}">No interview questions were recorded.</p>
+            <ol class="transcript-list" th:unless="${#lists.isEmpty(transcript)}">
+                <li th:each="turn : ${transcript}">
+                    <p><strong th:text="${turn.question()}">Question</strong></p>
+                    <p class="subtle" th:if="${#lists.isEmpty(turn.answers())}">No answer was submitted.</p>
+                    <div th:each="answer : ${turn.answers()}" th:id="'transcript-evidence-' + ${answer.evidenceId()}">
+                        <p th:text="${answer.answer()}">Answer</p>
+                        <p class="subtle"><span th:if="${answer.correction()}">Correction · </span><time th:text="${answer.answeredAt()}">Saved</time></p>
+                    </div>
+                </li>
+            </ol>
+        </section>
 
         <section class="findings-package" id="findings-package" th:fragment="findingsPackage" th:if="${package != null}" aria-label="Findings package">
             <div class="package-summary">
@@ -56,7 +72,10 @@
                         <blockquote th:text="${source.quote()}">Source quotation</blockquote>
                         <details>
                             <summary>Open source context</summary>
-                            <p th:text="${source.answer()}">Answer context</p>
+                            <dl class="review-fields source-context">
+                                <div><dt>Question asked</dt><dd th:text="${source.question() != null ? source.question() : 'Question unavailable for this Evidence'}">Question</dd></div>
+                                <div><dt>Answer given</dt><dd th:text="${source.answer()}">Answer</dd></div>
+                            </dl>
                             <p class="subtle"><span th:text="${source.participant()}">Participant</span> · <time th:text="${source.evidenceAt()}">Time</time> · characters <span th:text="${source.startOffset()}">0</span>–<span th:text="${source.endOffset()}">0</span></p>
                         </details>
                     </div>
@@ -82,7 +101,10 @@
                     <p th:if="${item.owner() != null}" th:text="'Owner: ' + ${item.owner()}">Owner</p>
                     <details th:if="${item.evidenceId() != null}">
                         <summary>Open source context</summary>
-                        <p th:text="${item.answer()}">Answer context</p>
+                        <dl class="review-fields source-context">
+                            <div><dt>Question asked</dt><dd th:text="${item.question() != null ? item.question() : 'Question unavailable for this Evidence'}">Question</dd></div>
+                            <div><dt>Answer given</dt><dd th:text="${item.answer()}">Answer</dd></div>
+                        </dl>
                         <p class="subtle"><span th:text="${item.participant()}">Participant</span> · <time th:text="${item.evidenceAt()}">Time</time></p>
                     </details>
                     <div th:id="'unresolved-review-' + ${item.id()}">

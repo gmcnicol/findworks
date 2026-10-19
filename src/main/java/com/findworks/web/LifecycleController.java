@@ -29,16 +29,18 @@ public class LifecycleController {
     private final String operatorToken;
     private final MissionWorkQuery missionWork;
     private final DeletionService deletion;
+    private final InterviewSessionLifecycle sessionLifecycle;
 
     LifecycleController(JdbcClient db, CurrentInvestigatorService current, TransactionTemplate transactions,
                         @Value("${findworks.operator-token}") String operatorToken, MissionWorkQuery missionWork,
-                        DeletionService deletion) {
+                        DeletionService deletion, InterviewSessionLifecycle sessionLifecycle) {
         this.db = db;
         this.current = current;
         this.transactions = transactions;
         this.operatorToken = operatorToken;
         this.missionWork = missionWork;
         this.deletion = deletion;
+        this.sessionLifecycle = sessionLifecycle;
     }
 
     @GetMapping("/app/discoveries/{discoveryId}")
@@ -48,7 +50,7 @@ public class LifecycleController {
         var view = db.sql("""
                 select d.id,d.title,d.objective
                 from discoveries d
-                where d.id=:id and d.organization_id=:organization and d.owner_membership_id=:member and d.state='ACTIVE'
+                where d.id=:id and d.organization_id=:organization and d.owner_membership_id=:member and d.deleted_at is null
                 """).param("id", discoveryId).param("organization", investigator.organizationId()).param("member", investigator.membershipId())
                 .query((rs, row) -> new DiscoveryView(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3))).optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -115,10 +117,8 @@ public class LifecycleController {
         var organization = db.sql("select organization_id from interview_sessions where id=:id")
                 .param("id", sessionId).query(UUID.class).optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         transactions.executeWithoutResult(status -> {
-            db.sql("update interview_sessions set state='TERMINATED',revision=revision+1 where id=:id and state<>'TERMINATED'").param("id", sessionId).update();
-            db.sql("update access_grants set revoked_at=now() where session_id=:id and revoked_at is null").param("id", sessionId).update();
-            db.sql("update invitations set state='REVOKED',revoked_at=now() where session_id=:id and state<>'REVOKED'").param("id", sessionId).update();
-            audit(organization, null, "INTERVIEW_TERMINATED", "INTERVIEW_SESSION", sessionId, "SUCCEEDED");
+            sessionLifecycle.terminateAccess(sessionId);
+            audit(organization, null, "INTERVIEW_ACCESS_TERMINATED", "INTERVIEW_SESSION", sessionId, "SUCCEEDED");
         });
         return ResponseEntity.ok(Map.of("terminated", sessionId));
     }

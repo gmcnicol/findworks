@@ -142,6 +142,26 @@ class PilotShellIntegrationTest {
     }
 
     @Test
+    void owned_records_remain_visible_across_investigator_web_and_harness_paths_regardless_of_status() throws Exception {
+        var access = authorizeHarness("findworks:read findworks:write");
+        var submitted = submitMission(access, UUID.randomUUID());
+        var discoveryId = submitted.path("discovery_id").asText();
+        var missionId = submitted.path("mission_id").asText();
+        jdbcTemplate.update("update discoveries set state='UNAVAILABLE' where id=?", UUID.fromString(discoveryId));
+
+        mockMvc.perform(get("/app").session(access.session())).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Understand Ledgerling reconciliation")));
+        mockMvc.perform(get("/app/discoveries").session(access.session())).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(discoveryId)));
+        mockMvc.perform(get("/app/discoveries/{id}", discoveryId).session(access.session())).andExpect(status().isOk());
+        mockMvc.perform(get("/app/missions").session(access.session())).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(missionId)));
+        mockMvc.perform(get("/app/missions/{id}/review", missionId).session(access.session())).andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(mcpCall(access, "list_discoveries", "{\"contract_version\":1}").toString())
+                .contains(discoveryId);
+    }
+
+    @Test
     void returning_investigator_resumes_first_unreviewed_checkpoint_then_approval() throws Exception {
         var access = authorizeHarness("findworks:read findworks:write");
         var submitted = submitMission(access, UUID.randomUUID());
@@ -1334,6 +1354,7 @@ class PilotShellIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("A mismatch needs Gareth&#39;s approval")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Open source context")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Question asked")))
                 .andReturn().getResponse().getContentAsString();
         org.assertj.core.api.Assertions.assertThat(review).doesNotContain("findings@example.com");
 
@@ -1429,6 +1450,15 @@ class PilotShellIntegrationTest {
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().is3xxRedirection());
         mockMvc.perform(post("/test/extraction/run-once")).andExpect(status().isOk());
+        var unresolvedQuestion = jdbcTemplate.queryForObject(
+                "select q.text from questions q join evidence e on e.question_id=q.id where e.session_id=? limit 1",
+                String.class, participant.sessionId());
+        mockMvc.perform(get("/app/findings/{sessionId}", participant.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Question asked")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(unresolvedQuestion)))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Answer given")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("I don&#39;t know")));
 
         mockMvc.perform(post("/app/findings/{sessionId}/reject", participant.sessionId()).session(access.session())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
@@ -1512,6 +1542,16 @@ class PilotShellIntegrationTest {
                 .andExpect(status().isForbidden());
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "select count(*) from interview_sessions where mission_id=?", Integer.class, UUID.fromString(missionId))).isEqualTo(1);
+        mockMvc.perform(get("/app/interviews/{sessionId}", first.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Review saved transcript")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/app/findings/" + first.sessionId() + "#transcript-heading")));
+        mockMvc.perform(get("/app/findings/{sessionId}", first.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Review saved interview")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "Interview in progress · transcript saved")));
 
         var latest = tools.jackson.databind.json.JsonMapper.builder().build().readTree(
                 mockMvc.perform(get("/test/emails/latest").param("recipient", "recover@example.com"))
@@ -1527,7 +1567,33 @@ class PilotShellIntegrationTest {
                 "select exact_text from evidence where session_id=?", String.class, first.sessionId()))
                 .isEqualTo("This accepted answer must survive access recovery.");
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
-                "select state from interview_sessions where id=?", String.class, first.sessionId())).isEqualTo("TERMINATED");
+                "select state from interview_sessions where id=?", String.class, first.sessionId())).isEqualTo("COMPLETED");
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from pg_trigger where tgname='interview_sessions_completed_is_terminal'
+                """, Integer.class)).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select state from runtime_runs where session_id=?", String.class, first.sessionId()))
+                .isEqualTo("SUPERSEDED");
+        mockMvc.perform(post("/test/runtime/run-once").param("sessionId", first.sessionId().toString()))
+                .andExpect(status().isNoContent());
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select state from interview_sessions where id=?", String.class, first.sessionId())).isEqualTo("COMPLETED");
+        mockMvc.perform(get("/app/findings").session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/app/findings/" + first.sessionId())))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Extraction pending")));
+        mockMvc.perform(get("/app/interviews/{sessionId}", first.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Continue with findings")));
+        mockMvc.perform(get("/app/findings/{sessionId}", first.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Interview transcript")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("This accepted answer must survive access recovery.")));
+        mockMvc.perform(post("/test/extraction/run-once"))
+                .andExpect(status().isOk()).andExpect(content().json("{\"event\":\"findings_ready\"}"));
+        mockMvc.perform(get("/app/findings/{sessionId}", first.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Ready for review")));
 
         mockMvc.perform(get("/interview").session(first.session()).cookie(first.cookie())).andExpect(status().isForbidden());
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(

@@ -47,7 +47,7 @@ public class InterviewAdminController {
                 left join evidence e on e.session_id=s.id and e.participant_id is not null
                 left join findings_packages fp on fp.session_id=s.id
                 left join package_versions pv on pv.package_id=fp.id and pv.version=fp.current_version
-                where s.id=:session and s.deleted_at is null and d.state='ACTIVE'
+                where s.id=:session and s.deleted_at is null and d.deleted_at is null
                   and d.organization_id=:organization and d.owner_membership_id=:member
                 group by s.id,d.id,m.id,p.id,mv.state,pv.state
                 """).param("session", sessionId).param("organization", investigator.organizationId())
@@ -77,7 +77,6 @@ public class InterviewAdminController {
                     : "No valid invitation or browser access remains. Reissue access to continue.";
             case "PAUSED" -> "The interviewee’s place is saved. They can return to /interview in their authorised browser.";
             case "RUNTIME_FAILED" -> "Accepted answers are safe. The interviewee can retry the failed turn without repeating an answer.";
-            case "TERMINATED" -> "Access is revoked. Existing Evidence remains attached to this Discovery.";
             case "COMPLETED" -> "The interview is complete. Continue with the saved findings and follow-up.";
             default -> "The interviewee can return in their authorised browser and continue from the current question.";
         };

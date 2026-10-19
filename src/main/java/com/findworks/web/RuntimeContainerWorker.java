@@ -99,8 +99,14 @@ public class RuntimeContainerWorker {
     private Claim claim() {
         if (!db.sql("select pg_try_advisory_xact_lock(470058)").query(Boolean.class).single()) return null;
         db.sql("""
+                update runtime_runs r set state='SUPERSEDED',lease_until=null
+                where r.state in ('PENDING','RUNNING') and exists(
+                    select 1 from interview_sessions s where s.id=r.session_id and s.state='COMPLETED')
+                """).update();
+        db.sql("""
                 update interview_sessions set state='RUNTIME_FAILED'
-                where id in(select session_id from runtime_runs where state='RUNNING' and lease_until<now() and restart_count>=1)
+                where state<>'COMPLETED'
+                  and id in(select session_id from runtime_runs where state='RUNNING' and lease_until<now() and restart_count>=1)
                 """).update();
         db.sql("update runtime_runs set state='FAILED',lease_until=null,error_code='PROCESS_DIED',stable_event='runtime_failed' where state='RUNNING' and lease_until<now() and restart_count>=1").update();
         if (db.sql("select count(*) from runtime_runs where state='RUNNING' and lease_until>now()").query(Long.class).single() >= 2) return null;
@@ -153,7 +159,7 @@ public class RuntimeContainerWorker {
             } else {
                 db.sql("update runtime_runs set state='FAILED',lease_until=null,error_code=:code,stable_event='runtime_failed' where id=:id")
                         .param("code", code).param("id", runId).update();
-                db.sql("update interview_sessions set state='RUNTIME_FAILED' where id=(select session_id from runtime_runs where id=:id)")
+                db.sql("update interview_sessions set state='RUNTIME_FAILED' where state<>'COMPLETED' and id=(select session_id from runtime_runs where id=:id)")
                         .param("id", runId).update();
             }
             recordFailure(code);

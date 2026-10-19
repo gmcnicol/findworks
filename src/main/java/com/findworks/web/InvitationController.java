@@ -49,6 +49,7 @@ public class InvitationController {
     private final com.findworks.platform.config.ClerkProperties clerkProperties;
     private final org.springframework.beans.factory.ObjectProvider<ClerkInterviewAccess> accountAccess;
     private final HttpServletRequest currentRequest;
+    private final InterviewSessionLifecycle sessionLifecycle;
 
     public InvitationController(JdbcClient db, CurrentInvestigatorService currentInvestigator,
                                 TransactionTemplate transactions,
@@ -59,7 +60,8 @@ public class InvitationController {
                                 InterviewEventStream interviewEvents,
                                 com.findworks.platform.config.ClerkProperties clerkProperties,
                                 org.springframework.beans.factory.ObjectProvider<ClerkInterviewAccess> accountAccess,
-                                HttpServletRequest currentRequest) {
+                                HttpServletRequest currentRequest,
+                                InterviewSessionLifecycle sessionLifecycle) {
         this.db = db;
         this.currentInvestigator = currentInvestigator;
         this.transactions = transactions;
@@ -71,6 +73,7 @@ public class InvitationController {
         this.clerkProperties = clerkProperties;
         this.accountAccess = accountAccess;
         this.currentRequest = currentRequest;
+        this.sessionLifecycle = sessionLifecycle;
     }
 
     @PostMapping("/app/missions/{missionId}/invite")
@@ -93,7 +96,7 @@ public class InvitationController {
                     select d.id,m.organization_id
                     from missions m join discoveries d on d.id=m.discovery_id and d.organization_id=m.organization_id
                     where m.id=:mission and m.approved_version=:version
-                      and d.owner_membership_id=:member and d.organization_id=:organization and d.state='ACTIVE'
+                      and d.owner_membership_id=:member and d.organization_id=:organization and d.deleted_at is null
                     """).param("mission", missionId).param("version", version)
                     .param("member", investigator.membershipId()).param("organization", investigator.organizationId())
                     .query((rs, row) -> new ApprovedMission(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)))
@@ -112,7 +115,7 @@ public class InvitationController {
                             rs.getString(3), rs.getInt(4), rs.getString(5), rs.getString(6))).optional();
             UUID sessionId;
             if (existing.isPresent()) {
-                if (java.util.Set.of("COMPLETED", "TERMINATED").contains(existing.get().state())) {
+                if (existing.get().state().equals("COMPLETED")) {
                     throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "This Interview Session has ended");
                 }
                 var previous = existing.get();
@@ -651,8 +654,7 @@ public class InvitationController {
             });
             return "redirect:/interview";
         }
-        db.sql("update interview_sessions set state='COMPLETED',completed_at=now(),revision=revision+1 where id=:id")
-                .param("id", view.sessionId()).update();
+        sessionLifecycle.complete(view.sessionId());
         return "redirect:/interview";
     }
 
@@ -678,8 +680,9 @@ public class InvitationController {
     @PostMapping({"/interview/complete", "/interview/{sessionId}/complete"})
     String complete(@CookieValue(value = INTERVIEW_COOKIE, required = false) String token) {
         var view = participant(token).orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
-        db.sql("update interview_sessions set state='COMPLETED',completed_at=now(),revision=revision+1 where id=:session and state in ('ACTIVE','PAUSED','RUNTIME_FAILED')")
-                .param("session", view.sessionId()).update();
+        if (java.util.Set.of("ACTIVE", "PAUSED", "RUNTIME_FAILED").contains(view.state())) {
+            sessionLifecycle.complete(view.sessionId());
+        }
         return "redirect:/interview";
     }
 
@@ -701,14 +704,9 @@ public class InvitationController {
     String terminate(@PathVariable UUID sessionId, Authentication authentication) {
         var owned = ownedSession(sessionId, authentication);
         transactions.executeWithoutResult(status -> {
-            db.sql("update interview_sessions set state='TERMINATED',revision=revision+1 where id=:session and state<>'TERMINATED'")
-                    .param("session", sessionId).update();
-            db.sql("update access_grants set revoked_at=now() where session_id=:session and revoked_at is null")
-                    .param("session", sessionId).update();
-            db.sql("update invitations set state='REVOKED',revoked_at=now() where session_id=:session and state<>'REVOKED'")
-                    .param("session", sessionId).update();
+            sessionLifecycle.terminateAccess(sessionId);
             audit(owned.organizationId(), "INVESTIGATOR", currentInvestigator.require(authentication).membershipId(),
-                    "INTERVIEW_TERMINATED", sessionId, "SUCCEEDED");
+                    "INTERVIEW_ACCESS_TERMINATED", sessionId, "SUCCEEDED");
         });
         return "redirect:/app/missions/" + owned.missionId() + "/review";
     }
@@ -727,10 +725,17 @@ public class InvitationController {
 
     private String processRuntimeNext(UUID sessionId) {
         return transactions.execute(status -> {
+            db.sql("""
+                    update runtime_runs r set state='SUPERSEDED'
+                    where r.state='PENDING' and exists(
+                        select 1 from interview_sessions s where s.id=r.session_id and s.state='COMPLETED')
+                    """).update();
             var query = """
                     select r.id,r.organization_id,r.session_id,r.evidence_id,r.expected_revision,e.exact_text,r.attempts
                     from runtime_runs r join evidence e on e.id=r.evidence_id
-                    where r.state='PENDING' %s order by r.created_at limit 1 for update of r skip locked
+                    join interview_sessions s on s.id=r.session_id
+                    where r.state='PENDING' and s.state<>'COMPLETED' %s
+                    order by r.created_at limit 1 for update of r skip locked
                     """.formatted(sessionId == null ? "" : "and r.session_id=:session");
             var request = db.sql(query);
             if (sessionId != null) request = request.param("session", sessionId);
@@ -755,7 +760,7 @@ public class InvitationController {
                 if (attempts >= 3) {
                     db.sql("update runtime_runs set state='FAILED',attempts=:attempts,error_code='MODEL_EXHAUSTED',stable_event='runtime_failed' where id=:id")
                             .param("attempts", attempts).param("id", run.id()).update();
-                    db.sql("update interview_sessions set state='RUNTIME_FAILED' where id=:id and revision=:revision")
+                    db.sql("update interview_sessions set state='RUNTIME_FAILED' where id=:id and revision=:revision and state<>'COMPLETED'")
                             .param("id", run.sessionId()).param("revision", run.expectedRevision()).update();
                     return "runtime_failed";
                 }
@@ -945,7 +950,7 @@ public class InvitationController {
                 join users u on u.id=owner.user_id
                 join organizations o on o.id=s.organization_id
                 join mission_versions mv on mv.mission_id=s.mission_id and mv.version=s.mission_version
-                where s.deleted_at is null and s.state<>'TERMINATED' and d.state='ACTIVE'
+                where s.deleted_at is null and d.deleted_at is null
                 """ + (clerkProperties.enabled()
                     ? " and a.clerk_user_id=:subject and a.revoked_at is null and s.id=:session "
                     : " and g.token_hash=:hash and g.revoked_at is null and g.expires_at>now() "));
@@ -970,7 +975,8 @@ public class InvitationController {
         return db.sql("""
                 select s.organization_id,s.mission_id from interview_sessions s
                 join discoveries d on d.id=s.discovery_id and d.organization_id=s.organization_id
-                where s.id=:session and d.owner_membership_id=:member and d.organization_id=:organization and d.state='ACTIVE'
+                where s.id=:session and s.deleted_at is null and d.deleted_at is null
+                  and d.owner_membership_id=:member and d.organization_id=:organization
                 """).param("session", sessionId).param("member", investigator.membershipId())
                 .param("organization", investigator.organizationId())
                 .query((rs, row) -> new OwnedSession(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)))
