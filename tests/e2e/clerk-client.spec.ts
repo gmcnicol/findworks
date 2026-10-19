@@ -123,11 +123,15 @@ for (const newAccount of [true, false]) {
   });
 }
 
-test('account switching signs out and preserves the requested interview destination', async ({ page }) => {
+test('account switching clears interview drafts and preserves the requested interview destination', async ({ page }) => {
   await nativeClient(page);
-  await page.evaluate(() => { document.querySelector<HTMLButtonElement>('[data-clerk-switch-account]')!.hidden = false; });
+  await page.evaluate(() => {
+    sessionStorage.setItem('findworks:interview-drafts:v1:session-68', '{"drafts":{"question":"private draft"}}');
+    document.querySelector<HTMLButtonElement>('[data-clerk-switch-account]')!.hidden = false;
+  });
   await page.getByRole('button', { name: 'Use a different account' }).click();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem('test-signed-out'))).toBe('true');
+  expect(await page.evaluate(() => sessionStorage.getItem('findworks:interview-drafts:v1:session-68'))).toBeNull();
   await expect(page).toHaveURL(/\/signin\?returnTo=%2Finterviews$/);
 });
 

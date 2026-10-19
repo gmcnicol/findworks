@@ -5,6 +5,7 @@ import test from "node:test";
 const skill = readFileSync(new URL("./interview/SKILL.md", import.meta.url), "utf8");
 const runner = readFileSync(new URL("./runner.mjs", import.meta.url), "utf8");
 const extension = readFileSync(new URL("./extension.ts", import.meta.url), "utf8");
+const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
 
 test("interview skill adapts design-tree grilling without leading the interviewee", () => {
   assert.match(skill, /Work the Mission as a design tree/);
@@ -57,12 +58,38 @@ test("drilling stays on one thread and uses the answer to shape the follow-up", 
   assert.match(skill, /Do not ask for information the interviewee has already supplied/);
 });
 
+test("coverage transitions close one thread durably before moving to the next", () => {
+  assert.match(skill, /Do not emit terminal coverage for a useful partial claim/);
+  assert.match(skill, /distinct closure or synthesis answer/);
+  assert.match(skill, /same turn that asks the first Question for the next thread/);
+  assert.match(skill, /Do not ask another Question for a terminal result/);
+  assert.match(skill, /Unaddressed optional results do not block Mission completion/);
+  assert.match(runner, /Do not emit terminal coverage for partial support/);
+  assert.match(runner, /distinct accepted closure or synthesis answer/);
+});
+
+test("unresolved outcomes distinguish an unidentified owner from a known external owner", () => {
+  assert.match(skill, /Use `OWNERSHIP_GAP` only when the Evidence identifies another owner or an owner description/);
+  assert.match(skill, /use `UNKNOWN` when the required owner remains unidentified/);
+});
+
 test("own words are the default and finite choices preserve interviewee language", () => {
   assert.match(skill, /FREE_TEXT is the default response mode/);
   assert.match(skill, /genuinely finite decision or paraphrase confirmation/);
   assert.match(skill, /word every option in the interviewee's language/);
   assert.match(skill, /Never invent alternatives or possible answers inside a free-text Question/);
-  assert.match(runner, /"--thinking", "low"/);
+  assert.match(runner, /"--thinking", process\.env\.FINDWORKS_REASONING_EFFORT \|\| "low"/);
+});
+
+test("ambiguity handling distinguishes uncertainty, conflict, refusal, and ownership", () => {
+  assert.match(skill, /Ask one bounded clarification when a vague, partial, or uncertain answer could materially improve the result/);
+  assert.match(skill, /Do not turn uncertain recollection or hearsay into observed fact/);
+  assert.match(skill, /UNKNOWN.*does not know, declines to answer, available Evidence is insufficient, or no owner can be identified/s);
+  assert.match(skill, /OWNERSHIP_GAP.*another person or role owns the answer/s);
+  assert.match(skill, /An incomplete owner description is still an Ownership Gap/);
+  assert.match(skill, /CONFLICT.*incompatible claims/s);
+  assert.match(skill, /Never choose a side or manufacture a reconciliation/);
+  assert.match(skill, /Do not request contact details, offer an invitation, or keep questioning the current interviewee for the other owner's answer/);
 });
 
 test("interview outcomes are deltas against durable current outcomes", () => {
@@ -70,13 +97,24 @@ test("interview outcomes are deltas against durable current outcomes", () => {
   assert.match(skill, /outcomes array is a delta/);
   assert.match(skill, /Do not resubmit an unchanged claim or a paraphrase of it/);
   assert.match(runner, /outcomes as a delta against current_outcomes/);
+  assert.match(runner, /Do not emit terminal coverage for partial support/);
   assert.match(extension, /Only new or materially changed outcomes/);
+  assert.match(extension, /Omit terminal outcomes for a result when nextAction asks a follow-up on that result/);
 });
 
 test("runner explicitly expands and activates bounded design-tree grilling", () => {
   assert.match(runner, /dependency-aware design-tree grilling method/);
   assert.match(runner, /ask one respectful non-leading question at a time/);
+  assert.match(runner, /Do not append a second request to an example question/);
+  assert.match(runner, /prepareInterviewContext/);
   assert.match(runner, /\/skill:findworks-interview/);
+});
+
+test("the runtime rejects continuity regressions locally before semantic commitment", () => {
+  assert.match(extension, /validateInterviewProposal/);
+  assert.match(extension, /FINDWORKS_INTERVIEW_CONTEXT/);
+  assert.match(extension, /Turn strategy rejected/);
+  assert.match(dockerfile, /interview-strategy\.mjs/);
 });
 
 test("question actions require the server-scoped result identity", () => {

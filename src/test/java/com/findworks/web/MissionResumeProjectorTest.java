@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MissionResumeProjectorTest {
 
-    private final MissionResumeProjector projector = new MissionResumeProjector();
+    private final MissionResumeProjector projector = new MissionResumeProjector(new FindingsStatusProjector());
     private final UUID missionId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
 

@@ -230,6 +230,25 @@ class ClerkSecurityIntegrationTest {
     }
 
     @Test
+    void explicit_role_assignments_not_lifecycle_status_control_record_visibility() throws Exception {
+        var invitation = invitation("gareth@example.com");
+        var cookie = account("user_gareth", "gareth@example.com");
+        claim(invitation, cookie);
+        db.update("update interview_sessions set state='UNAVAILABLE' where id=?", invitation.sessionId());
+        db.update("update discoveries set state='UNAVAILABLE' where id=?", invitation.discoveryId());
+
+        mvc.perform(get("/work").cookie(cookie)).andExpect(status().isOk())
+                .andExpect(content().string(containsString("/interview/" + invitation.sessionId())))
+                .andExpect(content().string(containsString("/app/discoveries/" + invitation.discoveryId())));
+        mvc.perform(get("/interview/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isOk())
+                .andExpect(content().string(containsString("This interview can’t continue right now")));
+        mvc.perform(get("/app").cookie(cookie)).andExpect(status().isOk())
+                .andExpect(content().string(containsString("Continuity Mission")));
+        mvc.perform(get("/app/discoveries/" + invitation.discoveryId()).cookie(cookie)).andExpect(status().isOk());
+        mvc.perform(get("/app/interviews/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isOk());
+    }
+
+    @Test
     void research_membership_revocation_does_not_erase_independently_invited_interview_access() throws Exception {
         var invitation = invitation("gareth@example.com");
         var cookie = account("user_gareth", "gareth@example.com");
@@ -317,7 +336,7 @@ class ClerkSecurityIntegrationTest {
         var cookie = account("user_sme", "sme@example.com");
         db.update("update invitations set expires_at=now()-interval '1 day' where session_id=?", invitation.sessionId());
         mvc.perform(post("/invite/" + invitation.token()).cookie(cookie).with(csrf())).andExpect(status().isGone());
-        db.update("insert into access_grants(id,organization_id,session_id,token_hash,expires_at) values(?, '11111111-1111-1111-1111-111111111111',?,?,now()+interval '7 days')",
+        db.update("insert into access_grants(id,organization_id,session_id,token_hash,expires_at) values(?, '11111111-1111-1111-1111-111111111111',?,?,now()+interval '168 hours')",
                 UUID.randomUUID(), invitation.sessionId(), com.findworks.platform.Ids.sha("old-browser-token"));
         mvc.perform(get("/interview/" + invitation.sessionId()).cookie(new Cookie("findworks_interview", "old-browser-token")))
                 .andExpect(status().is3xxRedirection());
@@ -343,19 +362,23 @@ class ClerkSecurityIntegrationTest {
     }
 
     @Test
-    void deletion_and_termination_revoke_account_access_immediately() throws Exception {
+    void termination_revokes_account_access_and_completes_the_reviewable_session_without_deleting_evidence() throws Exception {
         var cookie = account("user_sme", "sme@example.com");
-        var deleted = invitation("sme@example.com");
-        var terminated = invitation("sme@example.com");
-        var discoveryDeleted = invitation("sme@example.com");
-        claim(deleted, cookie); claim(terminated, cookie); claim(discoveryDeleted, cookie);
-        db.update("update interview_sessions set deleted_at=now() where id=?", deleted.sessionId());
-        db.update("update interview_sessions set state='TERMINATED' where id=?", terminated.sessionId());
-        db.update("update discoveries set state='DELETING' where id=?", discoveryDeleted.discoveryId());
-        for (var invitation : java.util.List.of(deleted, terminated, discoveryDeleted)) {
-            mvc.perform(get("/interview/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isForbidden());
-            assertThat(db.queryForObject("select count(*) from interview_account_access where session_id=? and revoked_at is null", Integer.class, invitation.sessionId())).isZero();
-        }
+        var invitation = invitation("sme@example.com");
+        claim(invitation, cookie);
+        db.update("insert into evidence(id,organization_id,session_id,source_type,exact_text) values(?,'11111111-1111-1111-1111-111111111111',?,'ANSWER','Retained Evidence')",
+                UUID.randomUUID(), invitation.sessionId());
+
+        mvc.perform(post("/app/interviews/" + invitation.sessionId() + "/terminate")
+                        .cookie(account("user_gareth", "gareth@example.com")).with(csrf()))
+                .andExpect(status().is3xxRedirection());
+
+        mvc.perform(get("/interview/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isForbidden());
+        mvc.perform(get("/work").cookie(cookie)).andExpect(content().string(org.hamcrest.Matchers.not(
+                containsString("/interview/" + invitation.sessionId()))));
+        assertThat(db.queryForObject("select state from interview_sessions where id=?", String.class, invitation.sessionId())).isEqualTo("COMPLETED");
+        assertThat(db.queryForObject("select count(*) from interview_account_access where session_id=? and revoked_at is null", Integer.class, invitation.sessionId())).isZero();
+        assertThat(db.queryForObject("select count(*) from evidence where session_id=?", Integer.class, invitation.sessionId())).isEqualTo(1);
     }
 
     private Cookie account(String subject, String email) throws Exception {
@@ -380,7 +403,7 @@ class ClerkSecurityIntegrationTest {
         db.update("insert into participants(id,organization_id,discovery_id,name,email) values(?,?,?,'Interviewee',?)", participant, organization, discovery, email);
         db.update("insert into interview_sessions(id,organization_id,discovery_id,mission_id,mission_version,participant_id) values(?,?,?,?,1,?)", session, organization, discovery, mission, participant);
         String token = com.findworks.platform.Ids.token();
-        db.update("insert into invitations values(?,?,?,?,?,'DELIVERED',now()+interval '7 days',now(),null,null)", UUID.randomUUID(), organization, session, email, com.findworks.platform.Ids.sha(token));
+        db.update("insert into invitations values(?,?,?,?,?,'DELIVERED',now()+interval '168 hours',now(),null,null)", UUID.randomUUID(), organization, session, email, com.findworks.platform.Ids.sha(token));
         return new InterviewInvitation(session, mission, discovery, token);
     }
 

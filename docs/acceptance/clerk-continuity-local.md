@@ -25,10 +25,10 @@ Clerk-enabled integration tests use real locally signed RSA JWTs and a local JWK
 - Claimed access survives invitation expiry and cannot transfer to a different Clerk subject that later controls the same email address.
 - Other accounts cannot read the interview, submit an answer, load its state fragment, subscribe to its events, or see it in saved work.
 - Research membership revocation stops research access but does not remove independently assigned interview permission.
-- Interview access revocation, termination, and deletion stop account access without erasing retained Evidence prematurely.
+- Interview access revocation and termination stop account access while preserving retained Evidence. Deletion is disabled for v1.
 - A provider failure while claiming returns a retryable 503 without consuming the invitation.
 - Production rejects old browser grants as a substitute for Clerk authentication.
-- Existing signature/issuer/party/time/session checks, CSRF protection, short-lived authentication, MCP separation, review checkpoint recovery, attribution, runtime/extraction recovery, and retention/deletion regressions pass.
+- Existing signature/issuer/party/time/session checks, CSRF protection, short-lived authentication, MCP separation, review checkpoint recovery, attribution, runtime/extraction recovery, and v1 no-deletion regressions pass.
 - Browser SDK-contract tests mount Clerk's standard SignIn/SignUp components, preserve first-time/returning native invitation modes, verify fresh tokens before restoring the exact work destination, and cover account switching and SDK/UI loading recovery.
 - Native delivery tests cover new/existing-account invitation parameters, safe redirects, encrypted provider-specific outbox routing, lost-response recovery, leases, cancellation, revocation, and failure without interview grants.
 - The required Spring Boot REST-client starter is present; the Clerk-enabled application context starts with the real invitation-client constructor rather than hiding a missing builder behind User-client mocks.

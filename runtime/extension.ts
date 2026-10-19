@@ -1,10 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readFileSync } from "node:fs";
 import { Type } from "typebox";
+import { validateInterviewProposal } from "./interview-strategy.mjs";
 import { submitTurn } from "./turn-client.mjs";
 
 const url = process.env.FINDWORKS_TURN_URL;
 const token = process.env.FINDWORKS_TURN_TOKEN;
-if (!url || !token) throw new Error("Missing turn capability");
+const contextPath = process.env.FINDWORKS_INTERVIEW_CONTEXT;
+if (!url || !token || !contextPath) throw new Error("Missing turn capability or Interview context");
+const context = JSON.parse(readFileSync(contextPath, "utf8"));
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -26,7 +30,7 @@ export default function (pi: ExtensionAPI) {
         ])),
         evidenceIds: Type.Array(Type.String()),
         summary: Type.String(),
-      }), { description: "Only new or materially changed outcomes compared with current_outcomes; not a full snapshot." }),
+      }), { description: "Only new or materially changed outcomes compared with current_outcomes; not a full snapshot. Omit terminal outcomes for a result when nextAction asks a follow-up on that result." }),
       nextAction: Type.Union([
         Type.Object({
           type: Type.Literal("ASK_QUESTION"),
@@ -45,6 +49,10 @@ export default function (pi: ExtensionAPI) {
       ]),
     }),
     async execute(_toolCallId, params) {
+      const violations = validateInterviewProposal(context, params);
+      if (violations.length > 0) {
+        throw new Error(`Turn strategy rejected: ${violations.map(value => `${value.code}: ${value.detail}`).join("; ")}`);
+      }
       const body = await submitTurn({ url, token, params });
       return { content: [{ type: "text", text: body }], details: {}, terminate: true };
     },

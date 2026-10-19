@@ -6,6 +6,9 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:adaptive-interview": "node runtime/adaptive-sequence.acceptance.mjs",
+    "benchmark:adaptive-interview": "node runtime/evaluation/benchmark.mjs",
+    "evaluate:periodic-review": "node runtime/evaluation/periodic-review.mjs",
+    "test:runtime": "node --test runtime/*.test.mjs runtime/evaluation/*.test.mjs",
     "test": "playwright test",
     "test:all": "bash scripts/test.sh"
   },

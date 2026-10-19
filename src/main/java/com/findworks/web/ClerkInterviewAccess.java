@@ -39,7 +39,7 @@ public class ClerkInterviewAccess {
                 join discoveries d on d.id=s.discovery_id
                 join interview_account_access a on a.session_id=s.id
                 where i.token_hash=:hash and a.clerk_user_id=:subject and a.revoked_at is null
-                  and s.deleted_at is null and s.state<>'TERMINATED' and d.state='ACTIVE'
+                  and s.deleted_at is null and d.deleted_at is null
                 """).param("hash", Ids.sha(invitationToken)).param("subject", subject).query(UUID.class).optional();
     }
 
@@ -56,7 +56,7 @@ public class ClerkInterviewAccess {
                     join discoveries d on d.id=s.discovery_id
                     where i.token_hash=:hash and i.state='DELIVERED' and i.redeemed_at is null
                       and i.revoked_at is null and i.expires_at>now()
-                      and s.deleted_at is null and s.state not in ('TERMINATED','COMPLETED','ENDED_EARLY') and d.state='ACTIVE'
+                      and s.deleted_at is null and d.deleted_at is null and s.state<>'COMPLETED'
                     for update of i,s
                     """).param("hash", Ids.sha(token))
                     .query((rs, row) -> new Invitation(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),

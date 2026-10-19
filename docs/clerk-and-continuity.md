@@ -10,7 +10,7 @@ Sign-in and signup mount Clerk's standard components. Clerk owns email-code entr
 
 Email delivery queues a **native Clerk application invitation**, with `ignore_existing=true` for returning users and an opaque delivery correlation ID for recovery. Acceptance creates a new account only when needed. Its redirect returns to the exact FindWorks invitation, whose recipient, expiry, approved Mission version, and explicit Session assignment are still checked locally. The Clerk email link can authenticate its recipient: do not forward it. Manual FindWorks links remain available and require ordinary Clerk authentication.
 
-The web process drains Clerk delivery/revocation jobs; the worker drains only legacy/retention email jobs. Clerk credentials never enter the worker or Pi children. Lost-response/process-death retries recover a matching native invitation before sending again. Revoked, expired, or claimed local invitations close unused native tickets asynchronously; local interview denial is immediate even if the provider is unavailable.
+The web process drains Clerk delivery/revocation jobs; the worker drains only invitation email jobs. Clerk credentials never enter the worker or Pi children. Lost-response/process-death retries recover a matching native invitation before sending again. Revoked, expired, or claimed local invitations close unused native tickets asynchronously; local interview denial is immediate even if the provider is unavailable.
 
 ## Security boundaries
 
@@ -21,7 +21,7 @@ The web process drains Clerk delivery/revocation jobs; the worker drains only le
 - **MCP:** existing OAuth/PKCE tokens remain independent. Clerk does not decode them or replace their permissions.
 - **Forms and streams:** CSRF remains required for cookie-authenticated writes. Every answer, revision, state fragment, and event-stream subscription checks the authenticated account against the Session ID in the route. Multiple interviews can be open independently.
 
-An invitation is valid for seven days **before claim**. Claimed account access is not limited by that invitation or a seven-day browser cookie. Expired Clerk sessions require sign-in again, not invitation reissue. Explicit access revocation, reissue, Mission changes before start, termination, and deletion revoke assignments. These revocations are transactionally enforced by database triggers, including operator paths. Reissue preserves the Session/Evidence and cannot change a started Session's participant or approved Mission version. Purging a Session cascades its account assignments.
+An invitation is valid for seven days (an elapsed 168 hours) **before claim**. Claimed account access is not limited by that invitation or a seven-day (168-hour) browser cookie. Expired Clerk sessions require sign-in again, not invitation reissue. Explicit access revocation, reissue, Mission changes before start, and termination revoke assignments. These revocations are transactionally enforced by database triggers, including operator paths. Reissue preserves the Session/Evidence and cannot change a started Session's participant or approved Mission version. Deletion and purge are disabled for v1; legacy deletion-related triggers and cascading foreign keys remain inert.
 
 Legacy seeded passwords and seven-day browser grants exist only in local development/test mode. Production enables Clerk and never falls back to these credentials.
 
@@ -57,9 +57,9 @@ Discovery Participants remain Discovery-scoped attribution records, not global i
 
 ## Persisted resumption
 
-`MissionResumeProjector` derives the next research action from lifecycle and review checkpoints, including incomplete reviews, approval, queued invitations, active account access, interviews, findings, and rejected findings follow-up. Page views and no-op updates do not advance activity or retention.
+`MissionResumeProjector` derives the next research action from lifecycle and review checkpoints, including incomplete reviews, approval, queued invitations, active account access, interviews, findings, and rejected findings follow-up. Page views and no-op updates do not advance activity.
 
-Interview routes are `/interview/{sessionId}` with Session-scoped actions, fragments, and event streams. `/interview` redirects Clerk users to their saved interview list. The server reconstructs current state and accepted-answer history; resumption never resets the interview or creates duplicate Evidence. Only submitted/accepted answers are durable; unsent text is not autosaved. Existing retention and deletion rules still apply.
+Interview routes are `/interview/{sessionId}` with Session-scoped actions, fragments, and event streams. `/interview` redirects Clerk users to their saved interview list. The server reconstructs current state and accepted-answer history; resumption never resets the interview or creates duplicate Evidence. Only submitted/accepted answers are durable; unsent text is not autosaved. Product content deletion is disabled for v1.
 
 Flyway V8/V9 established earlier continuity and development grant expiry. **V10** adds shared Clerk accounts, explicit interview assignments, interview recency, and atomic revocation. **V11** adds provider routing and native invitation/revocation tracking to the encrypted email outbox. Existing queued email defaults to its original provider. These are forward migrations; no existing Evidence or Discovery ownership is recreated or dropped.
 
@@ -67,7 +67,7 @@ Upgrade the web process first and wait for migrations/health before upgrading a 
 
 ## Verification
 
-- `ClerkSecurityIntegrationTest`: real locally signed RSA tokens/local JWKS with only remote Clerk user lookup mocked. Covers first linking; both roles in one account; multiple interviews; a new browser/session resuming without an invitation or browser grant; preserved Evidence; membership checks; wrong-recipient/current-email validation; cross-account read/write/fragment/stream denial; expiry, revocation, deletion, CSRF, and MCP separation.
+- `ClerkSecurityIntegrationTest`: real locally signed RSA tokens/local JWKS with only remote Clerk user lookup mocked. Covers first linking; both roles in one account; multiple interviews; a new browser/session resuming without an invitation or browser grant; preserved Evidence; membership checks; wrong-recipient/current-email validation; cross-account read/write/fragment/stream denial; expiry, revocation, termination, CSRF, and MCP separation.
 - `ClerkUserClientTest`: verified primary email, account identity, banned/locked accounts, and fail-closed provider responses.
 - Existing Mission, lifecycle, runtime, extraction, and browser tests continue to check checkpoint recovery and Evidence integrity.
 - `ClerkInvitationClientTest` and `EmailDeliveryServiceIntegrationTest`: native invitations for existing/new users, safe redirects, encrypted queue/provider separation, lost-result recovery, leases, revocation, cancellation, and fail-closed delivery.
@@ -81,7 +81,7 @@ Upgrade the web process first and wait for migrations/health before upgrading a 
 4. On a fresh browser/device, sign in by code without the invitation. Open the saved interview, resume, and verify the accepted answer appears exactly once.
 5. Invite the researcher to an interview too. The same account sees research and interviews together, including multiple Sessions without cookie collisions.
 6. Exercise expired Clerk sessions, deep links, wrong-account invitation recovery, account switching, logout, and original invitation expiry after claim.
-7. Verify research membership revocation, explicit interview revocation, Session termination/deletion, and MCP consent/retrieval remain correctly separated.
+7. Verify research membership revocation, explicit interview revocation, Session termination, and MCP consent/retrieval remain correctly separated.
 
 Live email delivery, instance configuration, cookie refresh, and cross-device Clerk session behaviour require real instance credentials and this acceptance journey. Local signatures and SDK stubs do not prove them.
 

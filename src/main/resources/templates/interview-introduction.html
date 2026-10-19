@@ -3,14 +3,12 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Before the interview · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block></head>
 <body class="participant-body">
 <main class="interview-shell">
-    <header class="participant-masthead"><span class="participant-brand">FindWorks</span><span class="participant-context">Private interview</span></header>
-    <th:block th:replace="~{fragments/clerk :: participantAccount}"></th:block>
+    <th:block th:replace="~{fragments/interview :: masthead}"></th:block>
     <section class="participant-intro">
         <p class="eyebrow">Your invitation</p>
         <h1>Before you begin</h1>
         <p><strong th:text="${view.investigator()}">Investigator</strong> from <strong th:text="${view.organization()}">Organisation</strong> invited you to help with:</p>
         <h2 th:text="${view.objective()}">Mission purpose</h2>
-        <dl class="review-fields"><div><dt>Retention</dt><dd th:text="${view.retentionDays()} + ' days after findings review'">90 days</dd></div></dl>
         <h3>How your answers will be used</h3>
         <p th:text="${view.dataUse()}">Data use</p>
         <p class="subtle">Questions adapt to your answers. You can pause, say you do not know, name another owner, or leave.</p>

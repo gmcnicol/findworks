@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-18",
+  "evaluatedCommit": "18a2aafaeb3a50f2681999d3c5a11437cf28fb98",
+  "credential": {
+    "provider": "openai",
+    "kind": "api-key",
+    "environment": "OPENAI_API_KEY",
+    "source": "findworks-pilot-worker-1 environment",
+    "samePathUsedForPreflightAndRuntime": true,
+    "secretRetained": false
+  },
+  "catalogues": {
+    "hostPi": {
+      "version": "1.3.0",
+      "credentialProvider": "openai-codex",
+      "credentialKind": "oauth",
+      "gpt54Models": [],
+      "gpt56Models": [
+        "gpt-5.6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra"
+      ]
+    },
+    "runtimePi": {
+      "version": "0.84.4",
+      "provider": "openai",
+      "models": [
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
+        "gpt-5.4-pro"
+      ]
+    },
+    "providerApi": {
+      "models": [
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.4-pro",
+        "gpt-5.6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra"
+      ]
+    }
+  },
+  "successfulAliasPreflightBeforeQuotaExhaustion": [
+    {
+      "configurationId": "gpt-5.4-mini-low",
+      "requestedModel": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "httpStatus": 200,
+      "responseModel": "gpt-5.4-mini-2026-03-17",
+      "directResponseModelRequestStatus": 403,
+      "directResponseModelRequestErrorCode": "model_not_found"
+    },
+    {
+      "configurationId": "gpt-5.4-medium",
+      "requestedModel": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "httpStatus": 200,
+      "responseModel": "gpt-5.4-2026-03-05",
+      "directResponseModelRequestStatus": 403,
+      "directResponseModelRequestErrorCode": "model_not_found"
+    },
+    {
+      "configurationId": "gpt-5.4-mini-medium",
+      "requestedModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "httpStatus": 200,
+      "responseModel": "gpt-5.4-mini-2026-03-17",
+      "directResponseModelRequestStatus": 403,
+      "directResponseModelRequestErrorCode": "model_not_found"
+    }
+  ],
+  "stableAliasIdentityDiagnostic": [
+    {
+      "configurationId": "gpt-5.4-mini-low",
+      "runtimeRequestedModel": "gpt-5.4-mini",
+      "successfulTurnResponseModel": "gpt-5.4-mini",
+      "reasoningEffort": "low"
+    },
+    {
+      "configurationId": "gpt-5.4-medium",
+      "runtimeRequestedModel": "gpt-5.4",
+      "successfulTurnResponseModel": "gpt-5.4",
+      "reasoningEffort": "medium"
+    },
+    {
+      "configurationId": "gpt-5.4-mini-medium",
+      "runtimeRequestedModel": "gpt-5.4-mini",
+      "successfulTurnResponseModel": "gpt-5.4-mini",
+      "reasoningEffort": "medium"
+    }
+  ],
+  "identityGate": {
+    "mode": "stable-provider-alias",
+    "rule": "For a provider-listed alias whose dated response identity is not directly requestable, every successful Runtime Turn must report the provider, stable requested alias, stable response alias, and configured reasoning effort selected by preflight.",
+    "implementedByCommits": [
+      "463816b9e418906703169e6d733666b7298dfa7e",
+      "18a2aafaeb3a50f2681999d3c5a11437cf28fb98"
+    ]
+  },
+  "retainedCorrectedGate": {
+    "trace": "docs/acceptance/traces/issue-63-66-corrected-gate-18a2aaf.json",
+    "status": "blocked-before-fixture-execution",
+    "errorCode": "credit_balance_exhausted",
+    "httpStatus": 429,
+    "scenarioTrials": 0,
+    "successfulRuntimeTurns": 0
+  }
+}

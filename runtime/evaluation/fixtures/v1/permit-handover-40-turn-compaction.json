@@ -1,0 +1,1456 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.0.0",
+  "id": "permit-handover-40-turn-compaction",
+  "title": "Street-works permit handover survives forty turns and bounded context",
+  "minimumSemanticPassRate": 0.9,
+  "persona": {
+    "name": "Morgan",
+    "role": "Street-works permit coordinator",
+    "brief": "Use the team’s current terms, distinguish changed rules from stale wording, and keep planning stages separate."
+  },
+  "assertions": {
+    "minimumTurns": 40,
+    "forbiddenQuestionTerms": [
+      "investigation item",
+      "sufficient evidence",
+      "completion criterion",
+      "mission boundary",
+      "design tree",
+      "coverage status",
+      "runtime context"
+    ],
+    "forbiddenClaims": [
+      "facial-recognition camera",
+      "blockchain permit",
+      "automatic permit rejection",
+      "machine-learning conflict score"
+    ],
+    "criticalEvidenceIds": [
+      "42000000-0000-0000-0000-000000000009",
+      "42000000-0000-0000-0000-000000000010",
+      "42000000-0000-0000-0000-000000000018",
+      "42000000-0000-0000-0000-000000000020",
+      "42000000-0000-0000-0000-000000000029",
+      "42000000-0000-0000-0000-000000000030",
+      "42000000-0000-0000-0000-000000000039",
+      "42000000-0000-0000-0000-000000000040"
+    ]
+  },
+  "contextPolicy": {
+    "maxQuestionEvidenceRecords": 12
+  },
+  "context": {
+    "run_id": "22000000-0000-0000-0000-000000000001",
+    "session_id": "32000000-0000-0000-0000-000000000001",
+    "mission_version": 6,
+    "expected_revision": 12,
+    "mission": {
+      "objective": "Understand the permit path from a submitted street-works request to a safe crew handover.",
+      "desired_outcome": "A traceable four-stage operating rule that preserves ownership, changed terminology, exceptions, notices, and observable setup completion.",
+      "data_use": "The Investigator will review these synthetic findings for a permit-workflow pilot."
+    },
+    "shared_mission_entries": [
+      {
+        "kind": "TERM",
+        "position": 0,
+        "value": "Permit intake",
+        "detail": "Starting term only; adopt the coordinator’s current language."
+      },
+      {
+        "kind": "BOUNDARY",
+        "position": 0,
+        "value": "Do not design traffic-management layouts, decide legal liability, or infer permit policy not supplied by the interviewee."
+      },
+      {
+        "kind": "COMPLETION_CRITERION",
+        "position": 0,
+        "value": "Submission completeness, conflict planning, consultation, and crew handover each have explicit triggers, owners, exceptions, changed rules, records, and completion signals."
+      }
+    ],
+    "investigation_results": [
+      {
+        "result_id": "12000000-0000-0000-0000-000000000001",
+        "knowledge_gap": "How is a submitted street-works request made ready for technical review?",
+        "why_it_matters": "Incomplete or mislocated requests must not enter planning.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "Promoters submit work requests to a permit coordination team.",
+        "sufficient_evidence": "Current names; required road, map pin, promoter and date window; school marker; owner; emergency route and corrected deadline; ordinary incomplete behavior; recent example; and saved ready signal are explicit.",
+        "coverage": "EXPLORING",
+        "current_outcomes": []
+      },
+      {
+        "result_id": "12000000-0000-0000-0000-000000000002",
+        "knowledge_gap": "How are competing uses of the same road resolved?",
+        "why_it_matters": "The workflow must preserve safe ownership and explicit promoter agreement.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "Ready requests may overlap in lane and time.",
+        "sufficient_evidence": "Current name; overlap trigger; owner; bus dependency boundary; dig order; joint working; failed-agreement escalation; corrected reply period; conflict-note fields; and closure signal are explicit.",
+        "coverage": "UNADDRESSED",
+        "current_outcomes": []
+      },
+      {
+        "result_id": "12000000-0000-0000-0000-000000000003",
+        "knowledge_gap": "Who is consulted and what notice or access commitments are required?",
+        "why_it_matters": "Affected people must receive the right grounded promises.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "Planned restrictions may affect schools, buses, residents and businesses.",
+        "sufficient_evidence": "Current name; school, bus and frontage triggers; parked crew detail; corrected notice period; emergency exception; promoter ownership of access promises; log fields; and closure signal are explicit.",
+        "coverage": "UNADDRESSED",
+        "current_outcomes": []
+      },
+      {
+        "result_id": "12000000-0000-0000-0000-000000000004",
+        "knowledge_gap": "What must the street crew receive and confirm before setup is complete?",
+        "why_it_matters": "Planning commitments must survive the operational handover.",
+        "priority": "HIGH",
+        "required": true,
+        "relevant_context": "A separate crew installs the approved road layout.",
+        "sufficient_evidence": "Current name; handover owner; permit identifiers; selected consultation commitments; stop-card and weather exceptions; interruption distinction; photo and safety-walk completion; corrected acknowledgement limit; and final signal are explicit.",
+        "coverage": "UNADDRESSED",
+        "current_outcomes": []
+      }
+    ],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [
+    {
+      "runId": "22000000-0000-0000-0000-000000000001",
+      "sourceQuestion": "When a street-works permit request arrives, what do you call the first check?",
+      "stressor": "vocabulary-change",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000001",
+        "sourceType": "ANSWER",
+        "text": "The Mission calls it permit intake, but our coordinators call it the landing pad. The request is a work pack. I first check that the pack names a road, a promoter, and a proposed start date before it can leave the landing pad."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "landing pad",
+            "work pack"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000002",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000002",
+        "sourceType": "ANSWER",
+        "text": "The road is not accepted from free text alone. The pack needs a map pin on the affected segment because two streets here share the same name. The pin is the location trigger we trust."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "map pin",
+            "road"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000003",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000003",
+        "sourceType": "ANSWER",
+        "text": "For timing we need a date window, not just one start date. The promoter gives the earliest start and latest finish, and the coordinator checks that the window is not already in the past."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "date window",
+            "start"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000004",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "cross-thread",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000004",
+        "sourceType": "ANSWER",
+        "text": "If the map pin is beside a school gate, I add a yellow tab. Network planning later decides the traffic conditions for that tab; on the landing pad I only identify it and do not invent those conditions."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "school gate",
+            "yellow tab"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000005",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000005",
+        "sourceType": "ANSWER",
+        "text": "The landing coordinator owns the completeness call. The promoter can supply missing material, but only the coordinator marks the work pack ready for technical review."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "landing coordinator",
+            "promoter"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000006",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000006",
+        "sourceType": "ANSWER",
+        "text": "Emergency repairs are the exception. They may start before a full pack arrives, but the promoter must label the work emergency and send the missing map pin and date window retrospectively by noon on the next working day."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "emergency repair",
+            "retrospective"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000007",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "interruption",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000007",
+        "sourceType": "ANSWER",
+        "text": "Apologies, the depot radio check drowned out the last minute. The point was that an ordinary incomplete work pack stays on the landing pad; it does not receive a provisional permit number while we wait."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "radio check",
+            "landing pad"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000008",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000008",
+        "sourceType": "ANSWER",
+        "text": "Yesterday’s Canal Street pack had a road name and dates but its map pin sat on the parallel service road. I returned it to the promoter, who moved the pin before the coordinator marked it ready."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "Canal Street",
+            "map pin"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000009",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "prior-statement-revision",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000009",
+        "sourceType": "ANSWER",
+        "text": "I need to correct the emergency deadline I just gave. Noon is the old handbook wording. The current rule is ten o’clock on the next working day, introduced in January. A dashboard note still says noon, which is why people mix them up."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "semantic": {
+          "vocabularyAnchors": [
+            "ten o’clock",
+            "noon"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000010",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000001",
+        "evidenceId": "42000000-0000-0000-0000-000000000010",
+        "sourceType": "ANSWER",
+        "text": "The landing-pad check is complete when the road has a trusted map pin, the date window is valid, the promoter and coordinator are named, school-gate and emergency markers are present when relevant, and the coordinator saves “ready for technical review.” Emergency missing material is due by ten o’clock next working day."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "ready for technical review",
+            "ten o’clock"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        },
+        "outcomes": [
+          {
+            "resultId": "12000000-0000-0000-0000-000000000001",
+            "coverage": "SUPPORTED",
+            "category": "RULE",
+            "evidenceIds": [
+              "42000000-0000-0000-0000-000000000001",
+              "42000000-0000-0000-0000-000000000002",
+              "42000000-0000-0000-0000-000000000003",
+              "42000000-0000-0000-0000-000000000004",
+              "42000000-0000-0000-0000-000000000005",
+              "42000000-0000-0000-0000-000000000006",
+              "42000000-0000-0000-0000-000000000007",
+              "42000000-0000-0000-0000-000000000008",
+              "42000000-0000-0000-0000-000000000009",
+              "42000000-0000-0000-0000-000000000010"
+            ],
+            "summaryIncludes": [
+              "landing pad",
+              "ten o’clock",
+              "map pin"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000011",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "vocabulary-change",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000011",
+        "sourceType": "ANSWER",
+        "text": "Technical review is called the street puzzle by the network planners. They use the ready work pack to understand who else needs the same road space; they do not re-run the landing-pad completeness check."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "street puzzle",
+            "technical review"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000012",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000012",
+        "sourceType": "ANSWER",
+        "text": "The planner puts the work on the conflict board when another promoter overlaps the same lane and date window. Sharing the road name is not enough; the lane and dates must overlap."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "conflict board",
+            "same lane"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000013",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000013",
+        "sourceType": "ANSWER",
+        "text": "The assigned network planner owns the conflict-board decision. Coordinators can point out another job, but they cannot declare that the two works are compatible."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "network planner",
+            "conflict board"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000014",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "cross-thread",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000014",
+        "sourceType": "ANSWER",
+        "text": "A yellow-tab school-gate job also alerts the bus team, but their route advice belongs to later consultation. During the street puzzle the planner only records that bus-team input will be needed."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "bus team",
+            "later consultation"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000015",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000015",
+        "sourceType": "ANSWER",
+        "text": "When two jobs truly conflict, the planner first asks the promoters whether they can agree a dig order. A dig order is our phrase for one job finishing and clearing the lane before the other starts."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "dig order",
+            "promoters"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000016",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000016",
+        "sourceType": "ANSWER",
+        "text": "If the promoters can safely use one closure together, the planner may record joint working instead of a dig order. Both promoters must explicitly agree because one cannot volunteer the other."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "joint working",
+            "shared closure"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000017",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "interruption",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000017",
+        "sourceType": "ANSWER",
+        "text": "I had to take a control-room call. Coming back to the street puzzle: if neither a dig order nor joint working is agreed, the planner escalates the clash to the network duty manager."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "control-room call",
+            "street puzzle"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000018",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "prior-statement-revision",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000018",
+        "sourceType": "ANSWER",
+        "text": "Earlier I was about to say promoters get five working days to respond. That was true before the spring change. They now get three working days from the planner’s conflict notice."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "three working days",
+            "five"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000019",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000019",
+        "sourceType": "ANSWER",
+        "text": "The record must contain the overlapping lane, the clashing date window, each promoter’s reply, and the chosen dig order, joint-working agreement, or duty-manager escalation. We call that the conflict note."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "semantic": {
+          "vocabularyAnchors": [
+            "conflict note",
+            "three working days"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000020",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000002",
+        "evidenceId": "42000000-0000-0000-0000-000000000020",
+        "sourceType": "ANSWER",
+        "text": "The street puzzle is done when every real overlap has a conflict note owned by the network planner, with promoter replies within three working days and one explicit disposition: dig order, joint working, or network duty-manager escalation."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "street puzzle",
+            "conflict note"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        },
+        "outcomes": [
+          {
+            "resultId": "12000000-0000-0000-0000-000000000002",
+            "coverage": "SUPPORTED",
+            "category": "RULE",
+            "evidenceIds": [
+              "42000000-0000-0000-0000-000000000011",
+              "42000000-0000-0000-0000-000000000012",
+              "42000000-0000-0000-0000-000000000013",
+              "42000000-0000-0000-0000-000000000014",
+              "42000000-0000-0000-0000-000000000015",
+              "42000000-0000-0000-0000-000000000016",
+              "42000000-0000-0000-0000-000000000017",
+              "42000000-0000-0000-0000-000000000018",
+              "42000000-0000-0000-0000-000000000019",
+              "42000000-0000-0000-0000-000000000020"
+            ],
+            "summaryIncludes": [
+              "street puzzle",
+              "three working days",
+              "conflict note"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000021",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "vocabulary-change",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000021",
+        "sourceType": "ANSWER",
+        "text": "What the Mission calls consultation is the neighbour round in the permits team. It starts after the street puzzle and contacts only the groups triggered by the work pack and conflict note."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "neighbour round",
+            "consultation"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000022",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000022",
+        "sourceType": "ANSWER",
+        "text": "A yellow tab beside a school gate triggers the school liaison. The liaison confirms term dates, arrival and collection times, and the safest side for temporary pedestrian access."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "yellow tab",
+            "school liaison"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000023",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000023",
+        "sourceType": "ANSWER",
+        "text": "The bus team is contacted when a closure affects a marked bus lane or stop. They need the stop identifier and the proposed closure times, not the whole permit history."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "bus team",
+            "stop"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000024",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "cross-thread",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000024",
+        "sourceType": "ANSWER",
+        "text": "The depot mentioned that a late-shift crew may install signs, which will matter at handover. For the neighbour round, that does not create another consultee; it is simply parked for the later crew brief."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "late-shift crew",
+            "handover"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000025",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000025",
+        "sourceType": "ANSWER",
+        "text": "Residents receive a notice when access to a home or business frontage changes. A generic road-delay notice is not enough if a driveway will be blocked."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "resident notice",
+            "frontage"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000026",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000026",
+        "sourceType": "ANSWER",
+        "text": "The normal notice period is two clear working days before the restriction begins. “Clear” excludes the day the notice is delivered and the day work starts."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "two clear working days",
+            "notice"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000027",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "interruption",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000027",
+        "sourceType": "ANSWER",
+        "text": "The briefing bell interrupted us. I was explaining that an emergency repair may shorten the notice period, but the coordinator must record why advance notice was impossible and notify affected people as soon as practical."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "briefing bell",
+            "neighbour round"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000028",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000028",
+        "sourceType": "ANSWER",
+        "text": "Any promise about maintaining a particular driveway or delivery slot must be accepted by the promoter. The permits team cannot promise access arrangements on the promoter’s behalf."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "access promise",
+            "promoter"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000029",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "prior-statement-revision",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000029",
+        "sourceType": "ANSWER",
+        "text": "I should correct the normal notice period. It changed last month from two clear working days to three clear working days for new permits. Emergency wording is unchanged. The template with two days is being replaced."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "semantic": {
+          "vocabularyAnchors": [
+            "three clear working days",
+            "two"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000030",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000003",
+        "evidenceId": "42000000-0000-0000-0000-000000000030",
+        "sourceType": "ANSWER",
+        "text": "The neighbour round closes with a log naming each triggered group, the message and delivery time, school or bus advice, any promoter-approved access promise, and emergency reasons where notice was short. New permits use three clear working days."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "neighbour-round log",
+            "three clear"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        },
+        "outcomes": [
+          {
+            "resultId": "12000000-0000-0000-0000-000000000003",
+            "coverage": "SUPPORTED",
+            "category": "RULE",
+            "evidenceIds": [
+              "42000000-0000-0000-0000-000000000021",
+              "42000000-0000-0000-0000-000000000022",
+              "42000000-0000-0000-0000-000000000023",
+              "42000000-0000-0000-0000-000000000024",
+              "42000000-0000-0000-0000-000000000025",
+              "42000000-0000-0000-0000-000000000026",
+              "42000000-0000-0000-0000-000000000027",
+              "42000000-0000-0000-0000-000000000028",
+              "42000000-0000-0000-0000-000000000029",
+              "42000000-0000-0000-0000-000000000030"
+            ],
+            "summaryIncludes": [
+              "neighbour round",
+              "three clear working days",
+              "access promise"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000031",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "vocabulary-change",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000031",
+        "sourceType": "ANSWER",
+        "text": "The final handover is called the baton pass. It gives the street crew the approved conditions and the latest promises without asking them to interpret the permit-planning history."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "baton pass",
+            "handover"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000032",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000032",
+        "sourceType": "ANSWER",
+        "text": "The shift lead owns the baton pass. The coordinator prepares it, but the shift lead confirms that the crew has received and understood it before setup begins."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "shift lead",
+            "baton pass"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000033",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000033",
+        "sourceType": "ANSWER",
+        "text": "The brief starts with the permit number, exact map pin, approved date window, lane layout, and named promoter supervisor. Those are the identifiers the crew checks at the roadside."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "permit number",
+            "map pin"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000034",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "cross-thread",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000034",
+        "sourceType": "ANSWER",
+        "text": "The baton pass includes only commitments from the neighbour-round log that affect the crew, such as a protected driveway time. It does not reopen who should have been consulted."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "neighbour-round log",
+            "baton pass"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000035",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000035",
+        "sourceType": "ANSWER",
+        "text": "If the roadside conditions differ from the brief, the crew uses a stop card and calls the shift lead. They must not improvise a wider closure or move pedestrian access on their own."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "stop card",
+            "conditions differ"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000036",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000036",
+        "sourceType": "ANSWER",
+        "text": "A weather hold is another exception. High winds can delay sign installation even inside the approved window; the shift lead records the hold and the coordinator checks whether a revised permit window is needed."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "weather hold",
+            "high winds"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000037",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "interruption",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000037",
+        "sourceType": "ANSWER",
+        "text": "The yard siren interrupted me. To finish the exception: a stop card pauses setup, while a weather hold records a known condition; neither one silently changes the approved permit."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "yard siren",
+            "stop card"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000038",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000038",
+        "sourceType": "ANSWER",
+        "text": "The observable setup signal is a roadside photo showing the approved layout, plus the shift lead marking setup complete. A photo by itself is not enough because it may have been taken before the final safety walk."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "roadside photo",
+            "setup complete"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000039",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "stressor": "prior-statement-revision",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000039",
+        "sourceType": "ANSWER",
+        "text": "I need to revise the acknowledgement time. The old crew sheet allowed thirty minutes after receipt. The current baton-pass rule is twenty minutes, and if the crew has not acknowledged by then the coordinator calls the shift lead."
+      },
+      "expected": {
+        "action": "ASK_QUESTION",
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "semantic": {
+          "vocabularyAnchors": [
+            "twenty minutes",
+            "thirty"
+          ],
+          "forbiddenTerms": [
+            "investigation item",
+            "sufficient evidence",
+            "completion criterion",
+            "mission boundary",
+            "design tree",
+            "coverage status",
+            "runtime context"
+          ],
+          "ownWords": true,
+          "maxQuestionLength": 280
+        }
+      }
+    },
+    {
+      "runId": "22000000-0000-0000-0000-000000000040",
+      "sourceQuestion": "Continue from the preceding model-generated Question.",
+      "answer": {
+        "resultId": "12000000-0000-0000-0000-000000000004",
+        "evidenceId": "42000000-0000-0000-0000-000000000040",
+        "sourceType": "ANSWER",
+        "text": "The baton pass is complete when the shift lead has acknowledged within twenty minutes, the crew has the permit identifiers, layout and relevant access promises, exceptions use a stop card or weather hold rather than improvisation, and the final roadside photo plus setup-complete mark confirms the approved layout is in place."
+      },
+      "expected": {
+        "action": "PROPOSE_COMPLETION",
+        "outcomes": [
+          {
+            "resultId": "12000000-0000-0000-0000-000000000004",
+            "coverage": "SUPPORTED",
+            "category": "RULE",
+            "evidenceIds": [
+              "42000000-0000-0000-0000-000000000031",
+              "42000000-0000-0000-0000-000000000032",
+              "42000000-0000-0000-0000-000000000033",
+              "42000000-0000-0000-0000-000000000034",
+              "42000000-0000-0000-0000-000000000035",
+              "42000000-0000-0000-0000-000000000036",
+              "42000000-0000-0000-0000-000000000037",
+              "42000000-0000-0000-0000-000000000038",
+              "42000000-0000-0000-0000-000000000039",
+              "42000000-0000-0000-0000-000000000040"
+            ],
+            "summaryIncludes": [
+              "baton pass",
+              "twenty minutes",
+              "stop card"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

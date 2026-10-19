@@ -57,9 +57,17 @@ class EmailDeliveryServiceIntegrationTest {
         db.update("insert into participants values(?,?,?,?,?)", participant, organization, discovery, "Clare", "clare@example.com");
         db.update("insert into interview_sessions(id,organization_id,discovery_id,mission_id,mission_version,participant_id) values(?,?,?,?,1,?)",
                 session, organization, discovery, mission, participant);
-        db.update("insert into invitations values(?,?,?,?,?,'PENDING',now()+interval '7 days',null,null,null)",
-                invitation, organization, session, "clare@example.com", "0".repeat(64));
+        db.update("insert into invitations values(?,?,?,?,?,'PENDING',now()+(? * interval '1 second'),null,null,null)",
+                invitation, organization, session, "clare@example.com", "0".repeat(64), InvitationPolicy.VALIDITY_SECONDS);
         return invitation;
+    }
+
+    @Test
+    void invitation_persists_seven_days_as_a_168_hour_duration() {
+        var invitation = invitation();
+
+        assertThat(db.queryForObject("select extract(epoch from (expires_at-now()))::bigint from invitations where id=?",
+                Long.class, invitation)).isEqualTo(604_800L);
     }
 
     @Test
@@ -90,6 +98,20 @@ class EmailDeliveryServiceIntegrationTest {
     }
 
     @Test
+    void legacy_retention_warning_rows_remain_inert() {
+        var id = UUID.randomUUID();
+        db.update("""
+                insert into email_outbox(id,organization_id,kind,recipient,encrypted_link,state,lease_until)
+                values(?,'11111111-1111-1111-1111-111111111111','RETENTION_WARNING','investigator@example.com',?,'RUNNING',now()-interval '1 minute')
+                """, id, new byte[] { 1 });
+
+        assertThat(email.deliverNext()).isFalse();
+        assertThat(db.queryForObject("select state from email_outbox where id=?", String.class, id)).isEqualTo("RUNNING");
+        assertThat(db.queryForObject("select attempts from email_outbox where id=?", Integer.class, id)).isZero();
+        assertThat(db.queryForObject("select error_code from email_outbox where id=?", String.class, id)).isNull();
+    }
+
+    @Test
     void clerk_delivery_is_encrypted_and_never_consumed_by_the_legacy_worker() {
         var invitation = invitation();
         var client = mock(ClerkInvitationClient.class);
@@ -107,6 +129,28 @@ class EmailDeliveryServiceIntegrationTest {
         assertThat(db.queryForObject("select provider_invitation_id from email_outbox where invitation_id=?", String.class, invitation)).isEqualTo("inv_native");
         assertThat(db.queryForObject("select state from invitations where id=?", String.class, invitation)).isEqualTo("DELIVERED");
         verify(client).deliver(any(UUID.class), eq("clare@example.com"), eq(link), eq(7));
+    }
+
+    @Test
+    void clerk_delivery_never_extends_the_seven_day_policy_across_autumn_dst() {
+        var invitation = invitation();
+        db.update("""
+                update invitations
+                set expires_at=now() + (
+                    '2026-10-25 12:00 Europe/London'::timestamptz
+                    - '2026-10-18 12:00 Europe/London'::timestamptz
+                )
+                where id=?
+                """, invitation);
+        var client = mock(ClerkInvitationClient.class);
+        when(client.deliver(any(), anyString(), anyString(), anyInt())).thenReturn("inv_native");
+        var nativeEmail = nativeEmail(client);
+        nativeEmail.queue(invitation, UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                "clare@example.com", "https://findworks.example/invite/private-token");
+
+        assertThat(nativeEmail.deliverNextClerk()).isTrue();
+
+        verify(client).deliver(any(UUID.class), eq("clare@example.com"), anyString(), eq(7));
     }
 
     @Test

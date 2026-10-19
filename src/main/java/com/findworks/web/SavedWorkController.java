@@ -37,7 +37,7 @@ public class SavedWorkController {
         model.addAttribute("investigator", investigator.orElse(null));
         model.addAttribute("missions", investigator.map(missions::listOwned).orElse(List.of()));
         model.addAttribute("discoveries", investigator.map(owner -> db.sql("""
-                select id,title from discoveries where organization_id=:organization and owner_membership_id=:member and state='ACTIVE'
+                select id,title from discoveries where organization_id=:organization and owner_membership_id=:member and deleted_at is null
                 order by last_activity_at desc,id
                 """).param("organization", owner.organizationId()).param("member", owner.membershipId())
                 .query((rs, row) -> new Discovery(rs.getObject(1, UUID.class), rs.getString(2))).list()).orElse(List.of()));
@@ -48,7 +48,7 @@ public class SavedWorkController {
                 join discoveries d on d.id=s.discovery_id and d.organization_id=s.organization_id
                 join mission_versions mv on mv.mission_id=s.mission_id and mv.version=s.mission_version
                 where a.clerk_user_id=:subject and a.revoked_at is null and s.deleted_at is null
-                  and s.state<>'TERMINATED' and d.state='ACTIVE'
+                  and d.deleted_at is null
                 order by s.last_activity_at desc,s.id
                 """).param("subject", principal.subject())
                 .query((rs, row) -> new Interview(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
@@ -64,15 +64,16 @@ public class SavedWorkController {
                 case "PAUSED" -> "Paused · your answers are saved";
                 case "AWAITING_CONFIRMATION" -> "Ready to finish";
                 case "COMPLETED" -> "Completed";
-                case "ENDED_EARLY" -> "Ended · your answers are saved";
                 case "RUNTIME_FAILED" -> "Your answers are saved · retry available";
-                default -> "In progress";
+                case "UNAVAILABLE" -> "Unavailable · your answers are saved";
+                default -> "Status unavailable · your answers are saved";
             };
         }
         public String action() {
             return switch (state) {
                 case "NOT_STARTED" -> "Open interview";
-                case "COMPLETED", "ENDED_EARLY" -> "View completion";
+                case "COMPLETED" -> "View completion";
+                case "UNAVAILABLE" -> "View interview";
                 default -> "Continue interview";
             };
         }

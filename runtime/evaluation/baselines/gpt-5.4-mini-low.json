@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "startedAt": "2026-10-18T10:58:04.991Z",
+    "completedAt": "2026-10-18T11:20:53.044Z",
+    "commit": "208217662a60318f4e65a646361e908f99a2a934",
+    "workingTreeDirty": false,
+    "provider": "openai",
+    "model": "openai/gpt-5.4-mini",
+    "resolvedModel": "gpt-5.4-mini",
+    "reasoningEffort": "low",
+    "credentialKind": "api-key",
+    "credentialEnvironment": "OPENAI_API_KEY",
+    "runtimeVersion": "0.84.4",
+    "runtimeImage": "findworks-runtime:issue-63-66-2082176",
+    "runtimeImageId": "sha256:aec034e189b164ddf95e12b2da14a92c69d317d25d2579b1e595894b42957f36",
+    "runtimeCommit": "208217662a60318f4e65a646361e908f99a2a934",
+    "fixtureSchemaVersion": 1,
+    "fixtureVersions": {
+      "assumption-outcome": "1.1.0",
+      "claims-routing-20-turn-continuity": "1.0.0",
+      "conflict-outcome": "1.1.0",
+      "contradiction-within-interview": "1.1.0",
+      "disputed-terminology": "1.2.0",
+      "incomplete-owner-referral": "1.1.0",
+      "mention-is-not-sufficient": "1.0.0",
+      "morning-sort": "1.1.0",
+      "ownership-gap": "1.1.0",
+      "parked-thread-transition": "1.0.0",
+      "permit-handover-40-turn-compaction": "1.0.0",
+      "refund-completion": "1.2.0",
+      "refusal-to-answer": "1.1.0",
+      "required-before-optional": "1.0.0",
+      "shared-evidence-multiple-results": "1.0.0",
+      "uncertain-recollection": "1.2.0",
+      "unknown-outcome": "1.1.0",
+      "vague-partial-answer": "1.1.0"
+    },
+    "repeats": 3,
+    "tokenUsage": {
+      "inputTokens": 1293772,
+      "outputTokens": 61898,
+      "cacheWriteTokens": 0,
+      "available": true
+    },
+    "costUsd": 0.8116859999999999,
+    "kind": "retained-credentialed-baseline",
+    "source": "docs/acceptance/traces/issue-63-gpt-5.4-mini-low-2082176.json",
+    "configurationId": "gpt-5.4-mini-low",
+    "configurationVersion": "benchmark-configurations/1.0.0",
+    "limitations": "This accepted-outcome baseline retains observed stable-alias Runtime Turn identity and all current fixture versions. It is a behavioural floor, not a passing quality claim: the retained run contains deterministic, required-semantic, and continuity failures documented in the source trace."
+  },
+  "summary": {
+    "scenarios": 18,
+    "runs": 54,
+    "turns": 258,
+    "deterministicPasses": 37,
+    "deterministicFailures": 17,
+    "semanticGateFailures": 23,
+    "continuityGateFailures": 21,
+    "semanticPassed": 1346,
+    "semanticTotal": 1504,
+    "semanticPassRate": 0.8949468085106383,
+    "requiredCoverageCompletionRate": 0.6805555555555556,
+    "usefulEvidencePerQuestion": 0.496141975308642,
+    "latencyMs": {
+      "p50": 5234.9888345,
+      "p95": 6279.31524545
+    },
+    "durationMs": 1367782.3973099997,
+    "distributions": {
+      "semanticPassRate": {
+        "count": 54,
+        "min": 0.5,
+        "p25": 0.8820951741627509,
+        "p50": 1,
+        "p75": 1,
+        "p95": 1,
+        "max": 1,
+        "mean": 0.9232437512283987
+      },
+      "requiredCoverageCompletionRate": {
+        "count": 54,
+        "min": 0,
+        "p25": 0.125,
+        "p50": 1,
+        "p75": 1,
+        "p95": 1,
+        "max": 1,
+        "mean": 0.6805555555555556
+      },
+      "usefulEvidencePerQuestion": {
+        "count": 54,
+        "min": 0,
+        "p25": 0.0125,
+        "p50": 0.5,
+        "p75": 1,
+        "p95": 1,
+        "max": 1,
+        "mean": 0.496141975308642
+      },
+      "turnsToSufficientEvidence": {
+        "count": 33,
+        "min": 1,
+        "p25": 1,
+        "p50": 2,
+        "p75": 2,
+        "p95": 2,
+        "max": 2,
+        "mean": 1.5151515151515151
+      },
+      "latencyMs": {
+        "count": 258,
+        "min": 4166.243334,
+        "p25": 4937.949675,
+        "p50": 5234.9888345,
+        "p75": 5577.71344875,
+        "p95": 6279.31524545,
+        "max": 7964.700086,
+        "mean": 5301.482160116277
+      },
+      "costUsdPerRun": {
+        "count": 54,
+        "min": 0.0015300000000000001,
+        "p25": 0.002170125,
+        "p50": 0.003699375,
+        "p75": 0.00543,
+        "p95": 0.09476201249999956,
+        "max": 0.15073500000000004,
+        "mean": 0.01503122222222222
+      },
+      "costUsdPerQuestion": {
+        "count": 54,
+        "min": 0.0015300000000000001,
+        "p25": 0.00180553125,
+        "p50": 0.0020621249999999997,
+        "p75": 0.0024748125,
+        "p95": 0.0036728165625,
+        "max": 0.003768375000000001,
+        "mean": 0.0022722229958576996
+      }
+    },
+    "runsWithoutSufficientEvidence": 21,
+    "failureCounts": {
+      "contradictionsMissed": 0,
+      "repeatedQuestions": 43,
+      "earlyCompletions": 0,
+      "completionErrors": 12
+    },
+    "reviewer": {
+      "invocations": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "eligibleTurns": 258,
+      "cadence": 0,
+      "triggers": {},
+      "latencyMs": {
+        "count": 0,
+        "min": null,
+        "p25": null,
+        "p50": null,
+        "p75": null,
+        "p95": null,
+        "max": null,
+        "mean": null
+      }
+    }
+  }
+}

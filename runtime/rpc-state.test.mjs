@@ -26,11 +26,48 @@ test("prompt rejection terminates immediately instead of waiting for agent_settl
   });
 });
 
-test("a settled run succeeds only after the semantic tool commits", () => {
-  const monitor = new RpcTurnMonitor();
-  assert.equal(monitor.observe({ type: "response", command: "prompt", success: true }).terminal, false);
-  assert.equal(monitor.observe({ type: "tool_execution_end", toolName: "submit_interview_turn", isError: false }).terminal, false);
-  assert.deepEqual(monitor.observe({ type: "agent_settled" }), {
+test("assistant usage retains provider model identity and configured Pi reasoning without message content", () => {
+  const monitor = new RpcTurnMonitor("submit_interview_turn", { reasoningEffort: "low" });
+  monitor.observe({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "sensitive interview content" }],
+      provider: "openai",
+      model: "gpt-5.4-mini",
+      responseModel: "gpt-5.4-mini-2026-03-17",
+      usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 2, cost: { total: 0.004 } },
+      stopReason: "toolUse",
+    },
+  });
+  assert.deepEqual(monitor.usage(), {
+    inputTokens: 105,
+    outputTokens: 20,
+    cacheWriteTokens: 2,
+    costUsd: 0.004,
+    modelIdentity: {
+      provider: "openai",
+      requestedModel: "gpt-5.4-mini",
+      responseModel: "gpt-5.4-mini-2026-03-17",
+      reasoningEffort: "low",
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(monitor.usage()), /sensitive/);
+});
+
+test("a settled run succeeds only after the configured semantic tool commits", () => {
+  const interview = new RpcTurnMonitor();
+  assert.equal(interview.observe({ type: "response", command: "prompt", success: true }).terminal, false);
+  assert.equal(interview.observe({ type: "tool_execution_end", toolName: "submit_interview_turn", isError: false }).terminal, false);
+  assert.deepEqual(interview.observe({ type: "agent_settled" }), {
+    terminal: true,
+    exitCode: 0,
+    reason: "COMMITTED",
+  });
+
+  const review = new RpcTurnMonitor("submit_investigation_review");
+  assert.equal(review.observe({ type: "tool_execution_end", toolName: "submit_investigation_review", isError: false }).terminal, false);
+  assert.deepEqual(review.observe({ type: "agent_settled" }), {
     terminal: true,
     exitCode: 0,
     reason: "COMMITTED",

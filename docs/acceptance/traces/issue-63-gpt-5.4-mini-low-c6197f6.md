@@ -1,0 +1,187 @@
+# Adaptive Interview Evaluation
+
+- Commit: `c6197f6a0860471c0e113078d6488d9c3f886ba6`
+- Model: `openai/gpt-5.4-mini`
+- Reasoning effort: `low`
+- Runtime: `0.84.4` from `findworks-runtime:ticket-63`
+- Fixture versions: claims-routing-20-turn-continuity@1.0.0, permit-handover-40-turn-compaction@1.0.0
+- Token usage: 300658 input / 19440 output / 0 cache-write; cost: $0.310209
+- Scenarios: 2; repeat runs: 2; turns: 60
+- Deterministic: 0/2 runs passed
+- Required semantic gates: 2 failed; continuity gates: 2 failed
+- Semantic quality: 309/357 checks passed (86.6%)
+- Required coverage: 87.5%; useful Evidence/question: 0.387
+- Turn latency: p50 5663.7 ms, p95 8020.8 ms
+- Duration: 352600.90375399997 ms
+
+> Historical correction — no rerun: the model value above is configuration; this trace retained no actual provider/request/response identity for its 60 turns. Required-coverage, useful-Evidence, and turns-to-sufficiency values also predate the corrected accepted-outcome gate. Keep the failures as regression evidence, but do not use these figures as corrected #63 acceptance evidence.
+
+## claims-routing-20-turn-continuity — repeat 1
+- Contract: 9 violation(s)
+- Semantic: 98/114; required 90.0% — fail
+- Continuity: fail; required coverage 100.0%; useful Evidence/question 0.350
+- Latency: p50 5721.2 ms, p95 7562.0 ms; compacted records 0
+- Context-growth quality: early/middle/late early 88.1%, middle 86.7%, late 81.5%; late-vs-early -6.6 points
+- Late quality failures: expected-provenance:SUPPORTED, interviewee-vocabulary
+- **Turn 6, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: Sorry, the evacuation alarm interrupted me and I had to leave the desk. The timing rule I was about to give you is our porch clock: every new card should be screened within fifteen minutes while the desk is open. The clock measures arrival to the first saved routing decision.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"11000000-0000-0000-0000-000000000001","text":"On the front porch, what makes a claim card a duplicate that you keep from sending twice?","responseMode":"FREE_TEXT"}`
+- **Turn 8, expected-result:** Scenario expected Question resultId 11000000-0000-0000-0000-000000000001
+  - Source answer: We know the porch step is finished when the card has a saved lane, a named porch keeper, and a porch-clock timestamp. A coloured ribbon on screen without a saved lane is not complete because it can disappear on refresh.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"11000000-0000-0000-0000-000000000002","text":"On rapid-help, who is allowed to approve the emergency work?","responseMode":"FREE_TEXT"}`
+- **Turn 9, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: I need to correct what I said about fifteen minutes. Fifteen is the team target shown on the wallboard, but the actual service rule is twenty minutes. We investigate misses against twenty; fifteen is only the internal ambition. Please keep both meanings clear.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"11000000-0000-0000-0000-000000000002","text":"On rapid-help, who can approve the emergency work without going higher?","responseMode":"FREE_TEXT"}`
+- **Turn 9, expected-result:** Scenario expected Question resultId 11000000-0000-0000-0000-000000000001
+  - Source answer: I need to correct what I said about fifteen minutes. Fifteen is the team target shown on the wallboard, but the actual service rule is twenty minutes. We investigate misses against twenty; fifteen is only the internal ambition. Please keep both meanings clear.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"11000000-0000-0000-0000-000000000002","text":"On rapid-help, who can approve the emergency work without going higher?","responseMode":"FREE_TEXT"}`
+- **Turn 10, repeated-question:** Question repeats an earlier Question
+  - Source answer: So the front porch is sufficiently done when the porch keeper has checked whether the loss is live, dealt with any duplicate, saved the correct lane, and left the timestamp. The enforceable limit is twenty minutes, while fifteen remains the desk target. That is the complete first-screen rule.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"11000000-0000-0000-0000-000000000002","text":"On rapid-help, who can approve the emergency work without going higher?","responseMode":"FREE_TEXT"}`
+- **Turn 14, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: The rescue desk can see the porch timestamp, which is useful for checking the earlier service rule, but it does not reopen the front-porch routing unless the card was sent to the wrong lane. Its own record is the rescue log.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"11000000-0000-0000-0000-000000000002","text":"What makes the rescue desk start arranging hotel or emergency work?","responseMode":"FREE_TEXT"}`
+- **Turn 15, outcome-evidence-scope:** Outcome 1 did not link only supplied Session Evidence
+  - Source answer: The hotel trigger is that the home is uninhabitable tonight, not merely inconvenient. We use the customer’s account plus the contractor’s safety view. If there is no safe place to sleep, the rescue lead can use the two-night authority.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"11000000-0000-0000-0000-000000000002","text":"What is the pet exception on the rescue desk?","responseMode":"FREE_TEXT"}`
+- **Turn 17, repeated-question:** Question repeats an earlier Question
+  - Source answer: I also need to revise the emergency-work amount I gave you. Two thousand pounds was last year’s authority. Since April the rescue lead limit is one thousand five hundred pounds, and anything above that goes to the duty claims manager. The two-night hotel limit did not change.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"11000000-0000-0000-0000-000000000002","text":"When the rescue desk has finished arranging the emergency help, what do you save on the claim to show it was properly handled?","responseMode":"FREE_TEXT"}`
+- **Turn 19, expected-action:** Scenario expected ASK_QUESTION, received PROPOSE_COMPLETION
+  - Source answer: The handoff is auditable because the rescue log records the approving person, the amount or hotel nights, the contractor job reference, and the customer confirmation. Missing any one of those keeps the rescue task open.
+  - Offending action: `{"type":"PROPOSE_COMPLETION"}`
+- **Turn 4, semantic interviewee-vocabulary:** Expected one of: storm room, red ribbon
+- **Turn 4, semantic one-information-need:** Question contains a second interrogative frame
+- **Turn 5, semantic interviewee-vocabulary:** Expected one of: Mills Road, stop the leak
+- **Turn 6, semantic interviewee-vocabulary:** Expected one of: porch clock, fifteen minutes
+- **Turn 7, semantic interviewee-vocabulary:** Expected one of: duplicate card, older card
+- **Turn 8, semantic interviewee-vocabulary:** Expected one of: saved lane, porch clock
+- **Turn 9, semantic interviewee-vocabulary:** Expected one of: twenty minutes, fifteen
+- **Turn 10, semantic interviewee-vocabulary:** Expected one of: twenty-minute, front porch
+- **Turn 10, semantic expected-provenance:SUPPORTED:** Missing Evidence: 41000000-0000-0000-0000-000000000001, 41000000-0000-0000-0000-000000000002, 41000000-0000-0000-0000-000000000003, 41000000-0000-0000-0000-000000000004, 41000000-0000-0000-0000-000000000005, 41000000-0000-0000-0000-000000000006, 41000000-0000-0000-0000-000000000007, 41000000-0000-0000-0000-000000000008, 41000000-0000-0000-0000-000000000010
+- **Turn 13, semantic interviewee-vocabulary:** Expected one of: generator test, rescue lead
+- **Turn 14, semantic interviewee-vocabulary:** Expected one of: porch timestamp, rescue log
+- **Turn 15, semantic interviewee-vocabulary:** Expected one of: uninhabitable, safe place
+- **Turn 16, semantic interviewee-vocabulary:** Expected one of: pet boarding, hotel allowance
+- **Turn 17, semantic interviewee-vocabulary:** Expected one of: one thousand five hundred, two thousand
+- **Turn 18, semantic interviewee-vocabulary:** Expected one of: job accepted, safe
+- **Turn 20, semantic expected-provenance:SUPPORTED:** Missing Evidence: 41000000-0000-0000-0000-000000000011, 41000000-0000-0000-0000-000000000012, 41000000-0000-0000-0000-000000000013, 41000000-0000-0000-0000-000000000014, 41000000-0000-0000-0000-000000000015, 41000000-0000-0000-0000-000000000016, 41000000-0000-0000-0000-000000000017, 41000000-0000-0000-0000-000000000018, 41000000-0000-0000-0000-000000000019
+
+## permit-handover-40-turn-compaction — repeat 1
+- Contract: 26 violation(s)
+- Semantic: 211/243; required 90.0% — fail
+- Continuity: fail; required coverage 75.0%; useful Evidence/question 0.425
+- Latency: p50 5576.9 ms, p95 8065.1 ms; compacted records 28
+- Context-growth quality: early/middle/late early 85.9%, middle 89.9%, late 84.8%; late-vs-early -1.1 points
+- Late quality failures: expected-outcome:SUPPORTED, expected-provenance:SUPPORTED, interviewee-vocabulary
+- **Turn 1, unsupported-specific:** Question introduced names or numeric facts absent from supplied context: Besides
+  - Source answer: The Mission calls it permit intake, but our coordinators call it the landing pad. The request is a work pack. I first check that the pack names a road, a promoter, and a proposed start date before it can leave the landing pad.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000001","text":"Besides the road, promoter, and proposed start date, what else do you need on the work pack before it can leave the landing pad?","responseMode":"FREE_TEXT"}`
+- **Turn 3, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: For timing we need a date window, not just one start date. The promoter gives the earliest start and latest finish, and the coordinator checks that the window is not already in the past.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000001","text":"What do you need to see on the work pack when a school is nearby?","responseMode":"FREE_TEXT"}`
+- **Turn 8, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: Yesterday’s Canal Street pack had a road name and dates but its map pin sat on the parallel service road. I returned it to the promoter, who moved the pin before the coordinator marked it ready.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000001","text":"What do you save as the ready signal when a work pack is good to leave the landing pad?","responseMode":"FREE_TEXT"}`
+- **Turn 9, repeated-question:** Question repeats an earlier Question
+  - Source answer: I need to correct the emergency deadline I just gave. Noon is the old handbook wording. The current rule is ten o’clock on the next working day, introduced in January. A dashboard note still says noon, which is why people mix them up.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000001","text":"What do you save as the ready signal when a work pack is good to leave the landing pad?","responseMode":"FREE_TEXT"}`
+- **Turn 10, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: The landing-pad check is complete when the road has a trusted map pin, the date window is valid, the promoter and coordinator are named, school-gate and emergency markers are present when relevant, and the coordinator saves “ready for technical review.” Emergency missing material is due by ten o’clock next working day.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000001","text":"What happens with an ordinary work pack if it still has something missing?","responseMode":"FREE_TEXT"}`
+- **Turn 10, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000002
+  - Source answer: The landing-pad check is complete when the road has a trusted map pin, the date window is valid, the promoter and coordinator are named, school-gate and emergency markers are present when relevant, and the coordinator saves “ready for technical review.” Emergency missing material is due by ten o’clock next working day.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000001","text":"What happens with an ordinary work pack if it still has something missing?","responseMode":"FREE_TEXT"}`
+- **Turn 20, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000003
+  - Source answer: The street puzzle is done when every real overlap has a conflict note owned by the network planner, with promoter replies within three working days and one explicit disposition: dig order, joint working, or network duty-manager escalation.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000002","text":"What makes the planner put a job on the street puzzle as a real overlap?","responseMode":"FREE_TEXT"}`
+- **Turn 26, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: The normal notice period is two clear working days before the restriction begins. “Clear” excludes the day the notice is delivered and the day work starts.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"Who makes the access promise when a frontage is affected?","responseMode":"FREE_TEXT"}`
+- **Turn 27, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: The briefing bell interrupted us. I was explaining that an emergency repair may shorten the notice period, but the coordinator must record why advance notice was impossible and notify affected people as soon as practical.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a frontage is affected, who makes the access promise?","responseMode":"FREE_TEXT"}`
+- **Turn 29, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: I should correct the normal notice period. It changed last month from two clear working days to three clear working days for new permits. Emergency wording is unchanged. The template with two days is being replaced.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a driveway or delivery-slot promise is accepted, what do you record with it?","responseMode":"FREE_TEXT"}`
+- **Turn 30, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: The neighbour round closes with a log naming each triggered group, the message and delivery time, school or bus advice, any promoter-approved access promise, and emergency reasons where notice was short. New permits use three clear working days.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"What shows the neighbour round is finished?","responseMode":"FREE_TEXT"}`
+- **Turn 31, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: The final handover is called the baton pass. It gives the street crew the approved conditions and the latest promises without asking them to interpret the permit-planning history.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"What has the street crew got to confirm before the baton pass is closed?","responseMode":"FREE_TEXT"}`
+- **Turn 32, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: The shift lead owns the baton pass. The coordinator prepares it, but the shift lead confirms that the crew has received and understood it before setup begins.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"What is the final signal that the baton pass and setup are complete?","responseMode":"FREE_TEXT"}`
+- **Turn 33, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: The brief starts with the permit number, exact map pin, approved date window, lane layout, and named promoter supervisor. Those are the identifiers the crew checks at the roadside.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"What do they check after they’ve got those details at the roadside?","responseMode":"FREE_TEXT"}`
+- **Turn 34, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: The baton pass includes only commitments from the neighbour-round log that affect the crew, such as a protected driveway time. It does not reopen who should have been consulted.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a work pack is near a school, what gets told to the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 35, repeated-question:** Question repeats an earlier Question
+  - Source answer: If the roadside conditions differ from the brief, the crew uses a stop card and calls the shift lead. They must not improvise a wider closure or move pedestrian access on their own.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a work pack is near a school, what gets told to the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 35, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: If the roadside conditions differ from the brief, the crew uses a stop card and calls the shift lead. They must not improvise a wider closure or move pedestrian access on their own.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a work pack is near a school, what gets told to the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 36, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: A weather hold is another exception. High winds can delay sign installation even inside the approved window; the shift lead records the hold and the coordinator checks whether a revised permit window is needed.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a closure affects a school or bus route, what do you tell them?","responseMode":"FREE_TEXT"}`
+- **Turn 37, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: The yard siren interrupted me. To finish the exception: a stop card pauses setup, while a weather hold records a known condition; neither one silently changes the approved permit.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a closure affects a school, what do you tell the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 37, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: The yard siren interrupted me. To finish the exception: a stop card pauses setup, while a weather hold records a known condition; neither one silently changes the approved permit.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a closure affects a school, what do you tell the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 38, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: The observable setup signal is a roadside photo showing the approved layout, plus the shift lead marking setup complete. A photo by itself is not enough because it may have been taken before the final safety walk.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a closure affects a bus route, what do you tell the bus team?","responseMode":"FREE_TEXT"}`
+- **Turn 38, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: The observable setup signal is a roadside photo showing the approved layout, plus the shift lead marking setup complete. A photo by itself is not enough because it may have been taken before the final safety walk.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a closure affects a bus route, what do you tell the bus team?","responseMode":"FREE_TEXT"}`
+- **Turn 39, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: I need to revise the acknowledgement time. The old crew sheet allowed thirty minutes after receipt. The current baton-pass rule is twenty minutes, and if the crew has not acknowledged by then the coordinator calls the shift lead.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"If the works affect a school, what do you send or tell the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 39, expected-result:** Scenario expected Question resultId 12000000-0000-0000-0000-000000000004
+  - Source answer: I need to revise the acknowledgement time. The old crew sheet allowed thirty minutes after receipt. The current baton-pass rule is twenty minutes, and if the crew has not acknowledged by then the coordinator calls the shift lead.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"If the works affect a school, what do you send or tell the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 40, semantically-repeated-question:** Question repeats an earlier information need in different wording
+  - Source answer: The baton pass is complete when the shift lead has acknowledged within twenty minutes, the crew has the permit identifiers, layout and relevant access promises, exceptions use a stop card or weather hold rather than improvisation, and the final roadside photo plus setup-complete mark confirms the approved layout is in place.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a permit affects a school, what makes you send the notice to the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 40, expected-action:** Scenario expected PROPOSE_COMPLETION, received ASK_QUESTION
+  - Source answer: The baton pass is complete when the shift lead has acknowledged within twenty minutes, the crew has the permit identifiers, layout and relevant access promises, exceptions use a stop card or weather hold rather than improvisation, and the final roadside photo plus setup-complete mark confirms the approved layout is in place.
+  - Offending action: `{"type":"ASK_QUESTION","resultId":"12000000-0000-0000-0000-000000000003","text":"When a permit affects a school, what makes you send the notice to the school team?","responseMode":"FREE_TEXT"}`
+- **Turn 2, semantic interviewee-vocabulary:** Expected one of: map pin, road
+- **Turn 3, semantic interviewee-vocabulary:** Expected one of: date window, start
+- **Turn 4, semantic interviewee-vocabulary:** Expected one of: school gate, yellow tab
+- **Turn 5, semantic interviewee-vocabulary:** Expected one of: landing coordinator, promoter
+- **Turn 6, semantic interviewee-vocabulary:** Expected one of: emergency repair, retrospective
+- **Turn 8, semantic interviewee-vocabulary:** Expected one of: Canal Street, map pin
+- **Turn 9, semantic interviewee-vocabulary:** Expected one of: ten o’clock, noon
+- **Turn 10, semantic interviewee-vocabulary:** Expected one of: ready for technical review, ten o’clock
+- **Turn 10, semantic expected-outcome:SUPPORTED:** Missing SUPPORTED outcome for 12000000-0000-0000-0000-000000000001
+- **Turn 11, semantic interviewee-vocabulary:** Expected one of: street puzzle, technical review
+- **Turn 13, semantic interviewee-vocabulary:** Expected one of: network planner, conflict board
+- **Turn 14, semantic interviewee-vocabulary:** Expected one of: bus team, later consultation
+- **Turn 17, semantic interviewee-vocabulary:** Expected one of: control-room call, street puzzle
+- **Turn 18, semantic interviewee-vocabulary:** Expected one of: three working days, five
+- **Turn 20, semantic expected-outcome:SUPPORTED:** Missing SUPPORTED outcome for 12000000-0000-0000-0000-000000000002
+- **Turn 22, semantic interviewee-vocabulary:** Expected one of: yellow tab, school liaison
+- **Turn 23, semantic interviewee-vocabulary:** Expected one of: bus team, stop
+- **Turn 24, semantic interviewee-vocabulary:** Expected one of: late-shift crew, handover
+- **Turn 26, semantic interviewee-vocabulary:** Expected one of: two clear working days, notice
+- **Turn 27, semantic interviewee-vocabulary:** Expected one of: briefing bell, neighbour round
+- **Turn 28, semantic interviewee-vocabulary:** Expected one of: access promise, promoter
+- **Turn 29, semantic interviewee-vocabulary:** Expected one of: three clear working days, two
+- **Turn 30, semantic interviewee-vocabulary:** Expected one of: neighbour-round log, three clear
+- **Turn 30, semantic expected-provenance:SUPPORTED:** Missing Evidence: 42000000-0000-0000-0000-000000000021, 42000000-0000-0000-0000-000000000022, 42000000-0000-0000-0000-000000000023, 42000000-0000-0000-0000-000000000024, 42000000-0000-0000-0000-000000000025, 42000000-0000-0000-0000-000000000026, 42000000-0000-0000-0000-000000000027, 42000000-0000-0000-0000-000000000028, 42000000-0000-0000-0000-000000000030
+- **Turn 33, semantic interviewee-vocabulary:** Expected one of: permit number, map pin
+- **Turn 34, semantic interviewee-vocabulary:** Expected one of: neighbour-round log, baton pass
+- **Turn 35, semantic interviewee-vocabulary:** Expected one of: stop card, conditions differ
+- **Turn 36, semantic interviewee-vocabulary:** Expected one of: weather hold, high winds
+- **Turn 37, semantic interviewee-vocabulary:** Expected one of: yard siren, stop card
+- **Turn 38, semantic interviewee-vocabulary:** Expected one of: roadside photo, setup complete
+- **Turn 39, semantic interviewee-vocabulary:** Expected one of: twenty minutes, thirty
+- **Turn 40, semantic expected-outcome:SUPPORTED:** Missing SUPPORTED outcome for 12000000-0000-0000-0000-000000000004
+

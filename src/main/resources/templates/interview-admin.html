@@ -36,16 +36,22 @@
             <a class="button secondary" th:href="${'/app/missions/' + interview.missionId() + '/review#invite-heading'}">Open invitation controls</a>
         </section>
 
+        <section class="task-section" th:if="${interview.answerCount() > 0}">
+            <h2>Saved interview transcript</h2>
+            <p>Accepted questions and answers remain available throughout the Session lifecycle.</p>
+            <a class="button secondary" th:href="${'/app/findings/' + interview.id() + '#transcript-heading'}">Review saved transcript</a>
+        </section>
+
         <section class="task-section" th:if="${findingsAvailable}">
             <h2>Continue with findings</h2>
             <a class="button" th:href="${interview.resume().href()}" th:text="${interview.resume().label()}">Open findings</a>
         </section>
 
         <section class="danger-zone" th:if="${canTerminate}">
-            <h2>Terminate this interview</h2>
-            <p>This revokes participant access. Existing Evidence is preserved.</p>
+            <h2>Terminate interview access</h2>
+            <p>This completes the Session and revokes participant access. Existing Evidence is preserved and Findings extraction continues.</p>
             <form method="post" th:action="@{/app/interviews/{id}/terminate(id=${interview.id()})}">
-                <button class="button danger hold-confirm" type="submit" data-hold-confirm data-hold-label="Hold to terminate interview"><span data-hold-label-text>Hold to terminate interview</span></button>
+                <button class="button danger hold-confirm" type="submit" data-hold-confirm data-hold-label="Hold to terminate access"><span data-hold-label-text>Hold to terminate access</span></button>
                 <span class="sr-only" role="status" aria-live="polite" data-hold-status></span>
             </form>
         </section>

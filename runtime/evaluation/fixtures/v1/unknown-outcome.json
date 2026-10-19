@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "1.1.0",
+  "id": "unknown-outcome",
+  "title": "An honest unknown terminates the explored branch",
+  "minimumSemanticPassRate": 1,
+  "persona": {
+    "name": "Nadia",
+    "role": "Warehouse coordinator",
+    "brief": "Say plainly when you do not know rather than guessing."
+  },
+  "context": {
+    "run_id": "20000000-0000-0000-0000-000000000003",
+    "session_id": "30000000-0000-0000-0000-000000000003",
+    "mission_version": 1,
+    "expected_revision": 2,
+    "mission": {
+      "objective": "Identify who can override a blocked dispatch.",
+      "desired_outcome": "Name the override decision owner or preserve the gap honestly.",
+      "data_use": "The Investigator will review the answer for workflow design."
+    },
+    "shared_mission_entries": [],
+    "investigation_results": [{
+      "result_id": "10000000-0000-0000-0000-000000000003",
+      "knowledge_gap": "Who can override a blocked dispatch?",
+      "why_it_matters": "Blocked orders need a safe escalation path.",
+      "priority": "HIGH",
+      "required": true,
+      "relevant_context": "The warehouse coordinator sees dispatch blocks.",
+      "sufficient_evidence": "The owner is identified, or the interviewee's inability to identify one is recorded.",
+      "coverage": "EXPLORING",
+      "current_outcomes": []
+    }],
+    "questions_and_evidence": [],
+    "conversation_state": {}
+  },
+  "turns": [{
+    "runId": "20000000-0000-0000-0000-000000000003",
+    "sourceResultId": "10000000-0000-0000-0000-000000000003",
+    "sourceQuestion": "Who can decide that a blocked dispatch should still leave the warehouse?",
+    "answer": {
+      "evidenceId": "40000000-0000-0000-0000-000000000021",
+      "sourceType": "DONT_KNOW",
+      "text": "I don't know. I've never seen one overridden, and I don't know who would own that decision."
+    },
+    "expected": {
+      "action": "PROPOSE_COMPLETION",
+      "outcomes": [{
+        "resultId": "10000000-0000-0000-0000-000000000003",
+        "coverage": "UNKNOWN",
+        "evidenceIds": ["40000000-0000-0000-0000-000000000021"],
+        "summaryIncludes": ["don't know", "unknown", "never seen", "owner"]
+      }],
+      "forbiddenOutcomes": [
+        { "resultId": "10000000-0000-0000-0000-000000000003", "coverage": "SUPPORTED" },
+        { "resultId": "10000000-0000-0000-0000-000000000003", "coverage": "ASSUMPTION" },
+        { "resultId": "10000000-0000-0000-0000-000000000003", "coverage": "OWNERSHIP_GAP" }
+      ]
+    }
+  }]
+}

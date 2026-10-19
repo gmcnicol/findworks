@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "configurationVersion": "1.0.0",
+  "providerDocumentation": {
+    "gpt-5.4-mini": "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+    "gpt-5.4": "https://developers.openai.com/api/docs/models/gpt-5.4"
+  },
+  "configurations": [
+    {
+      "id": "gpt-5.4-mini-low",
+      "label": "GPT-5.4 mini / low",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "low",
+      "required": true
+    },
+    {
+      "id": "gpt-5.4-medium",
+      "label": "GPT-5.4 / medium",
+      "provider": "openai",
+      "model": "gpt-5.4",
+      "reasoningEffort": "medium",
+      "required": true
+    },
+    {
+      "id": "gpt-5.4-mini-medium",
+      "label": "GPT-5.4 mini / medium",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "reasoningEffort": "medium",
+      "required": false
+    }
+  ]
+}

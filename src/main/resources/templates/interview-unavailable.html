@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Interview unavailable · FindWorks</title><link rel="stylesheet" th:href="@{/assets/app.css}"><th:block th:replace="~{fragments/clerk :: scripts}"></th:block><script defer th:src="@{/assets/interview.js}"></script></head>
+<body class="participant-body">
+<main class="interview-shell" id="interview-shell" th:fragment="interviewShell" th:attr="data-interview-session=${view.sessionId()}">
+    <span hidden data-clear-session-drafts></span>
+    <th:block th:replace="~{fragments/interview :: masthead}"></th:block>
+    <th:block th:replace="~{fragments/interview :: progress}"></th:block>
+    <section class="conversation-state is-error">
+        <h1 tabindex="-1" data-focus-target data-focus-key="unavailable">This interview can’t continue right now</h1>
+        <p>Your previously accepted responses are unchanged and remain readable below. Return to your saved work or contact the Investigator.</p>
+        <a class="button" th:if="${clerkEnabled}" th:href="@{/work}">Return to saved work</a>
+        <a th:unless="${clerkEnabled}" th:href="'mailto:' + ${view.contactEmail()}" th:text="${view.contactEmail()}">Contact</a>
+    </section>
+    <th:block th:replace="~{fragments/interview :: transcript}"></th:block>
+</main>
+</body>
+</html>

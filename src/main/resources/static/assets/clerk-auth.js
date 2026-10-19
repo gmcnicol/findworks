@@ -39,6 +39,12 @@ export async function initialiseClerk(window, document) {
     try {
       if (!window.Clerk?.loaded) throw new Error('Sign-in has not loaded');
       await timeout(window.Clerk.signOut());
+      try {
+        Object.keys(window.sessionStorage)
+          .filter((key) => key.startsWith('findworks:interview-drafts:v1:'))
+          .forEach((key) => window.sessionStorage.removeItem(key));
+      } catch { /* Sign-out still succeeds when browser storage is unavailable. */ }
+      window.dispatchEvent(new Event('findworks:auth-ended'));
       window.location.assign(destination);
     } catch {
       button.disabled = false;

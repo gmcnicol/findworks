@@ -17,12 +17,14 @@ public class WorkspaceController {
     private final JdbcClient db;
     private final CurrentInvestigatorService currentInvestigator;
     private final MissionWorkQuery missionWork;
+    private final FindingsStatusProjector findingsStatuses;
 
     public WorkspaceController(JdbcClient db, CurrentInvestigatorService currentInvestigator,
-                               MissionWorkQuery missionWork) {
+                               MissionWorkQuery missionWork, FindingsStatusProjector findingsStatuses) {
         this.db = db;
         this.currentInvestigator = currentInvestigator;
         this.missionWork = missionWork;
+        this.findingsStatuses = findingsStatuses;
     }
 
     @GetMapping("/app")
@@ -76,7 +78,7 @@ public class WorkspaceController {
                 left join interview_sessions s on s.mission_id=m.id and s.deleted_at is null
                 left join findings_packages fp on fp.session_id=s.id
                 left join package_versions pv on pv.package_id=fp.id and pv.version=fp.current_version
-                where d.organization_id=:organization and d.owner_membership_id=:member and d.state='ACTIVE'
+                where d.organization_id=:organization and d.owner_membership_id=:member and d.deleted_at is null
                 group by d.id order by d.last_activity_at desc,d.id
                 """).param("organization", investigator.organizationId()).param("member", investigator.membershipId())
                 .query((rs, row) -> new DiscoveryRow(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
@@ -92,8 +94,8 @@ public class WorkspaceController {
                 join participants p on p.id=s.participant_id
                 left join findings_packages fp on fp.session_id=s.id
                 left join package_versions pv on pv.package_id=fp.id and pv.version=fp.current_version
-                where d.organization_id=:organization and d.owner_membership_id=:member and d.state='ACTIVE'
-                  and s.deleted_at is null and s.state in ('COMPLETED','ENDED_EARLY')
+                where d.organization_id=:organization and d.owner_membership_id=:member and d.deleted_at is null
+                  and s.deleted_at is null and s.state='COMPLETED'
                 order by s.completed_at desc nulls last,s.id desc
                 """).param("organization", investigator.organizationId()).param("member", investigator.membershipId())
                 .query((rs, row) -> findingsRow(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
@@ -102,14 +104,9 @@ public class WorkspaceController {
 
     private FindingsRow findingsRow(UUID sessionId, String discovery, String mission, String participant,
                                     String extractionState, String packageState) {
-        if ("FAILED".equals(extractionState)) return new FindingsRow(sessionId, discovery, mission, participant,
-                "Extraction failed", "attention", "Retry extraction");
-        if (!"READY".equals(extractionState)) return new FindingsRow(sessionId, discovery, mission, participant,
-                "Processing", "waiting", "View progress");
-        if (packageState == null || "READY".equals(packageState)) return new FindingsRow(sessionId, discovery, mission,
-                participant, "Ready for review", "attention", "Review findings");
+        var status = findingsStatuses.project(extractionState, packageState);
         return new FindingsRow(sessionId, discovery, mission, participant,
-                "ACCEPTED".equals(packageState) ? "Accepted" : "Rejected", "complete", "Open findings");
+                status.label(), status.tone(), status.action());
     }
 
     public record DiscoveryRow(UUID id, String title, String objective, long missionCount,

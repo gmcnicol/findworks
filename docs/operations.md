@@ -10,7 +10,7 @@ The worker talks to a rootless Docker daemon. Every Pi turn gets a fresh read-on
 
 Use separate domains, databases, provider projects, keys, and rootless Docker daemons for local, staging, and production. Staging contains synthetic data only. Supply secrets through the host secret store into process environment at start. Do not put values in images, Compose files, logs, checkpoints, browser code, or Mission content. Rotate one process-scoped credential at a time and restart only its consumer.
 
-Use separate least-privilege PostgreSQL roles. The web role owns migrations and interactive data operations. The worker role leases and completes email, runtime, extraction, retention, and purge work. The restore role can read an isolated restored database only.
+Use separate least-privilege PostgreSQL roles. The web role owns migrations and interactive data operations. The worker role leases and completes invitation email, runtime, and extraction work. The restore role can read an isolated restored database only.
 
 ## Release and rollback
 
@@ -24,7 +24,7 @@ docker compose --env-file deploy/production.env -f compose.production.yml up -d 
 
 ## Health, outages, and telemetry
 
-`/health` reports process health without content. `/operator/status` reports content-free counts for pending and failed email, running, deferred, and failed runtime work, model-runtime circuit state, failed extraction, pending deletion, and overdue deletion. Alert on unavailable health, database connection failure, email exhaustion, runtime exhaustion, extraction failure, deletion past its seven-day bound, purge failure, and missing telemetry.
+`/health` reports process health without content. `/operator/status` reports content-free counts for pending and failed invitation email, running, deferred, and failed runtime work, model-runtime circuit state, failed extraction, and `deletion_enabled: false`. Alert on unavailable health, database connection failure, email exhaustion, runtime exhaustion, extraction failure, and missing telemetry.
 
 - Database outage: web mutations fail and no answer is acknowledged. Existing pages fail closed. Workers retain no alternative state.
 - Model or runtime outage: accepted Evidence remains committed. The worker owns one three-attempt budget (Pi's nested retry loop is disabled), waits 2–4 seconds and then 8–10 seconds with stable jitter, and ends in the participant recovery screen after exhaustion. Three consecutive dependency failures open the shared model-runtime circuit for 30 seconds; one half-open probe then either resets or reopens it. The participant working page refreshes into the next question or recovery state without requiring a manual reload.
@@ -34,8 +34,10 @@ docker compose --env-file deploy/production.env -f compose.production.yml up -d 
 
 Logs contain timestamp, service, severity, action code, outcome, correlation identity, and opaque resource identity only. Never log request bodies, answer text, Evidence, email addresses, tokens, model events, tool parameters, or arbitrary JSON.
 
-## Retention, deletion, backup, and restore
+## Data preservation, backup, and restore
 
-Configure encrypted daily managed snapshots, point-in-time recovery of five minutes or better, and backup retention no longer than 30 days. The content-free deletion ledger is authoritative after restore. Before restored traffic is enabled, start the app against the isolated restore network so startup reapplies pending immediate denials, then run `scripts/restore-drill.sh`.
+Deletion is disabled for v1. Do not run retention selection, retention warnings, deletion requests, retention extensions, deletion-ledger denial reapplication, or physical purge. The corresponding HTTP routes fail closed, and `scripts/findworks-operator` does not expose them. Legacy retention columns, deletion markers, warning rows, and deletion-ledger rows remain inert under the forward-only schema. Do not manually change, restore, or purge them as part of this rollout.
 
-Run content-safe operator tasks with `scripts/findworks-operator`. Deletion denies immediately, purges within seven days, and retains only bounded ledger and audit tombstones. Restore validation must prove committed Evidence and provenance for retained records, denial for deleted records, correct retention and purge deadlines, and reapplied deletion-ledger state.
+Configure encrypted daily managed snapshots and point-in-time recovery of five minutes or better under the approved infrastructure backup policy. Before restored traffic is enabled, run `scripts/restore-drill.sh` against the isolated restore network. Restore validation proves committed Evidence and provenance remain intact; it does not reapply legacy deletion state or execute purge work.
+
+Access revocation, invitation revocation/reissue, Interview Session termination, and ordinary content-free audit remain active operational controls because they do not delete product content.

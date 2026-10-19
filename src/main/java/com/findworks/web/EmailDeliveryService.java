@@ -72,28 +72,17 @@ class EmailDeliveryService {
                 .param("provider", clerk.enabled() ? "CLERK" : "EMAIL").update();
     }
 
-    void queueRetentionWarning(UUID discoveryId, UUID organizationId, String recipient, String link) {
-        if (testSupport) {
-            db.sql("insert into test_emails values(:id,'RETENTION_WARNING',:recipient,:link,now())")
-                    .param("id", Ids.id()).param("recipient", recipient).param("link", link).update();
-            return;
-        }
-        db.sql("insert into email_outbox(id,organization_id,kind,recipient,encrypted_link) values(:id,:organization,'RETENTION_WARNING',:recipient,:link)")
-                .param("id", discoveryId).param("organization", organizationId).param("recipient", recipient)
-                .param("link", encrypt(link)).update();
-    }
-
     boolean deliverNext() { return deliverNext("EMAIL"); }
 
     boolean deliverNextClerk() { return deliverNext("CLERK"); }
 
     private boolean deliverNext(String provider) {
         var job = transactions.execute(status -> {
-            db.sql("update email_outbox set state='PENDING',lease_until=null,error_code='PROCESS_DIED' where delivery_provider=:provider and state='RUNNING' and lease_until<now()")
+            db.sql("update email_outbox set state='PENDING',lease_until=null,error_code='PROCESS_DIED' where delivery_provider=:provider and kind='INVITATION' and state='RUNNING' and lease_until<now()")
                     .param("provider", provider).update();
             return db.sql("""
                 update email_outbox set state='RUNNING',attempts=attempts+1,lease_until=now()+interval '30 seconds'
-                where id=(select id from email_outbox where delivery_provider=:provider and state='PENDING' and available_at<=now() order by created_at limit 1 for update skip locked)
+                where id=(select id from email_outbox where delivery_provider=:provider and kind='INVITATION' and state='PENDING' and available_at<=now() order by created_at limit 1 for update skip locked)
                 returning id,invitation_id,kind,recipient,encrypted_link,attempts,max_attempts
                 """).param("provider", provider).query((rs, row) -> new EmailJob(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
                     rs.getString(3), rs.getString(4), rs.getBytes(5), rs.getInt(6), rs.getInt(7))).optional().orElse(null);
@@ -102,7 +91,8 @@ class EmailDeliveryService {
         try {
             String providerId = null;
             if (job.invitationId() != null) {
-                var days = db.sql("select greatest(1,ceil(extract(epoch from (expires_at-now()))/86400))::int from invitations where id=:id and state='PENDING' and revoked_at is null and expires_at>now()")
+                var days = db.sql("select least(:maximumDays,greatest(1,ceil(extract(epoch from (expires_at-now()))/86400)))::int from invitations where id=:id and state='PENDING' and revoked_at is null and expires_at>now()")
+                        .param("maximumDays", InvitationPolicy.VALIDITY_DAYS)
                         .param("id", job.invitationId()).query(Integer.class).optional();
                 if (days.isEmpty()) {
                     if (provider.equals("CLERK") && job.attempts() > 1) clerkInvitations.getObject().recoverAndRevoke(job.id(), job.recipient());
@@ -116,7 +106,7 @@ class EmailDeliveryService {
             if (provider.equals("EMAIL")) {
                 if (endpoint.equals("disabled") || apiKey.equals("disabled")) throw new IllegalStateException("email_not_configured");
                 var body = mapper.writeValueAsString(Map.of("from", from, "to", job.recipient(),
-                        "template", job.kind().equals("INVITATION") ? "findworks-invitation" : "findworks-retention-warning",
+                        "template", "findworks-invitation",
                         "link", decrypt(job.encryptedLink())));
                 var request = HttpRequest.newBuilder(URI.create(endpoint)).timeout(Duration.ofSeconds(15))
                         .header("Authorization", "Bearer " + apiKey).header("Content-Type", "application/json")

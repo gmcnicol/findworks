@@ -96,8 +96,10 @@ public class RuntimeTurnContext {
                 });
         result.put("conversation_state", conversationState);
         result.put("questions_and_evidence", db.sql("""
-                select q.id,q.sequence,q.text,e.id,e.source_type,e.exact_text,e.option_id,e.option_label,e.explanation,q.active
-                from questions q left join evidence e on e.question_id=q.id
+                select q.id,q.sequence,q.text,e.id,e.source_type,e.exact_text,e.option_id,e.option_label,e.explanation,q.active,r.id
+                from questions q
+                join investigation_results r on r.item_id=q.item_id and r.session_id=q.session_id
+                left join evidence e on e.question_id=q.id
                 where q.session_id=:session and (q.active or e.id is not null)
                 order by q.sequence,e.created_at,e.id
                 """).param("session", sessionId).query((rs, row) -> {
@@ -106,6 +108,7 @@ public class RuntimeTurnContext {
             turn.put("sequence", rs.getInt(2));
             turn.put("question", rs.getString(3));
             turn.put("active", rs.getBoolean(10));
+            turn.put("result_id", rs.getObject(11));
             if (rs.getObject(4) != null) {
                 turn.put("evidence_id", rs.getObject(4));
                 turn.put("source_type", rs.getString(5));

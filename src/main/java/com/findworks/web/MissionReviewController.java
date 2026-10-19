@@ -271,7 +271,7 @@ public class MissionReviewController {
                 where m.id = :missionId
                   and m.organization_id = :organizationId
                   and d.owner_membership_id = :membershipId
-                  and d.state = 'ACTIVE'
+                  and d.deleted_at is null
                 """)
                 .param("missionId", missionId)
                 .param("organizationId", organizationId)
