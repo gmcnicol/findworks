@@ -74,42 +74,45 @@ public class FindingsController {
                         rs.getObject(1, UUID.class), rs.getInt(2), rs.getString(3), rs.getBoolean(4), rs.getString(5),
                         new ArrayList<>(), new ArrayList<>())).list().forEach(group -> groups.put(group.id(), group));
         var knowledgeRows = db.sql("""
-                select k.result_id,k.id,v.claim,v.category,v.review_state,e.id,e.exact_text,ke.quotation,
+                select k.result_id,k.id,v.claim,v.category,v.review_state,e.id,e.exact_text,q.text,ke.quotation,
                        e.created_at,p.name,ke.start_offset,ke.end_offset
                 from knowledge_items k join findings_packages fp on fp.id=k.package_id and fp.current_version=k.package_version
                 join knowledge_versions v on v.knowledge_id=k.id and v.version=k.current_version
                 left join knowledge_evidence ke on ke.knowledge_id=k.id and ke.knowledge_version=v.version
                 left join evidence e on e.id=ke.evidence_id
+                left join questions q on q.id=e.question_id
                 left join participants p on p.id=e.participant_id
                 where fp.session_id=:session order by k.id,e.created_at,e.id
                 """).param("session", sessionId).query((rs, row) -> new KnowledgeRow(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getString(3), rs.getString(4), rs.getString(5),
-                        rs.getObject(6, UUID.class), rs.getString(7), rs.getString(8), rs.getObject(9),
-                        rs.getString(10), (Integer) rs.getObject(11), (Integer) rs.getObject(12))).list();
+                        rs.getObject(6, UUID.class), rs.getString(7), rs.getString(8), rs.getString(9), rs.getObject(10),
+                        rs.getString(11), (Integer) rs.getObject(12), (Integer) rs.getObject(13))).list();
         var knowledge = new LinkedHashMap<UUID, KnowledgeView>();
         for (var row : knowledgeRows) {
             var item = knowledge.computeIfAbsent(row.id(), id -> new KnowledgeView(
                     id, row.resultId(), row.claim(), row.category(), row.reviewState(), new ArrayList<>()));
-            if (row.evidenceId() != null) item.sources().add(new KnowledgeSource(row.evidenceId(), row.answer(), row.quote(),
-                    row.evidenceAt(), row.participant(), row.startOffset(), row.endOffset()));
+            if (row.evidenceId() != null) item.sources().add(new KnowledgeSource(row.evidenceId(), row.question(), row.answer(),
+                    row.quote(), row.evidenceAt(), row.participant(), row.startOffset(), row.endOffset()));
         }
         knowledge.values().forEach(item -> {
             var group = groups.get(item.resultId());
             if (group != null) group.knowledge().add(item);
         });
         var unresolved = db.sql("""
-                select u.result_id,u.id,u.kind,u.summary,u.reason,u.owner,u.acknowledged,e.id,e.exact_text,e.created_at,p.name,
+                select u.result_id,u.id,u.kind,u.summary,u.reason,u.owner,u.acknowledged,e.id,e.exact_text,q.text,e.created_at,p.name,
                        (select count(*) from conflict_members cm where cm.conflict_id=u.id)
                 from unresolved u join investigation_results r on r.id=u.result_id
                 join findings_packages fp on fp.session_id=r.session_id
                 join package_results pr on pr.package_id=fp.id and pr.package_version=fp.current_version and pr.result_id=r.id
                 left join lateral(select evidence_id from unresolved_evidence where unresolved_id=u.id order by evidence_id limit 1) ue on true
                 left join evidence e on e.id=coalesce(ue.evidence_id,u.evidence_id)
+                left join questions q on q.id=e.question_id
                 left join participants p on p.id=e.participant_id
                 where r.session_id=:session order by u.id
                 """).param("session", sessionId).query((rs, row) -> new UnresolvedView(
                         rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6),
-                        rs.getBoolean(7), rs.getObject(8, UUID.class), rs.getString(9), rs.getObject(10), rs.getString(11), rs.getInt(12))).list();
+                        rs.getBoolean(7), rs.getObject(8, UUID.class), rs.getString(9), rs.getString(10), rs.getObject(11),
+                        rs.getString(12), rs.getInt(13))).list();
         unresolved.forEach(item -> {
             var group = groups.get(item.resultId());
             if (group != null) group.unresolved().add(item);
@@ -432,15 +435,16 @@ public class FindingsController {
         }
     }
     record KnowledgeView(UUID id, UUID resultId, String claim, String category, String reviewState, List<KnowledgeSource> sources) {}
-    record KnowledgeSource(UUID evidenceId, String answer, String quote, Object evidenceAt, String participant,
+    record KnowledgeSource(UUID evidenceId, String question, String answer, String quote, Object evidenceAt, String participant,
                            Integer startOffset, Integer endOffset) {}
     record UnresolvedView(UUID resultId, UUID id, String kind, String summary, String reason, String owner, boolean acknowledged,
-                          UUID evidenceId, String answer, Object evidenceAt, String participant, int conflictMemberCount) {}
+                          UUID evidenceId, String answer, String question, Object evidenceAt, String participant,
+                          int conflictMemberCount) {}
     private record Extractable(UUID id, UUID organizationId) {}
     private record KnowledgeProposal(UUID id, UUID resultId, String category, String summary) {}
     private record SourceEvidence(UUID id, String text) {}
     private record KnowledgeRow(UUID resultId, UUID id, String claim, String category, String reviewState, UUID evidenceId, String answer,
-                                String quote, Object evidenceAt, String participant, Integer startOffset, Integer endOffset) {}
+                                String question, String quote, Object evidenceAt, String participant, Integer startOffset, Integer endOffset) {}
     private record CurrentKnowledge(int version, String category, String claim) {}
     private record PackageDecision(UUID id, String state) {}
     record TranscriptQuestion(int sequence, String question, List<TranscriptAnswer> answers) {}

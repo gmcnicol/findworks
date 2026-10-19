@@ -72,7 +72,10 @@
                         <blockquote th:text="${source.quote()}">Source quotation</blockquote>
                         <details>
                             <summary>Open source context</summary>
-                            <p th:text="${source.answer()}">Answer context</p>
+                            <dl class="review-fields source-context">
+                                <div><dt>Question asked</dt><dd th:text="${source.question() != null ? source.question() : 'Question unavailable for this Evidence'}">Question</dd></div>
+                                <div><dt>Answer given</dt><dd th:text="${source.answer()}">Answer</dd></div>
+                            </dl>
                             <p class="subtle"><span th:text="${source.participant()}">Participant</span> · <time th:text="${source.evidenceAt()}">Time</time> · characters <span th:text="${source.startOffset()}">0</span>–<span th:text="${source.endOffset()}">0</span></p>
                         </details>
                     </div>
@@ -98,7 +101,10 @@
                     <p th:if="${item.owner() != null}" th:text="'Owner: ' + ${item.owner()}">Owner</p>
                     <details th:if="${item.evidenceId() != null}">
                         <summary>Open source context</summary>
-                        <p th:text="${item.answer()}">Answer context</p>
+                        <dl class="review-fields source-context">
+                            <div><dt>Question asked</dt><dd th:text="${item.question() != null ? item.question() : 'Question unavailable for this Evidence'}">Question</dd></div>
+                            <div><dt>Answer given</dt><dd th:text="${item.answer()}">Answer</dd></div>
+                        </dl>
                         <p class="subtle"><span th:text="${item.participant()}">Participant</span> · <time th:text="${item.evidenceAt()}">Time</time></p>
                     </details>
                     <div th:id="'unresolved-review-' + ${item.id()}">

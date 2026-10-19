@@ -163,8 +163,12 @@ test('answer, adaptive structured follow-up, completion, and findings review', a
   await expect(page.getByText('Extraction pending')).toBeVisible();
   await request.post('/test/extraction/run-once');
   await page.reload();
-  await page.getByText('Open source context').click();
-  await expect(page.getByRole('group').getByText('Only unmatched entries need approval.')).toBeVisible();
+  const finding = page.locator('.finding').filter({ has: page.getByRole('button', { name: 'Accept', exact: true }) });
+  await finding.getByText('Open source context').click();
+  const sourceContext = finding.locator('.source-context');
+  await expect(sourceContext.getByText('Question asked')).toBeVisible();
+  await expect(sourceContext.getByText('What does the finance analyst check in the source ledger?')).toBeVisible();
+  await expect(sourceContext.getByText('Only unmatched entries need approval.', { exact: false })).toBeVisible();
 
   const acceptFinding = page.getByRole('button', { name: 'Accept', exact: true });
   const reviewPosition = await acceptFinding.evaluate((button) => {

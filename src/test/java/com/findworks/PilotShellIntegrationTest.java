@@ -1354,6 +1354,7 @@ class PilotShellIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("A mismatch needs Gareth&#39;s approval")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Open source context")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Question asked")))
                 .andReturn().getResponse().getContentAsString();
         org.assertj.core.api.Assertions.assertThat(review).doesNotContain("findings@example.com");
 
@@ -1449,6 +1450,15 @@ class PilotShellIntegrationTest {
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().is3xxRedirection());
         mockMvc.perform(post("/test/extraction/run-once")).andExpect(status().isOk());
+        var unresolvedQuestion = jdbcTemplate.queryForObject(
+                "select q.text from questions q join evidence e on e.question_id=q.id where e.session_id=? limit 1",
+                String.class, participant.sessionId());
+        mockMvc.perform(get("/app/findings/{sessionId}", participant.sessionId()).session(access.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Question asked")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(unresolvedQuestion)))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Answer given")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("I don&#39;t know")));
 
         mockMvc.perform(post("/app/findings/{sessionId}/reject", participant.sessionId()).session(access.session())
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
