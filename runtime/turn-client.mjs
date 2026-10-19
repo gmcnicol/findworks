@@ -5,6 +5,7 @@ const CORRECTABLE_CODES = new Set([
   "invalid_outcome_scope",
   "invalid_question_scope",
   "current_thread_still_open",
+  "terminal_result_cannot_be_queried",
   "exactly_one_next_action_required",
 ]);
 

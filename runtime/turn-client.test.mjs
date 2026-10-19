@@ -19,3 +19,20 @@ test("semantic rejection exposes only its stable correction code", async () => {
     server.close();
   }
 });
+
+test("terminal-result rejection is exposed as a correctable code", async () => {
+  const server = http.createServer((_request, response) => {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ code: "terminal_result_cannot_be_queried" }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const { port } = server.address();
+    await assert.rejects(
+      submitTurn({ url: `http://127.0.0.1:${port}`, token: "synthetic", params: {} }),
+      error => error.message === "Turn rejected: terminal_result_cannot_be_queried",
+    );
+  } finally {
+    server.close();
+  }
+});

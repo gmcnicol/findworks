@@ -131,6 +131,31 @@ test("a compacted attempted need is still rejected as a semantic repeat", () => 
   assert.ok(violations.some(violation => violation.code === "semantically_repeated_question"));
 });
 
+test("a terminal unknown result cannot be questioned again", () => {
+  const supplied = context();
+  supplied.investigation_results[0].coverage = "UNKNOWN";
+  supplied.questions_and_evidence = [{
+    question_id: "q1",
+    sequence: 1,
+    result_id: currentResultId,
+    question: "Who owns the privacy review?",
+    evidence_id: "e1",
+    source_type: "UNKNOWN",
+    exact_text: "I don't know",
+  }];
+  supplied.conversation_state.last_question = "Who owns the privacy review?";
+  supplied.conversation_state.latest_interviewee_wording = "I don't know";
+
+  const violations = validateInterviewProposal(supplied, proposal({
+    type: "ASK_QUESTION",
+    resultId: currentResultId,
+    text: "You said ‘I don't know’; what kind of person would make that call?",
+    responseMode: "FREE_TEXT",
+  }));
+
+  assert.ok(violations.some(violation => violation.code === "terminal_result_cannot_be_queried"));
+});
+
 test("a semantic repeat is rejected before it reaches the commitment seam", () => {
   const violations = validateInterviewProposal(context(), proposal({
     type: "ASK_QUESTION",

@@ -84,12 +84,14 @@ function validate(context, turn) {
   }
   if (action.type === "ASK_QUESTION") {
     if (typeof action.text !== "string" || action.text.trim() === "" || action.text.length > 2_000) return "invalid_question";
+    const targetResult = projected.investigation_results.find(result => result.result_id === action.resultId);
+    if (!targetResult) return "invalid_question_scope";
+    if (COVERAGES.has(targetResult.coverage)) return "terminal_result_cannot_be_queried";
     const currentThreadId = context.conversation_state?.current_thread_result_id;
     const currentThread = projected.investigation_results.find(result => result.result_id === currentThreadId);
     if (currentThread && OPEN_COVERAGES.has(currentThread.coverage) && action.resultId !== currentThreadId) {
       return "current_thread_still_open";
     }
-    if (!resultIds.has(action.resultId)) return "invalid_question_scope";
     const mode = action.responseMode ?? "FREE_TEXT";
     if (!RESPONSE_MODES.has(mode)) return "invalid_response_mode";
     const options = mode === "CHOICE" ? action.options ?? [] : [];

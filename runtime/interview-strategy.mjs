@@ -87,6 +87,13 @@ export function validateInterviewProposal(context, proposal) {
   }
 
   if (action.type === "ASK_QUESTION") {
+    const targetResult = context.investigation_results?.find(result => result.result_id === action.resultId);
+    if (TERMINAL_COVERAGES.has(targetResult?.coverage)) {
+      violations.push({
+        code: "terminal_result_cannot_be_queried",
+        detail: "The proposed Question targets a terminal result; move to an open result or complete the Interview",
+      });
+    }
     const previousQuestions = [
       ...(context.conversation_state?.compacted_thread_memory ?? []).map(record => record.question),
       ...(context.questions_and_evidence ?? []).map(record => record.question),

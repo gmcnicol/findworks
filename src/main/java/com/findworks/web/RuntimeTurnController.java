@@ -132,6 +132,13 @@ public class RuntimeTurnController {
         if (action.type().equals("ASK_QUESTION")) {
             if (action.text() == null || action.text().isBlank() || action.text().length() > 2_000) throw new IllegalArgumentException("invalid_question");
             var resultId = action.resultId();
+            var targetResult = db.sql("select item_id,coverage from investigation_results where id=:result and session_id=:session")
+                    .param("result", resultId).param("session", authorised.sessionId())
+                    .query((rs, row) -> new QuestionTarget(rs.getObject(1, UUID.class), rs.getString(2))).optional()
+                    .orElseThrow(() -> new IllegalArgumentException("invalid_question_scope"));
+            if (Set.of("SUPPORTED", "UNKNOWN", "CONFLICT", "ASSUMPTION", "OWNERSHIP_GAP").contains(targetResult.coverage())) {
+                throw new IllegalArgumentException("terminal_result_cannot_be_queried");
+            }
             var currentThread = db.sql("""
                     select r.id,r.coverage
                     from questions q
@@ -145,9 +152,7 @@ public class RuntimeTurnController {
                     && !currentThread.get().resultId().equals(resultId)) {
                 throw new IllegalArgumentException("current_thread_still_open");
             }
-            var itemId = db.sql("select item_id from investigation_results where id=:result and session_id=:session")
-                    .param("result", resultId).param("session", authorised.sessionId()).query(UUID.class).optional()
-                    .orElseThrow(() -> new IllegalArgumentException("invalid_question_scope"));
+            var itemId = targetResult.itemId();
             var mode = action.responseMode() == null ? "FREE_TEXT" : action.responseMode();
             if (!Set.of("FREE_TEXT", "YES_NO", "YES_NO_PARTLY", "PARAPHRASE", "CHOICE").contains(mode)) throw new IllegalArgumentException("invalid_response_mode");
             var suppliedOptions = action.options() == null ? List.<Option>of() : action.options();
@@ -203,4 +208,5 @@ public class RuntimeTurnController {
     private record AuthorisedRun(UUID id, UUID organizationId, UUID sessionId, int expectedRevision,
                                  String stableEvent, boolean used) {}
     private record CurrentThread(UUID resultId, String coverage) {}
+    private record QuestionTarget(UUID itemId, String coverage) {}
 }

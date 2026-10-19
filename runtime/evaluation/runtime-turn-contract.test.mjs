@@ -59,7 +59,14 @@ test("production Runtime Turn contract rejects atomically without changing autho
 });
 
 test("a repaired Runtime Turn commits only the accepted proposal", () => {
-  const contract = createRuntimeTurnContract(context());
+  const supplied = context();
+  supplied.investigation_results.push({
+    result_id: otherResultId,
+    required: true,
+    coverage: "UNADDRESSED",
+    current_outcomes: [],
+  });
+  const contract = createRuntimeTurnContract(supplied);
   const stale = validSubmission();
   stale.expectedRevision = 99;
   assert.deepEqual(contract.submit(stale), { accepted: false, code: "stale_revision" });
@@ -72,7 +79,12 @@ test("a repaired Runtime Turn commits only the accepted proposal", () => {
     evidenceIds: [evidenceId],
     summary: "The analyst checks the source ledger.",
   }];
-  accepted.nextAction.text = "What happens after the source ledger check?";
+  accepted.nextAction = {
+    type: "ASK_QUESTION",
+    resultId: otherResultId,
+    text: "What happens after the source ledger check?",
+    responseMode: "FREE_TEXT",
+  };
   const result = contract.submit(accepted);
 
   assert.equal(result.accepted, true);
@@ -86,8 +98,27 @@ test("a repaired Runtime Turn commits only the accepted proposal", () => {
   }]);
 });
 
+test("a terminal unknown result cannot receive another Question", () => {
+  const supplied = context();
+  supplied.investigation_results[0].coverage = "UNKNOWN";
+  const proposal = validSubmission();
+  proposal.nextAction.text = "Who else might know?";
+
+  assert.deepEqual(createRuntimeTurnContract(supplied).submit(proposal), {
+    accepted: false,
+    code: "terminal_result_cannot_be_queried",
+  });
+});
+
 test("an identical replay returns the stable accepted state without a second semantic commit", () => {
-  const contract = createRuntimeTurnContract(context());
+  const supplied = context();
+  supplied.investigation_results.push({
+    result_id: otherResultId,
+    required: true,
+    coverage: "UNADDRESSED",
+    current_outcomes: [],
+  });
+  const contract = createRuntimeTurnContract(supplied);
   const submission = validSubmission();
   submission.outcomes = [{
     resultId,
@@ -96,6 +127,7 @@ test("an identical replay returns the stable accepted state without a second sem
     evidenceIds: [evidenceId],
     summary: "The analyst checks the source ledger.",
   }];
+  submission.nextAction.resultId = otherResultId;
 
   const accepted = contract.submit(submission);
   const replayed = contract.submit(structuredClone(submission));
