@@ -369,7 +369,7 @@ test('expired and reused invitation plus runtime failure expose safe recovery', 
   await investigator.close();
 });
 
-test('lost browser, reissue, revocation, and termination invalidate stale participant access', async ({ browser, request }) => {
+test('lost browser and access termination deny stale access without hiding the Session from its Investigator', async ({ browser, request }) => {
   const data = await fixture(request, 'access-recovery@example.com');
   const firstBrowser = await browser.newPage();
   await firstBrowser.goto(data.invitation_url);
@@ -403,6 +403,12 @@ test('lost browser, reissue, revocation, and termination invalidate stale partic
   });
   expect(termination.ok()).toBeTruthy();
   expect((await recovered.reload())?.status()).toBe(403);
+  await investigator.goto(`/app/findings/${data.session_id}`);
+  await expect(investigator.getByText('Extraction pending')).toBeVisible();
+  await expect(investigator.getByRole('heading', { name: 'Interview transcript' })).toBeVisible();
+  await request.post('/test/extraction/run-once');
+  await investigator.reload();
+  await expect(investigator.getByText('Ready for review')).toBeVisible();
   await recovered.close();
   await firstBrowser.close();
   await investigator.close();
@@ -418,7 +424,7 @@ test('lost browser, reissue, revocation, and termination invalidate stale partic
   await revokedPage.close();
 });
 
-test('v1 UI omits retention and deletion controls while keeping Session termination', async ({ browser, page, request }) => {
+test('v1 UI omits retention and deletion controls while keeping participant access termination', async ({ browser, page, request }) => {
   const data = await fixture(request, 'preserved-content@example.com');
   const participant = await browser.newPage();
   await begin(participant, data);
@@ -437,8 +443,8 @@ test('v1 UI omits retention and deletion controls while keeping Session terminat
   await expect(page.getByRole('button', { name: /delete interview session/i })).toHaveCount(0);
 
   await page.goto(`/app/interviews/${data.session_id}`);
-  await expect(page.getByRole('heading', { name: 'Terminate this interview' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Hold to terminate interview' })).toBeVisible();
-  await expect(page.getByText('Existing Evidence is preserved.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Terminate interview access' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hold to terminate access' })).toBeVisible();
+  await expect(page.getByText(/Existing Evidence is preserved/)).toBeVisible();
   await participant.close();
 });

@@ -230,6 +230,25 @@ class ClerkSecurityIntegrationTest {
     }
 
     @Test
+    void explicit_role_assignments_not_lifecycle_status_control_record_visibility() throws Exception {
+        var invitation = invitation("gareth@example.com");
+        var cookie = account("user_gareth", "gareth@example.com");
+        claim(invitation, cookie);
+        db.update("update interview_sessions set state='UNAVAILABLE' where id=?", invitation.sessionId());
+        db.update("update discoveries set state='UNAVAILABLE' where id=?", invitation.discoveryId());
+
+        mvc.perform(get("/work").cookie(cookie)).andExpect(status().isOk())
+                .andExpect(content().string(containsString("/interview/" + invitation.sessionId())))
+                .andExpect(content().string(containsString("/app/discoveries/" + invitation.discoveryId())));
+        mvc.perform(get("/interview/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isOk())
+                .andExpect(content().string(containsString("This interview can’t continue right now")));
+        mvc.perform(get("/app").cookie(cookie)).andExpect(status().isOk())
+                .andExpect(content().string(containsString("Continuity Mission")));
+        mvc.perform(get("/app/discoveries/" + invitation.discoveryId()).cookie(cookie)).andExpect(status().isOk());
+        mvc.perform(get("/app/interviews/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isOk());
+    }
+
+    @Test
     void research_membership_revocation_does_not_erase_independently_invited_interview_access() throws Exception {
         var invitation = invitation("gareth@example.com");
         var cookie = account("user_gareth", "gareth@example.com");
@@ -343,16 +362,21 @@ class ClerkSecurityIntegrationTest {
     }
 
     @Test
-    void termination_revokes_account_access_immediately_without_deleting_evidence() throws Exception {
+    void termination_revokes_account_access_and_completes_the_reviewable_session_without_deleting_evidence() throws Exception {
         var cookie = account("user_sme", "sme@example.com");
         var invitation = invitation("sme@example.com");
         claim(invitation, cookie);
         db.update("insert into evidence(id,organization_id,session_id,source_type,exact_text) values(?,'11111111-1111-1111-1111-111111111111',?,'ANSWER','Retained Evidence')",
                 UUID.randomUUID(), invitation.sessionId());
 
-        db.update("update interview_sessions set state='TERMINATED' where id=?", invitation.sessionId());
+        mvc.perform(post("/app/interviews/" + invitation.sessionId() + "/terminate")
+                        .cookie(account("user_gareth", "gareth@example.com")).with(csrf()))
+                .andExpect(status().is3xxRedirection());
 
         mvc.perform(get("/interview/" + invitation.sessionId()).cookie(cookie)).andExpect(status().isForbidden());
+        mvc.perform(get("/work").cookie(cookie)).andExpect(content().string(org.hamcrest.Matchers.not(
+                containsString("/interview/" + invitation.sessionId()))));
+        assertThat(db.queryForObject("select state from interview_sessions where id=?", String.class, invitation.sessionId())).isEqualTo("COMPLETED");
         assertThat(db.queryForObject("select count(*) from interview_account_access where session_id=? and revoked_at is null", Integer.class, invitation.sessionId())).isZero();
         assertThat(db.queryForObject("select count(*) from evidence where session_id=?", Integer.class, invitation.sessionId())).isEqualTo(1);
     }

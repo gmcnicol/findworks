@@ -51,7 +51,7 @@ public class MissionWorkQuery {
                 ) s on true
                 left join findings_packages fp on fp.session_id=s.id
                 left join package_versions pv on pv.package_id=fp.id and pv.version=fp.current_version
-                where d.organization_id=:organization and d.owner_membership_id=:member and d.state='ACTIVE'
+                where d.organization_id=:organization and d.owner_membership_id=:member and d.deleted_at is null
                 """ + (discoveryId == null ? "" : " and d.id=:discovery ")
                 + " order by m.last_activity_at desc,m.id")
                 .param("organization", investigator.organizationId()).param("member", investigator.membershipId());

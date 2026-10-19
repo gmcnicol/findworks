@@ -10,6 +10,11 @@ public class MissionResumeProjector {
     private static final String[] CHECKPOINTS = {
             "purpose-heading", "interviewee-heading", "items-heading", "context-heading", "completion-heading"
     };
+    private final FindingsStatusProjector findingsStatuses;
+
+    public MissionResumeProjector(FindingsStatusProjector findingsStatuses) {
+        this.findingsStatuses = findingsStatuses;
+    }
 
     public ResumeAction project(Snapshot snapshot) {
         String missionHref = "/app/missions/" + snapshot.missionId() + "/review";
@@ -42,7 +47,6 @@ public class MissionResumeProjector {
             case "ACTIVE", "AWAITING_CONFIRMATION" -> action("Interview in progress", "active", "View interview status", sessionHref, false, true);
             case "PAUSED" -> action("Interview paused", "waiting", "View interview status", sessionHref, false, true);
             case "RUNTIME_FAILED" -> action("Interview needs recovery", "attention", "Review recovery", sessionHref, true, true);
-            case "TERMINATED" -> action("Interview terminated", "complete", "View interview status", sessionHref, false, false);
             case "COMPLETED" -> findings(snapshot);
             default -> action("Interview needs attention", "attention", "View interview status", sessionHref, true, false);
         };
@@ -50,11 +54,8 @@ public class MissionResumeProjector {
 
     private ResumeAction findings(Snapshot snapshot) {
         String href = "/app/findings/" + snapshot.sessionId();
-        if ("FAILED".equals(snapshot.extractionState())) return action("Findings extraction failed", "attention", "Retry extraction", href, true, false);
-        if (!"READY".equals(snapshot.extractionState())) return action("Findings processing", "waiting", "View progress", href, false, false);
-        if ("ACCEPTED".equals(snapshot.packageState())) return action("Findings accepted", "complete", "Open findings", href, false, false);
-        if ("REJECTED".equals(snapshot.packageState())) return action("Follow-up required", "attention", "Review follow-up", href, true, false);
-        return action("Findings ready to review", "attention", "Review findings", href, true, false);
+        var status = findingsStatuses.project(snapshot.extractionState(), snapshot.packageState());
+        return action(status.label(), status.tone(), status.action(), href, status.needsAttention(), false);
     }
 
     private ResumeAction action(String status, String tone, String label, String href, boolean attention, boolean active) {
