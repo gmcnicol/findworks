@@ -56,7 +56,7 @@ public class ClerkInterviewAccess {
                     join discoveries d on d.id=s.discovery_id
                     where i.token_hash=:hash and i.state='DELIVERED' and i.redeemed_at is null
                       and i.revoked_at is null and i.expires_at>now()
-                      and s.deleted_at is null and s.state not in ('TERMINATED','COMPLETED','ENDED_EARLY') and d.state='ACTIVE'
+                      and s.deleted_at is null and s.state not in ('TERMINATED','COMPLETED') and d.state='ACTIVE'
                     for update of i,s
                     """).param("hash", Ids.sha(token))
                     .query((rs, row) -> new Invitation(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),

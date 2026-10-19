@@ -93,7 +93,7 @@ public class WorkspaceController {
                 left join findings_packages fp on fp.session_id=s.id
                 left join package_versions pv on pv.package_id=fp.id and pv.version=fp.current_version
                 where d.organization_id=:organization and d.owner_membership_id=:member and d.state='ACTIVE'
-                  and s.deleted_at is null and s.state in ('COMPLETED','ENDED_EARLY')
+                  and s.deleted_at is null and s.state='COMPLETED'
                 order by s.completed_at desc nulls last,s.id desc
                 """).param("organization", investigator.organizationId()).param("member", investigator.membershipId())
                 .query((rs, row) -> findingsRow(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),

@@ -74,7 +74,7 @@
                 <input type="hidden" name="questionId" th:value="${questionId}">
                 <button class="text-button" type="submit">This feels uncomfortable</button>
             </form>
-            <form method="post" th:action="@{${interviewBase + '/end-early'}}"><button class="text-button" type="submit">End here</button></form>
+            <form method="post" th:action="@{${interviewBase + '/complete'}}"><button class="text-button" type="submit">Finish interview</button></form>
             <details class="owner-disclosure">
                 <summary>Someone else owns this</summary>
                 <form class="owner-form" method="post" th:action="@{${interviewBase + '/another-owner'}}">

@@ -64,7 +64,6 @@ public class SavedWorkController {
                 case "PAUSED" -> "Paused · your answers are saved";
                 case "AWAITING_CONFIRMATION" -> "Ready to finish";
                 case "COMPLETED" -> "Completed";
-                case "ENDED_EARLY" -> "Ended · your answers are saved";
                 case "RUNTIME_FAILED" -> "Your answers are saved · retry available";
                 default -> "In progress";
             };
@@ -72,7 +71,7 @@ public class SavedWorkController {
         public String action() {
             return switch (state) {
                 case "NOT_STARTED" -> "Open interview";
-                case "COMPLETED", "ENDED_EARLY" -> "View completion";
+                case "COMPLETED" -> "View completion";
                 default -> "Continue interview";
             };
         }
