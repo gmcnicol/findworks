@@ -69,13 +69,13 @@
                     </div>
                     <h3 th:text="${item.claim()}">Claim</h3>
                     <div th:each="source : ${item.sources()}" th:id="'evidence-' + ${source.evidenceId()}">
-                        <blockquote th:text="${source.quote()}">Source quotation</blockquote>
+                        <dl class="review-fields source-context">
+                            <div><dt>Question asked</dt><dd th:text="${source.question() != null ? source.question() : 'Question unavailable for this Evidence'}">Question</dd></div>
+                            <div><dt>Answer evidence</dt><dd><blockquote th:text="${source.quote()}">Source quotation</blockquote></dd></div>
+                        </dl>
                         <details>
-                            <summary>Open source context</summary>
-                            <dl class="review-fields source-context">
-                                <div><dt>Question asked</dt><dd th:text="${source.question() != null ? source.question() : 'Question unavailable for this Evidence'}">Question</dd></div>
-                                <div><dt>Answer given</dt><dd th:text="${source.answer()}">Answer</dd></div>
-                            </dl>
+                            <summary>Open full answer and provenance</summary>
+                            <p th:text="${source.answer()}">Full answer</p>
                             <p class="subtle"><span th:text="${source.participant()}">Participant</span> · <time th:text="${source.evidenceAt()}">Time</time> · characters <span th:text="${source.startOffset()}">0</span>–<span th:text="${source.endOffset()}">0</span></p>
                         </details>
                     </div>
@@ -99,12 +99,12 @@
                     <p th:text="${item.reason()}">Reason</p>
                     <p th:if="${item.kind() == 'CONFLICT'}" th:text="'Conflict members · ' + ${item.conflictMemberCount()}">Conflict members</p>
                     <p th:if="${item.owner() != null}" th:text="'Owner: ' + ${item.owner()}">Owner</p>
+                    <dl class="review-fields source-context" th:if="${item.evidenceId() != null}">
+                        <div><dt>Question asked</dt><dd th:text="${item.question() != null ? item.question() : 'Question unavailable for this Evidence'}">Question</dd></div>
+                        <div><dt>Answer given</dt><dd th:text="${item.answer()}">Answer</dd></div>
+                    </dl>
                     <details th:if="${item.evidenceId() != null}">
-                        <summary>Open source context</summary>
-                        <dl class="review-fields source-context">
-                            <div><dt>Question asked</dt><dd th:text="${item.question() != null ? item.question() : 'Question unavailable for this Evidence'}">Question</dd></div>
-                            <div><dt>Answer given</dt><dd th:text="${item.answer()}">Answer</dd></div>
-                        </dl>
+                        <summary>Open source provenance</summary>
                         <p class="subtle"><span th:text="${item.participant()}">Participant</span> · <time th:text="${item.evidenceAt()}">Time</time></p>
                     </details>
                     <div th:id="'unresolved-review-' + ${item.id()}">
